@@ -1679,8 +1679,8 @@ fn search_impl(
 
 fn search_completions(cx: &mut Context, reg: Option<char>) -> Vec<String> {
     let mut items = reg
-        .and_then(|reg| cx.editor.registers.get(reg).iter().take(200).collect())
-        .unwrap_or_else(|| Vec::new<_>());
+        .and_then(|reg| cx.editor.registers.get(reg))
+        .map_or(Vec::new(), |reg| reg.iter().take(200).collect());
     items.sort_unstable();
     items.dedup();
     items.into_iter().cloned().collect()
@@ -1744,7 +1744,7 @@ fn search_next_or_prev_impl(cx: &mut Context, movement: Movement, direction: Dir
     let scrolloff = config.scrolloff;
     let (_, doc) = current!(cx.editor);
     let registers = &cx.editor.registers;
-    if let Some(query) = registers.read('/').and_then(|query| query.last()) {
+    if let Some(query) = registers.last('/') {
         let contents = doc.text().slice(..).to_string();
         let search_config = &config.search;
         let case_insensitive = if search_config.smart_case {
@@ -3678,7 +3678,7 @@ fn replace_with_yanked(cx: &mut Context) {
     let (view, doc) = current!(cx.editor);
     let registers = &mut cx.editor.registers;
 
-    if let Some(values) = registers.read(reg_name) {
+    if let Some(values) = registers.get(reg_name) {
         if !values.is_empty() {
             let repeat = std::iter::repeat(
                 values
@@ -3747,7 +3747,7 @@ fn paste(cx: &mut Context, pos: Paste) {
     let (view, doc) = current!(cx.editor);
     let registers = &mut cx.editor.registers;
 
-    if let Some(values) = registers.read(reg_name) {
+    if let Some(values) = registers.get(reg_name) {
         paste_impl(values, doc, view, pos, count, cx.editor.mode);
     }
 }
@@ -5183,7 +5183,7 @@ fn replay_macro(cx: &mut Context) {
         return;
     }
 
-    let keys: Vec<KeyEvent> = if let Some([keys_str]) = cx.editor.registers.read(reg) {
+    let keys: Vec<KeyEvent> = if let Some(keys_str) = cx.editor.registers.last(reg) {
         match helix_view::input::parse_macro(keys_str) {
             Ok(keys) => keys,
             Err(err) => {

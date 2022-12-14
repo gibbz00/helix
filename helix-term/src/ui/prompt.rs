@@ -294,28 +294,26 @@ impl Prompt {
         direction: CompletionDirection,
     ) {
         (self.callback_fn)(cx, &self.line, PromptEvent::Abort);
-        let values = match cx.editor.registers.read(register) {
-            Some(values) if !values.is_empty() => values,
-            _ => return,
-        };
 
-        let end = values.len().saturating_sub(1);
+        if let Some(values) = cx.editor.registers.get(register) {
+            let end = values.len().saturating_sub(1);
 
-        let index = match direction {
-            CompletionDirection::Forward => self.history_pos.map_or(0, |i| i + 1),
-            CompletionDirection::Backward => {
-                self.history_pos.unwrap_or(values.len()).saturating_sub(1)
+            let index = match direction {
+                CompletionDirection::Forward => self.history_pos.map_or(0, |i| i + 1),
+                CompletionDirection::Backward => {
+                    self.history_pos.unwrap_or(values.len()).saturating_sub(1)
+                }
             }
+            .min(end);
+
+            self.line = values[index].clone();
+
+            self.history_pos = Some(index);
+
+            self.move_end();
+            (self.callback_fn)(cx, &self.line, PromptEvent::Update);
+            self.recalculate_completion(cx.editor);
         }
-        .min(end);
-
-        self.line = values[index].clone();
-
-        self.history_pos = Some(index);
-
-        self.move_end();
-        (self.callback_fn)(cx, &self.line, PromptEvent::Update);
-        self.recalculate_completion(cx.editor);
     }
 
     pub fn change_completion_selection(&mut self, direction: CompletionDirection) {
@@ -583,31 +581,29 @@ impl Component for Prompt {
             }
             ctrl!('q') => self.exit_selection(),
             ctrl!('r') => {
-                self.completion = cx
-                    .editor
-                    .registers
+                self.completion = cx.editor.registers
                     .inner()
                     .iter()
-                    .map(|(ch, reg)| {
-                        let content = reg
-                            .read()
-                            .get(0)
+                    .map(|(name, value)| {
+                        let content = value
+                            .first()
                             .and_then(|s| s.lines().next().to_owned())
                             .unwrap_or_default();
-                        (0.., format!("{} {}", ch, &content).into())
+                        (0.., format!("{} {}", name, &content).into())
                     })
                     .collect();
-                self.next_char_handler = Some(Box::new(|prompt, c, context| {
+
+                self.next_char_handler = Some(Box::new(|prompt, char, context| {
                     prompt.insert_str(
                         context
                             .editor
                             .registers
-                            .read(c)
-                            .and_then(|r| r.first())
-                            .map_or("", |r| r.as_str()),
+                            .first(char)
+                            .map_or("", |value| value.as_str()),
                         context.editor,
                     );
                 }));
+
                 (self.callback_fn)(cx, &self.line, PromptEvent::Update);
                 return EventResult::Consumed(None);
             }
