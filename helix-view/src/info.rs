@@ -71,13 +71,11 @@ impl Info {
         let body: Vec<_> = registers
             .inner()
             .iter()
-            .map(|(ch, reg)| {
-                let content = reg
-                    .read()
-                    .get(0)
-                    .and_then(|s| s.lines().next())
-                    .unwrap_or_default();
-                (ch.to_string(), content)
+            .map(|(name, content)| {
+                (
+                    name.to_string(),
+                    content[0].lines().next().unwrap_or_default(),
+                )
             })
             .collect();
 
@@ -90,13 +88,11 @@ impl Info {
         let body: Vec<_> = registers
             .inner()
             .iter()
-            .map(|(ch, reg)| {
-                let content = reg
-                    .read()
-                    .get(0)
-                    .and_then(|s| s.lines().next())
-                    .unwrap_or_default();
-                (ch.to_string(), content)
+            .map(|(name, content)| {
+                (
+                    name.to_string(),
+                    content[0].lines().next().unwrap_or_default(),
+                )
             })
             .collect();
 
