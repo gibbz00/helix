@@ -392,6 +392,7 @@ impl MappableCommand {
         wclose, "Close window",
         wonly, "Close windows except current",
         select_register, "Select register",
+        register_history, "Select register from register history",
         insert_register, "Insert register",
         align_view_middle, "Align view middle",
         align_view_top, "Align view top",
@@ -4396,6 +4397,17 @@ fn wonly(cx: &mut Context) {
 
 fn select_register(cx: &mut Context) {
     cx.editor.autoinfo = Some(Info::from_registers(&cx.editor.registers));
+    cx.on_next_key(move |cx, event| {
+        if let Some(ch) = event.char() {
+            cx.editor.autoinfo = None;
+            cx.editor.selected_register = Some(ch);
+        }
+    })
+}
+
+fn register_history(cx: &mut Context) {
+    // TODO: create submenu
+    cx.editor.autoinfo = Some(Info::from_register_history(&cx.editor.registers));
     cx.on_next_key(move |cx, event| {
         if let Some(ch) = event.char() {
             cx.editor.autoinfo = None;

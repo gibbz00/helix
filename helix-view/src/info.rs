@@ -85,4 +85,23 @@ impl Info {
         infobox.width = 30; // copied content could be very long
         infobox
     }
+
+    pub fn from_register_history(registers: &Registers) -> Self {
+        let body: Vec<_> = registers
+            .inner()
+            .iter()
+            .map(|(ch, reg)| {
+                let content = reg
+                    .read()
+                    .get(0)
+                    .and_then(|s| s.lines().next())
+                    .unwrap_or_default();
+                (ch.to_string(), content)
+            })
+            .collect();
+
+        let mut infobox = Self::new("Register history", &body);
+        infobox.width = 30; // copied content could be very long
+        infobox
+    }
 }
