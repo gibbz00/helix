@@ -1679,8 +1679,8 @@ fn search_impl(
 
 fn search_completions(cx: &mut Context, reg: Option<char>) -> Vec<String> {
     let mut items = reg
-        .and_then(|reg| cx.editor.registers.get(reg))
-        .map_or(Vec::new(), |reg| reg.read().iter().take(200).collect());
+        .and_then(|reg| cx.editor.registers.get(reg).iter().take(200).collect())
+        .unwrap_or_else(|| Vec::new<_>());
     items.sort_unstable();
     items.dedup();
     items.into_iter().cloned().collect()

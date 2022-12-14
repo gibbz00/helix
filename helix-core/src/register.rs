@@ -1,66 +1,25 @@
 use std::collections::HashMap;
 
-#[derive(Debug)]
-pub struct Register {
-    name: char,
-    values: Vec<String>,
-}
-
-impl Register {
-    pub const fn new(name: char) -> Self {
-        Self {
-            name,
-            values: Vec::new(),
-        }
-    }
-
-    pub fn new_with_values(name: char, values: Vec<String>) -> Self {
-        Self { name, values }
-    }
-
-    pub const fn name(&self) -> char {
-        self.name
-    }
-
-    pub fn read(&self) -> &[String] {
-        &self.values
-    }
-
-    pub fn write(&mut self, values: Vec<String>) {
-        self.values = values;
-    }
-
-    pub fn push(&mut self, value: String) {
-        self.values.push(value);
-    }
-}
-
-/// Currently just wraps a `HashMap` of `Register`s
 #[derive(Debug, Default)]
 pub struct Registers {
-    inner: HashMap<char, Register>,
+    registers: HashMap<char, Vec<String>>,
 }
 
 impl Registers {
-    pub fn get(&self, name: char) -> Option<&Register> {
-        self.inner.get(&name)
-    }
-
-    pub fn read(&self, name: char) -> Option<&[String]> {
-        self.get(name).map(|reg| reg.read())
+    pub fn get(&self, name: char) -> Option<&Vec<String>> {
+        self.registers.get(&name)
     }
 
     pub fn write(&mut self, name: char, values: Vec<String>) {
         if name != '_' {
-            self.inner
-                .insert(name, Register::new_with_values(name, values));
+            self.registers.insert(name, values);
         }
     }
 
     pub fn push(&mut self, name: char, value: String) {
         if name != '_' {
-            if let Some(r) = self.inner.get_mut(&name) {
-                r.push(value);
+            if let Some(register) = self.registers.get_mut(&name) {
+                register.push(value);
             } else {
                 self.write(name, vec![value]);
             }
@@ -68,14 +27,14 @@ impl Registers {
     }
 
     pub fn first(&self, name: char) -> Option<&String> {
-        self.read(name).and_then(|entries| entries.first())
+        self.get(name).and_then(|entries| entries.first())
     }
 
     pub fn last(&self, name: char) -> Option<&String> {
-        self.read(name).and_then(|entries| entries.last())
+        self.get(name).and_then(|entries| entries.last())
     }
 
-    pub fn inner(&self) -> &HashMap<char, Register> {
-        &self.inner
+    pub fn inner(&self) -> &HashMap<char, Vec<String>> {
+        &self.registers
     }
 }
