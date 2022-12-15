@@ -69,12 +69,13 @@ impl Info {
 
     pub fn from_registers(registers: &Registers) -> Self {
         let body: Vec<_> = registers
-            .inner()
+            .get_all()
             .iter()
-            .map(|(name, content)| {
+            .map(|(name, list)| {
                 (
                     name.to_string(),
-                    content[0].lines().next().unwrap_or_default(),
+                    list.front()
+                        .map_or_else(|| "", |string| string.lines().next().unwrap_or_default())
                 )
             })
             .collect();
@@ -86,12 +87,13 @@ impl Info {
 
     pub fn from_register_history(registers: &Registers) -> Self {
         let body: Vec<_> = registers
-            .inner()
+            .get_all()
             .iter()
-            .map(|(name, content)| {
+            .map(|(name, list)| {
                 (
                     name.to_string(),
-                    content[0].lines().next().unwrap_or_default(),
+                    list.front()
+                        .map_or_else(|| "", |string| string.lines().next().unwrap_or_default())
                 )
             })
             .collect();

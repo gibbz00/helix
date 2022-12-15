@@ -2,12 +2,18 @@ use crate::compositor::{Component, Compositor, Context, Event, EventResult};
 use crate::{alt, ctrl, key, shift, ui};
 use helix_view::input::KeyEvent;
 use helix_view::keyboard::KeyCode;
-use std::{borrow::Cow, ops::RangeFrom};
-use tui::buffer::Buffer as Surface;
-use tui::widgets::{Block, Borders, Widget};
-
+use std::{
+    borrow::Cow,
+    ops::RangeFrom,
+    collections::linked_list::Cursor
+};
+use tui::{
+    buffer::Buffer as Surface,
+    widgets::{Block, Borders, Widget}
+};
 use helix_core::{
-    unicode::segmentation::GraphemeCursor, unicode::width::UnicodeWidthStr, Position,
+    unicode::segmentation::GraphemeCursor,
+    unicode::width::UnicodeWidthStr, Position,
 };
 use helix_view::{
     graphics::{CursorKind, Margin, Rect},
@@ -24,7 +30,7 @@ pub struct Prompt {
     completion: Vec<Completion>,
     selection: Option<usize>,
     history_register: Option<char>,
-    history_pos: Option<usize>,
+    history_values: Cursor<String>,
     completion_fn: Box<dyn FnMut(&Editor, &str) -> Vec<Completion>>,
     callback_fn: Box<dyn FnMut(&mut Context, &str, PromptEvent)>,
     pub doc_fn: Box<dyn Fn(&str) -> Option<Cow<str>>>,
@@ -75,7 +81,7 @@ impl Prompt {
             completion: Vec::new(),
             selection: None,
             history_register,
-            history_pos: None,
+            history_values: None,
             completion_fn: Box::new(completion_fn),
             callback_fn: Box::new(callback_fn),
             doc_fn: Box::new(|_| None),
@@ -296,19 +302,11 @@ impl Prompt {
         (self.callback_fn)(cx, &self.line, PromptEvent::Abort);
 
         if let Some(values) = cx.editor.registers.get(register) {
-            let end = values.len().saturating_sub(1);
-
-            let index = match direction {
-                CompletionDirection::Forward => self.history_pos.map_or(0, |i| i + 1),
-                CompletionDirection::Backward => {
-                    self.history_pos.unwrap_or(values.len()).saturating_sub(1)
-                }
-            }
-            .min(end);
-
-            self.line = values[index].clone();
-
-            self.history_pos = Some(index);
+            self.history_values = values.cursor_front();
+            self.line = match direction {
+                CompletionDirection::Forward => self.history_values.move_next(),
+                CompletionDirection::Backward => self.history_values.move_prev()
+            };
 
             self.move_end();
             (self.callback_fn)(cx, &self.line, PromptEvent::Update);
@@ -582,7 +580,7 @@ impl Component for Prompt {
             ctrl!('q') => self.exit_selection(),
             ctrl!('r') => {
                 self.completion = cx.editor.registers
-                    .inner()
+                    .get_all()
                     .iter()
                     .map(|(name, value)| {
                         let content = value

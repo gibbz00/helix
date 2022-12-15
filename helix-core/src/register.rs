@@ -1,16 +1,16 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, LinkedList};
 
 #[derive(Debug, Default)]
 pub struct Registers {
-    registers: HashMap<char, Vec<String>>,
+    registers: HashMap<char, LinkedList<String>>,
 }
 
 impl Registers {
-    pub fn get(&self, name: char) -> Option<&Vec<String>> {
+    pub fn get(&self, name: char) -> Option<&LinkedList<String>> {
         self.registers.get(&name)
     }
 
-    pub fn write(&mut self, name: char, values: Vec<String>) {
+    pub fn write(&mut self, name: char, values: LinkedList<String>) {
         if name != '_' {
             self.registers.insert(name, values);
         }
@@ -19,22 +19,24 @@ impl Registers {
     pub fn push(&mut self, name: char, value: String) {
         if name != '_' {
             if let Some(register) = self.registers.get_mut(&name) {
-                register.push(value);
+                register.push_front(value);
             } else {
-                self.write(name, vec![value]);
+                let mut temp_list = LinkedList::new();
+                temp_list.push_front(value);
+                self.write(name, temp_list);
             }
         }
     }
 
     pub fn first(&self, name: char) -> Option<&String> {
-        self.get(name).and_then(|entries| entries.first())
+        self.get(name).and_then(|register| register.back())
     }
 
     pub fn last(&self, name: char) -> Option<&String> {
-        self.get(name).and_then(|entries| entries.last())
+        self.get(name).and_then(|register| register.front())
     }
 
-    pub fn inner(&self) -> &HashMap<char, Vec<String>> {
+    pub fn get_all(&self) -> &HashMap<char, LinkedList<String>> {
         &self.registers
     }
 }
