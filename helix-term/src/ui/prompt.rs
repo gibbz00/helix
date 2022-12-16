@@ -30,7 +30,7 @@ pub struct Prompt {
     completion: Vec<Completion>,
     selection: Option<usize>,
     history_register: Option<char>,
-    history_values: Cursor<String>,
+    history_values: Option<Cursor<'static, String>>,
     completion_fn: Box<dyn FnMut(&Editor, &str) -> Vec<Completion>>,
     callback_fn: Box<dyn FnMut(&mut Context, &str, PromptEvent)>,
     pub doc_fn: Box<dyn Fn(&str) -> Option<Cow<str>>>,
@@ -301,17 +301,18 @@ impl Prompt {
     ) {
         (self.callback_fn)(cx, &self.line, PromptEvent::Abort);
 
-        if let Some(values) = cx.editor.registers.get(register) {
-            self.history_values = values.cursor_front();
-            self.line = match direction {
-                CompletionDirection::Forward => self.history_values.move_next(),
-                CompletionDirection::Backward => self.history_values.move_prev()
-            };
+        self.history_values = cx.editor.registers.get(register)
+            .and_then(|values| Some(values.cursor_front()));
 
-            self.move_end();
-            (self.callback_fn)(cx, &self.line, PromptEvent::Update);
-            self.recalculate_completion(cx.editor);
-        }
+        self.line = match direction {
+            CompletionDirection::Forward => self.history_values.map_or_else(|| "", |cursor| cursor.move_next().clone()),
+            CompletionDirection::Backward => self.history_values.map_or_else(|| "", |cursor| cursor.move_prev().clone())
+        };
+
+        self.move_end();
+        (self.callback_fn)(cx, &self.line, PromptEvent::Update);
+        self.recalculate_completion(cx.editor);
+        
     }
 
     pub fn change_completion_selection(&mut self, direction: CompletionDirection) {
