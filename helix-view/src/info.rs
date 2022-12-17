@@ -59,6 +59,7 @@ impl Info {
         let body: Vec<_> = body
             .into_iter()
             .map(|(desc, events)| {
+                // Why the fuck was a BTreeSet created for this
                 let events = events.iter().map(ToString::to_string).collect::<Vec<_>>();
                 (events.join(", "), desc)
             })

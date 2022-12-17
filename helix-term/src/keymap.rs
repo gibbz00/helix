@@ -70,6 +70,7 @@ impl KeyTrieNode {
             }
             self.map.insert(key, trie);
         }
+        // NOTE: order created once again from an unordered hashmap
         for &key in self.map.keys() {
             if !self.order.contains(&key) {
                 self.order.push(key);
@@ -90,6 +91,8 @@ impl KeyTrieNode {
                 KeyTrie::Node(n) => n.name(),
                 KeyTrie::Sequence(_) => "[Multiple commands]",
             };
+            // Check if the discription exists
+            // if it does, append key to KeyEventSet
             match body.iter().position(|(d, _)| d == &desc) {
                 Some(pos) => {
                     body[pos].1.insert(key);
@@ -97,6 +100,7 @@ impl KeyTrieNode {
                 None => body.push((desc, BTreeSet::from([key]))),
             }
         }
+        // For each command its first keyevent and find its position in self.order 
         body.sort_unstable_by_key(|(_, keys)| {
             self.order
                 .iter()
@@ -196,6 +200,7 @@ impl<'de> serde::de::Visitor<'de> for KeyTrieVisitor {
     {
         let mut mapping = HashMap::new();
         let mut order = Vec::new();
+        // NOTE: Order is once again completely arbitrary
         while let Some((key, value)) = map.next_entry::<KeyEvent, KeyTrie>()? {
             mapping.insert(key, value);
             order.push(key);
