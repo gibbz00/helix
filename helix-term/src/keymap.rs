@@ -11,7 +11,7 @@ use helix_view::{document::Mode, info::Info, input::KeyEvent};
 use serde::Deserialize;
 use std::{
     borrow::Cow,
-    collections::{BTreeSet, HashMap},
+    collections::HashMap,
     ops::{Deref, DerefMut},
     sync::Arc,
 };
@@ -68,7 +68,7 @@ impl KeyTrieNode {
     }
 
     pub fn infobox(&self) -> Info {
-        let mut body: Vec<(&str, BTreeSet<KeyEvent>)> = Vec::with_capacity(self.len());
+        let mut body: Vec<(&str, Vec<KeyEvent>)> = Vec::with_capacity(self.len());
         for (&key, trie) in self.iter() {
             let desc = match trie {
                 KeyTrie::Leaf(cmd) => {
@@ -80,13 +80,16 @@ impl KeyTrieNode {
                 KeyTrie::Node(n) => n.name(),
                 KeyTrie::Sequence(_) => "[Multiple commands]",
             };
-            // Check if the discription exists
+            // FIX: (gibbz) Remove comment
+            // Check if the description exists
             // if it does, append key to KeyEventSet
+            // This is why the diffent multiple command sequences will look
+            // as if they trigger the same command 
             match body.iter().position(|(d, _)| d == &desc) {
                 Some(pos) => {
-                    body[pos].1.insert(key);
+                    body[pos].1.push(key);
                 }
-                None => body.push((desc, BTreeSet::from([key]))),
+                None => body.push((desc, Vec::from([key]))),
             }
         }
 
