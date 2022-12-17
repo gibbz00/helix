@@ -68,7 +68,7 @@ impl KeyTrieNode {
     }
 
     pub fn infobox(&self) -> Info {
-        let mut body: Vec<(&str, Vec<KeyEvent>)> = Vec::with_capacity(self.len());
+        let mut body: Vec<(Vec<KeyEvent>, &str)> = Vec::with_capacity(self.len());
         for (&key, trie) in self.iter() {
             let desc = match trie {
                 KeyTrie::Leaf(cmd) => {
@@ -85,11 +85,11 @@ impl KeyTrieNode {
             // if it does, append key to KeyEventSet
             // This is why the diffent multiple command sequences will look
             // as if they trigger the same command 
-            match body.iter().position(|(d, _)| d == &desc) {
+            match body.iter().position(|(_, d)| d == &desc) {
                 Some(pos) => {
-                    body[pos].1.push(key);
+                    body[pos].0.push(key);
                 }
-                None => body.push((desc, Vec::from([key]))),
+                None => body.push((Vec::from([key]), desc)),
             }
         }
 
