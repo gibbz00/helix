@@ -28,7 +28,6 @@ impl Keymap {
         Keymap { root_node }
     }
 
-
     /// Returns a key-value list of all commands associated to a given Keymap.
     /// Keys are the node names (see KeyTrieNode documentation)
     /// Values are lists of stringified KeyEvents that triger the command.
