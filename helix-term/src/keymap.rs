@@ -53,7 +53,6 @@ impl Keymap {
                 },
                 KeyTrieNode::MappableCommand(mappable_command) => {
                         if mappable_command.name() == "no_op" { return }
-                        // TODO: make keys in list &str
                         list.entry(mappable_command.name().to_string()).or_default().push(prefix.to_string());
                 },
                 KeyTrieNode::CommandSequence(_) => {}
