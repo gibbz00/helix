@@ -2458,7 +2458,7 @@ impl ui::menu::Item for MappableCommand {
             MappableCommand::Typable { description: doc, name, .. } => {
                 let mut row: Vec<Cell> = vec![Cell::from(&*name.as_str()), Cell::from(""), Cell::from(&*doc.as_str())];
                 match command_list.get(name as &String) {
-                    Some(key_events) => { row[1] = Cell::from(format!("{:?}", key_events)); },
+                    Some(key_events) => { row[1] = Cell::from(format_key_events(key_events)); },
                     None => {}
                 }
                 return Row::new(row);
@@ -2466,11 +2466,23 @@ impl ui::menu::Item for MappableCommand {
             MappableCommand::Static { description: doc, name, .. } => {
                 let mut row: Vec<Cell> = vec![Cell::from(*name), Cell::from(""), Cell::from(*doc)];
                 match command_list.get(*name) {
-                    Some(key_events) => { row[1] = Cell::from(format!("{:?}", key_events)); },
+                    Some(key_events) => { row[1] = Cell::from(format_key_events(key_events)); },
                     None => {}
                 }
                 return Row::new(row)
             } 
+        }
+
+        // TODO: Generalize into a Vec<String> Display implemention?
+        fn format_key_events(key_events: &Vec<String>) -> String {
+            let mut result_string: String = String::new();
+            for key_event in key_events {
+                if !result_string.is_empty() {
+                    result_string.push_str(", ");
+                }
+                result_string.push_str(key_event);
+            }
+            result_string
         }
     }
 }
