@@ -5,7 +5,6 @@ pub(crate) mod typed;
 pub use dap::*;
 use helix_vcs::Hunk;
 pub use lsp::*;
-use tui::widgets::Row;
 pub use typed::*;
 
 use helix_core::{
@@ -50,7 +49,7 @@ use crate::{
     compositor::{self, Component, Compositor},
     job::Callback,
     keymap::CommandList,
-    ui::{self, overlay::overlayed, FilePicker, Picker, Popup, Prompt, PromptEvent},
+    ui::{self, overlay::overlayed, FilePicker, Picker, Popup, Prompt, PromptEvent, menu::{Cell, Row}},
 };
 
 use crate::job::{self, Jobs};
@@ -2454,16 +2453,24 @@ fn jumplist_picker(cx: &mut Context) {
 impl ui::menu::Item for MappableCommand {
     type Data = CommandList;
 
-    fn format(&self, keymap: &Self::Data) -> Row {
+    fn format(&self, command_list: &Self::Data) -> Row {
         match self {
-            MappableCommand::Typable { description: doc, name, .. } => match keymap.get(name as &String) {
-                Some(key_events) => format!("{} {:?} ':{}'", doc, key_events, name).into(),
-                None => format!("{} ':{}'", doc, name).into(),
+            MappableCommand::Typable { description: doc, name, .. } => {
+                let mut row: Vec<Cell> = vec![Cell::from(&*name.as_str()), Cell::from(""), Cell::from(&*doc.as_str())];
+                match command_list.get(name as &String) {
+                    Some(key_events) => { row[1] = Cell::from(format!("{:?}", key_events)); },
+                    None => {}
+                }
+                return Row::new(row);
             },
-            MappableCommand::Static { description: doc, name, .. } => match keymap.get(*name) {
-                Some(key_events) => format!("{} {:?} '{}'", doc, key_events, name).into(),
-                None => format!("{} '{}'", doc, name).into(),
-            },
+            MappableCommand::Static { description: doc, name, .. } => {
+                let mut row: Vec<Cell> = vec![Cell::from(*name), Cell::from(""), Cell::from(*doc)];
+                match command_list.get(*name) {
+                    Some(key_events) => { row[1] = Cell::from(format!("{:?}", key_events)); },
+                    None => {}
+                }
+                return Row::new(row)
+            } 
         }
     }
 }
@@ -2475,8 +2482,8 @@ pub fn command_palette(cx: &mut Context) {
                 [&cx.editor.mode]
                 .command_list();
 
-            let mut commands: Vec<MappableCommand> = MappableCommand::STATIC_COMMAND_LIST.into();
-            commands.extend(typed::TYPABLE_COMMAND_LIST.iter().map(|cmd| {
+            let mut typable_commands: Vec<MappableCommand> = MappableCommand::STATIC_COMMAND_LIST.into();
+            typable_commands.extend(typed::TYPABLE_COMMAND_LIST.iter().map(|cmd| {
                 MappableCommand::Typable {
                     name: cmd.name.to_owned(),
                     description: cmd.doc.to_owned(),
@@ -2484,7 +2491,7 @@ pub fn command_palette(cx: &mut Context) {
                 }
             }));
 
-            let picker = Picker::new(commands, keymap_command_lists, move |cx, command, _action| {
+            let picker = Picker::new(typable_commands, keymap_command_lists, move |cx, command, _action| {
                 let mut ctx = Context {
                     register: None,
                     count: std::num::NonZeroUsize::new(1),
