@@ -9,7 +9,7 @@ pub use typed::*;
 use crate::{
     commands::insert::*,
     args,
-    keymap::keymaps::CommandList,
+    keymap::CommandList,
     compositor::{self, Component, Compositor},
     job::{Callback, self, Jobs},
     ui::{self, overlay::overlayed, FilePicker, Picker, Popup, Prompt, PromptEvent, menu::{Cell, Row}},
@@ -2485,7 +2485,7 @@ impl ui::menu::Item for MappableCommand {
 pub fn command_palette(cx: &mut Context) {
     cx.callback = Some(Box::new(
         move |compositor: &mut Compositor, cx: &mut compositor::Context| {
-            let keymap_command_lists = compositor.find::<ui::EditorView>().unwrap().keymaps.command_list(&cx.editor.mode);
+            let keymap_command_lists = compositor.find::<ui::EditorView>().unwrap().keymap.command_list(&cx.editor.mode);
 
             let mut typable_commands: Vec<MappableCommand> = MappableCommand::STATIC_COMMAND_LIST.into();
             typable_commands.extend(typed::TYPABLE_COMMAND_LIST.iter().map(|cmd| {
