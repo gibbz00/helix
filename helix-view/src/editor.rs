@@ -3,18 +3,24 @@ use crate::{
     clipboard::{get_clipboard_provider, ClipboardProvider},
     document::{DocumentSavedEventFuture, DocumentSavedEventResult, Mode},
     graphics::{CursorKind, Rect},
+    handlers::live_keymap::LiveKeymap,
     info::Info,
     input::KeyEvent,
     theme::{self, Theme},
     tree::{self, Tree},
     Align, Document, DocumentId, View, ViewId,
 };
+use helix_core::{
+    Position,
+    diagnostic::Severity,
+    register::Registers,
+    auto_pairs::AutoPairs,
+    syntax::{self, AutoPairConfig},
+    Change,
+};
+use helix_dap as dap;
+use helix_lsp::{lsp, Call};
 use helix_vcs::DiffProviderRegistry;
-
-use futures_util::stream::select_all::SelectAll;
-use futures_util::{future, StreamExt};
-use helix_lsp::Call;
-use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use std::{
     borrow::Cow,
@@ -26,30 +32,16 @@ use std::{
     sync::Arc,
 };
 
+use serde::{ser::SerializeMap, Deserialize, Deserializer, Serialize, Serializer};
+use anyhow::{anyhow, bail, Error};
+use arc_swap::access::{DynAccess, DynGuard};
+use futures_util::{stream::select_all::SelectAll, future, StreamExt};
+use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio::{
-    sync::{
-        mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
-        Notify, RwLock,
-    },
+    sync::{mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},Notify, RwLock,},
     time::{sleep, Duration, Instant, Sleep},
 };
 
-use anyhow::{anyhow, bail, Error};
-
-pub use helix_core::diagnostic::Severity;
-pub use helix_core::register::Registers;
-use helix_core::Position;
-use helix_core::{
-    auto_pairs::AutoPairs,
-    syntax::{self, AutoPairConfig},
-    Change,
-};
-use helix_dap as dap;
-use helix_lsp::lsp;
-
-use serde::{ser::SerializeMap, Deserialize, Deserializer, Serialize, Serializer};
-
-use arc_swap::access::{DynAccess, DynGuard};
 
 fn deserialize_duration_millis<'de, D>(deserializer: D) -> Result<Duration, D::Error>
 where
@@ -189,6 +181,7 @@ pub struct TerminalConfig {
     pub args: Vec<String>,
 }
 
+// TODO: move to helix-term?
 #[cfg(windows)]
 pub fn get_terminal_provider() -> Option<TerminalConfig> {
     use crate::env::binary_exists;
@@ -212,6 +205,7 @@ pub fn get_terminal_provider() -> Option<TerminalConfig> {
     });
 }
 
+// TODO: move to helix-term?
 #[cfg(not(any(windows, target_os = "wasm32")))]
 pub fn get_terminal_provider() -> Option<TerminalConfig> {
     use crate::env::{binary_exists, env_var_is_set};
@@ -674,6 +668,7 @@ pub struct Editor {
     /// Current editing mode.
     pub mode: Mode,
     pub tree: Tree,
+    pub live_keymap: LiveKeymap,
     pub next_document_id: DocumentId,
     pub documents: BTreeMap<DocumentId, Document>,
 
@@ -790,6 +785,7 @@ impl Editor {
         Self {
             mode: Mode::Normal,
             tree: Tree::new(area),
+            live_keymap: LiveKeymap::new(config.keymap),
             next_document_id: DocumentId::default(),
             documents: BTreeMap::new(),
             saves: HashMap::new(),

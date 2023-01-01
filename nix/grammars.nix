@@ -7,6 +7,7 @@
   includeGrammarIf ? _: true,
   ...
 }: let
+  # TODO: chech if still relevant
   # HACK: nix < 2.6 has a bug in the toml parser, so we convert to JSON
   # before parsing
   languages-json = runCommandLocal "languages-toml-to-json" {} ''

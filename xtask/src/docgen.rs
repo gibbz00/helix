@@ -65,7 +65,7 @@ pub fn lang_features() -> Result<String, DynError> {
     let config = helpers::lang_config();
 
     let mut langs = config
-        .language
+        .language_configurations
         .iter()
         .map(|l| l.language_id.clone())
         .collect::<Vec<_>>();
@@ -79,7 +79,7 @@ pub fn lang_features() -> Result<String, DynError> {
     let mut row = Vec::new();
     for lang in langs {
         let lc = config
-            .language
+            .language_configurations
             .iter()
             .find(|l| l.language_id == lang)
             .unwrap(); // lang comes from config

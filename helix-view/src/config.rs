@@ -1,61 +1,36 @@
-use crate::keymap::{default, keytrie::KeyTrie};
-use helix_view::document::Mode;
+use crate::config::keymap::Keymap;
+use crate::document::Mode;
 use serde::Deserialize;
-use std::{collections::HashMap, fmt::Display, io::Error as IOError};
+use std::io::Error;
 use toml::de::Error as TomlError;
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub theme: Option<String>,
-    #[serde(default = "default::default")]
-    pub keys: HashMap<Mode, KeyTrie>,
+    #[serde(default)]
+    pub keys: Keymap,
     #[serde(default)]
     pub editor: helix_view::editor::Config,
+}
+
+impl Config {
+    /// Attemps to deserialize config.toml, merging it with default keymap, theme, and editor config.
+    pub fn merged() -> Result<Config, Error> {
+        let config_string = std::fs::read_to_string(helix_loader::config_file())?;
+        // TODO: why is only the keymap explicitly merged? and not the theme and editor options?
+        toml::from_str(&config_string)?.map(|config| config.keys = config.keys.merge_in_default_keymap())?
+    }
 }
 
 impl Default for Config {
     fn default() -> Config {
         Config {
+            // TODO: Set a theme default?
             theme: None,
-            keys: default::default(),
+            keys: Keymap::default(),
             editor: helix_view::editor::Config::default(),
         }
-    }
-}
-
-#[derive(Debug)]
-pub enum ConfigLoadError {
-    BadConfig(TomlError),
-    Error(IOError),
-}
-
-impl Display for ConfigLoadError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ConfigLoadError::BadConfig(err) => err.fmt(f),
-            ConfigLoadError::Error(err) => err.fmt(f),
-        }
-    }
-}
-
-impl Config {
-    // REFACTOR? code similar to config assignment in main.rs,
-    pub fn load_default() -> Result<Config, ConfigLoadError> {
-        match std::fs::read_to_string(helix_loader::config_file()) {
-            Ok(config) => toml::from_str(&config)
-                .map(|config: Config| config.merge_in_default_keymap())
-                .map_err(ConfigLoadError::BadConfig),
-            Err(err) => Err(ConfigLoadError::Error(err)),
-        }
-    }
-
-    pub fn merge_in_default_keymap(mut self) -> Config {
-        let mut delta = std::mem::replace(&mut self.keys, default::default());
-        for (mode, keys) in &mut self.keys {
-            keys.merge_keytrie(delta.remove(mode).unwrap_or_default())
-        }
-        self
     }
 }
 
@@ -173,7 +148,7 @@ mod tests {
         );
 
         // Huh?
-        assert!(merged_config.keys.get(&Mode::Normal).unwrap().len() > 1);
-        assert!(merged_config.keys.get(&Mode::Insert).unwrap().len() > 0);
+        assert!(merged_config.keys.get_keytrie(&Mode::Normal).unwrap().len() > 1);
+        assert!(merged_config.keys.get_keytrie(&Mode::Insert).unwrap().len() > 0);
     }
 }

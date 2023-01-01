@@ -13,7 +13,7 @@ pub fn query_check() -> Result<(), DynError> {
         "indents.scm",
     ];
 
-    for language in lang_config().language {
+    for language in lang_config().language_configurations {
         let language_name = &language.language_id;
         let grammar_name = language.grammar.as_ref().unwrap_or(language_name);
         for query_file in query_files {

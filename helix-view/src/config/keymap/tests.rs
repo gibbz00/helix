@@ -2,10 +2,12 @@
 #[cfg(test)]
 mod tests {
     use helix_core::hashmap;
-    use helix_view::{document::Mode, input::KeyEvent};
     use crate::{
-        keymap::macros::*,
-        keymap::Keymap,
+        document::Mode, input::KeyEvent,
+        config::{
+            keymap::macros::*,
+            keymap::Keymap,
+        }
     };
     use std::{sync::Arc, collections::HashMap};
     use arc_swap::ArcSwap;

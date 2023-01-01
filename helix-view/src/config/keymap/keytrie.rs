@@ -59,9 +59,10 @@ impl KeyTrie {
         }
     }
 
-    /// Open an Info box for a given KeyTrie
-    /// Shows the children as possible KeyEvents and thier associated description.
-    pub fn infobox(&self) -> Info {
+    /// Prepare infobox contents for a given KeyTrie
+    /// First tuple element for infobox title
+    /// Second includes Keytrie children as possible KeyEvents and thier associated descriptions.
+    pub fn infobox_contents(&self) -> (&String, Vec<(String, &str)>) {
         let mut body: Vec<(Vec<String>, &str)> = Vec::with_capacity(self.len());
         for (&key_event, key_trie) in self.iter() {
             let documentation: &str = match key_trie {
@@ -137,7 +138,7 @@ impl KeyTrie {
             })
             .collect();
 
-        Info::new(&self.documentation, &stringified_key_events_body)
+        (&self.documentation, &stringified_key_events_body)
     }
 }
 

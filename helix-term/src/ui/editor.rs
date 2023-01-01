@@ -1,9 +1,11 @@
+use super::lsp::SignatureHelp;
+use super::statusline;
 use crate::{
     commands,
     compositor::{Component, Context, Event, EventResult},
     job::{self, Callback},
     key,
-    keymap::{KeymapResult, Keymap},
+    keymap::{Keymap, KeyTrie},
     ui::{Completion, ProgressSpinners},
 };
 
@@ -29,13 +31,9 @@ use std::{borrow::Cow, cmp::min, num::NonZeroUsize, path::PathBuf};
 
 use tui::buffer::Buffer as Surface;
 
-use super::lsp::SignatureHelp;
-use super::statusline;
-
 pub struct EditorView {
-    pub keymap: Keymap,
+    pub keymap: LiveKeymap,
     on_next_key: Option<Box<dyn FnOnce(&mut commands::Context, KeyEvent)>>,
-    pseudo_pending: Vec<KeyEvent>,
     last_insert: (commands::MappableCommand, Vec<InsertEvent>),
     pub(crate) completion: Option<Completion>,
     spinners: ProgressSpinners,
@@ -49,17 +47,170 @@ pub enum InsertEvent {
 }
 
 impl EditorView {
-    pub fn new(keymap: Keymap) -> Self {
+    pub fn new() -> Self {
         Self {
-            keymap,
+            keymap: LiveKeymap::new(keymap),
             on_next_key: None,
-            pseudo_pending: Vec::new(),
             last_insert: (commands::MappableCommand::normal_mode, Vec::new()),
             completion: None,
             spinners: ProgressSpinners::default(),
         }
     }
 
+    /// Handle events by looking them up in `self.keymaps`. Returns None
+    /// if event was handled (a command was executed or a subkeymap was
+    /// activated). Only KeymapResult::{NotFound, Cancelled} is returned
+    /// otherwise.
+    fn handle_keymap_event(
+        &mut self,
+        mode: Mode,
+        cxt: &mut commands::Context,
+        event: KeyEvent,
+    ) -> Option<KeymapResult> {
+        let mut last_mode = mode;
+        let key_result = self.keymap.get(mode, event);
+        cxt.editor.autoinfo = self.keymap.sticky_keytrie().map(|node| Infobox::new(node.infobox_contents());
+
+        let mut execute_command = |command: &commands::MappableCommand| {
+            command.execute(cxt);
+            let current_mode = cxt.editor.mode();
+            match (last_mode, current_mode) {
+                (Mode::Normal, Mode::Insert) => {
+                    // HAXX: if we just entered insert mode from normal, clear key buf
+                    // and record the command that got us into this mode.
+
+                    // how we entered insert mode is important, and we should track that so
+                    // we can repeat the side effect.
+                    self.last_insert.0 = command.clone();
+                    self.last_insert.1.clear();
+
+                    commands::signature_help_impl(cxt, commands::SignatureHelpInvoked::Automatic);
+                }
+                (Mode::Insert, Mode::Normal) => {
+                    // if exiting insert mode, remove completion
+                    self.completion = None;
+
+                    // TODO: Use an on_mode_change hook to remove signature help
+                    cxt.jobs.callback(async {
+                        let call: job::Callback =
+                            Callback::EditorCompositor(Box::new(|_editor, compositor| {
+                                compositor.remove(SignatureHelp::ID);
+                            }));
+                        Ok(call)
+                    });
+                }
+                _ => (),
+            }
+            last_mode = current_mode;
+        };
+
+        match &key_result {
+            KeymapResult::Matched(command) => {
+                execute_command(command);
+            }
+            KeymapResult::Pending(node) => cxt.editor.autoinfo = Some(node.infobox()),
+            KeymapResult::MatchedCommandSequence(commands) => {
+                for command in commands {
+                    execute_command(command);
+                }
+            }
+            KeymapResult::NotFound | KeymapResult::Cancelled(_) => return Some(key_result),
+        }
+        None
+    }
+
+    fn insert_mode(&mut self, cx: &mut commands::Context, event: KeyEvent) {
+        if let Some(keyresult) = self.handle_keymap_event(Mode::Insert, cx, event) {
+            match keyresult {
+                KeymapResult::NotFound => {
+                    if let Some(ch) = event.char() {
+                        commands::insert::insert_char(cx, ch)
+                    }
+                }
+                KeymapResult::Cancelled(pending) => {
+                    for ev in pending {
+                        match ev.char() {
+                            Some(ch) => commands::insert::insert_char(cx, ch),
+                            None => {
+                                if let KeymapResult::Matched(command) =
+                                    self.keymap.get_keymapresult(Mode::Insert, ev)
+                                {
+                                    command.execute(cx);
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => unreachable!(),
+            }
+        }
+    }   
+
+    fn command_mode(&mut self, mode: Mode, cxt: &mut commands::Context, event: KeyEvent) {
+        match (event, cxt.editor.count) {
+            // count handling
+            (key!(i @ '0'), Some(_)) | (key!(i @ '1'..='9'), _) => {
+                let i = i.to_digit(10).unwrap() as usize;
+                cxt.editor.count =
+                    std::num::NonZeroUsize::new(cxt.editor.count.map_or(i, |c| c.get() * 10 + i));
+            }
+            // special handling for repeat operator
+            (key!('.'), _) if self.keymap.pending().is_empty() => {
+                for _ in 0..cxt.editor.count.map_or(1, NonZeroUsize::into) {
+                    // first execute whatever put us into insert mode
+                    self.last_insert.0.execute(cxt);
+                    // then replay the inputs
+                    for key in self.last_insert.1.clone() {
+                        match key {
+                            InsertEvent::Key(key) => self.insert_mode(cxt, key),
+                            InsertEvent::CompletionApply(compl) => {
+                                let (view, doc) = current!(cxt.editor);
+
+                                doc.restore(view);
+
+                                let text = doc.text().slice(..);
+                                let cursor = doc.selection(view.id).primary().cursor(text);
+
+                                let shift_position =
+                                    |pos: usize| -> usize { pos + cursor - compl.trigger_offset };
+
+                                let tx = Transaction::change(
+                                    doc.text(),
+                                    compl.changes.iter().cloned().map(|(start, end, t)| {
+                                        (shift_position(start), shift_position(end), t)
+                                    }),
+                                );
+                                apply_transaction(&tx, doc, view);
+                            }
+                            InsertEvent::TriggerCompletion => {
+                                let (_, doc) = current!(cxt.editor);
+                                doc.savepoint();
+                            }
+                        }
+                    }
+                }
+                cxt.editor.count = None;
+            }
+            _ => {
+                // set the count
+                cxt.count = cxt.editor.count;
+                // TODO: edge case: 0j -> reset to 1
+                // if this fails, count was Some(0)
+                // debug_assert!(cxt.count != 0);
+
+                // set the register
+                cxt.register = cxt.editor.selected_register.take();
+
+                self.handle_keymap_event(mode, cxt, event);
+                if self.keymap.pending().is_empty() {
+                    cxt.editor.count = None
+                }
+            }
+        }
+    }
+}
+
+impl EditorView {
     pub fn spinners_mut(&mut self) -> &mut ProgressSpinners {
         &mut self.spinners
     }
@@ -902,158 +1053,11 @@ impl EditorView {
         }
     }
 
-    /// Handle events by looking them up in `self.keymaps`. Returns None
-    /// if event was handled (a command was executed or a subkeymap was
-    /// activated). Only KeymapResult::{NotFound, Cancelled} is returned
-    /// otherwise.
-    fn handle_keymap_event(
-        &mut self,
-        mode: Mode,
-        cxt: &mut commands::Context,
-        event: KeyEvent,
-    ) -> Option<KeymapResult> {
-        let mut last_mode = mode;
-        self.pseudo_pending.extend(self.keymap.pending());
-        let key_result = self.keymap.get(mode, event);
-        cxt.editor.autoinfo = self.keymap.sticky_keytrie().map(|node| node.infobox());
 
-        let mut execute_command = |command: &commands::MappableCommand| {
-            command.execute(cxt);
-            let current_mode = cxt.editor.mode();
-            match (last_mode, current_mode) {
-                (Mode::Normal, Mode::Insert) => {
-                    // HAXX: if we just entered insert mode from normal, clear key buf
-                    // and record the command that got us into this mode.
 
-                    // how we entered insert mode is important, and we should track that so
-                    // we can repeat the side effect.
-                    self.last_insert.0 = command.clone();
-                    self.last_insert.1.clear();
 
-                    commands::signature_help_impl(cxt, commands::SignatureHelpInvoked::Automatic);
-                }
-                (Mode::Insert, Mode::Normal) => {
-                    // if exiting insert mode, remove completion
-                    self.completion = None;
 
-                    // TODO: Use an on_mode_change hook to remove signature help
-                    cxt.jobs.callback(async {
-                        let call: job::Callback =
-                            Callback::EditorCompositor(Box::new(|_editor, compositor| {
-                                compositor.remove(SignatureHelp::ID);
-                            }));
-                        Ok(call)
-                    });
-                }
-                _ => (),
-            }
-            last_mode = current_mode;
-        };
-
-        match &key_result {
-            KeymapResult::Matched(command) => {
-                execute_command(command);
-            }
-            KeymapResult::Pending(node) => cxt.editor.autoinfo = Some(node.infobox()),
-            KeymapResult::MatchedCommandSequence(commands) => {
-                for command in commands {
-                    execute_command(command);
-                }
-            }
-            KeymapResult::NotFound | KeymapResult::Cancelled(_) => return Some(key_result),
-        }
-        None
-    }
-
-    fn insert_mode(&mut self, cx: &mut commands::Context, event: KeyEvent) {
-        if let Some(keyresult) = self.handle_keymap_event(Mode::Insert, cx, event) {
-            match keyresult {
-                KeymapResult::NotFound => {
-                    if let Some(ch) = event.char() {
-                        commands::insert::insert_char(cx, ch)
-                    }
-                }
-                KeymapResult::Cancelled(pending) => {
-                    for ev in pending {
-                        match ev.char() {
-                            Some(ch) => commands::insert::insert_char(cx, ch),
-                            None => {
-                                if let KeymapResult::Matched(command) =
-                                    self.keymap.get(Mode::Insert, ev)
-                                {
-                                    command.execute(cx);
-                                }
-                            }
-                        }
-                    }
-                }
-                _ => unreachable!(),
-            }
-        }
-    }
-
-    fn command_mode(&mut self, mode: Mode, cxt: &mut commands::Context, event: KeyEvent) {
-        match (event, cxt.editor.count) {
-            // count handling
-            (key!(i @ '0'), Some(_)) | (key!(i @ '1'..='9'), _) => {
-                let i = i.to_digit(10).unwrap() as usize;
-                cxt.editor.count =
-                    std::num::NonZeroUsize::new(cxt.editor.count.map_or(i, |c| c.get() * 10 + i));
-            }
-            // special handling for repeat operator
-            (key!('.'), _) if self.keymap.pending().is_empty() => {
-                for _ in 0..cxt.editor.count.map_or(1, NonZeroUsize::into) {
-                    // first execute whatever put us into insert mode
-                    self.last_insert.0.execute(cxt);
-                    // then replay the inputs
-                    for key in self.last_insert.1.clone() {
-                        match key {
-                            InsertEvent::Key(key) => self.insert_mode(cxt, key),
-                            InsertEvent::CompletionApply(compl) => {
-                                let (view, doc) = current!(cxt.editor);
-
-                                doc.restore(view);
-
-                                let text = doc.text().slice(..);
-                                let cursor = doc.selection(view.id).primary().cursor(text);
-
-                                let shift_position =
-                                    |pos: usize| -> usize { pos + cursor - compl.trigger_offset };
-
-                                let tx = Transaction::change(
-                                    doc.text(),
-                                    compl.changes.iter().cloned().map(|(start, end, t)| {
-                                        (shift_position(start), shift_position(end), t)
-                                    }),
-                                );
-                                apply_transaction(&tx, doc, view);
-                            }
-                            InsertEvent::TriggerCompletion => {
-                                let (_, doc) = current!(cxt.editor);
-                                doc.savepoint();
-                            }
-                        }
-                    }
-                }
-                cxt.editor.count = None;
-            }
-            _ => {
-                // set the count
-                cxt.count = cxt.editor.count;
-                // TODO: edge case: 0j -> reset to 1
-                // if this fails, count was Some(0)
-                // debug_assert!(cxt.count != 0);
-
-                // set the register
-                cxt.register = cxt.editor.selected_register.take();
-
-                self.handle_keymap_event(mode, cxt, event);
-                if self.keymap.pending().is_empty() {
-                    cxt.editor.count = None
-                }
-            }
-        }
-    }
+    
 
     pub fn set_completion(
         &mut self,
@@ -1393,8 +1397,8 @@ impl Component for EditorView {
 
                 self.on_next_key = cx.on_next_key_callback.take();
                 match self.on_next_key {
-                    Some(_) => self.pseudo_pending.push(key),
-                    None => self.pseudo_pending.clear(),
+                    Some(_) => self.keymap.pseudo_pending.push(key),
+                    None => self.keymap.pseudo_pending.clear(),
                 }
 
                 // appease borrowck
@@ -1506,7 +1510,7 @@ impl Component for EditorView {
             for key in self.keymap.pending() {
                 disp.push_str(&key.key_sequence_format());
             }
-            for key in &self.pseudo_pending {
+            for key in &self.keymap.pseudo_pending {
                 disp.push_str(&key.key_sequence_format());
             }
             let style = cx.editor.theme.get("ui.text");

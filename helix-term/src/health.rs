@@ -2,7 +2,7 @@ use crossterm::{
     style::{Color, Print, Stylize},
     tty::IsTty,
 };
-use helix_core::config::{default_syntax_loader, user_syntax_loader};
+use helix_core::config::LanguageConfigurations;
 use helix_loader::grammar::load_runtime_file;
 use helix_view::clipboard::get_clipboard_provider;
 use std::io::Write;
@@ -110,11 +110,8 @@ pub fn clipboard() -> std::io::Result<()> {
     Ok(())
 }
 
-pub fn languages_all() -> std::io::Result<()> {
-    let stdout = std::io::stdout();
-    let mut stdout = stdout.lock();
-
-    let mut syn_loader_conf = match user_syntax_loader() {
+fn load_language_configurations() -> LanguageConfigurations  {
+    match LanguageConfigurations::merged() {
         Ok(conf) => conf,
         Err(err) => {
             let stderr = std::io::stderr();
@@ -127,9 +124,16 @@ pub fn languages_all() -> std::io::Result<()> {
                 err
             )?;
             writeln!(stderr, "{}", "Using default language config".yellow())?;
-            default_syntax_loader()
+            LanguageConfigurations::default()
         }
-    };
+    }
+}
+
+pub fn languages_all() -> std::io::Result<()> {
+    let stdout = std::io::stdout();
+    let mut stdout = stdout.lock();
+
+    let mut language_configurations = load_language_configurations();
 
     let mut headings = vec!["Language", "LSP", "DAP"];
 
@@ -163,7 +167,7 @@ pub fn languages_all() -> std::io::Result<()> {
     }
     writeln!(stdout)?;
 
-    syn_loader_conf
+    language_configurations
         .language
         .sort_unstable_by_key(|l| l.language_id.clone());
 
@@ -175,7 +179,7 @@ pub fn languages_all() -> std::io::Result<()> {
         None => column("None", Color::Yellow),
     };
 
-    for lang in &syn_loader_conf.language {
+    for lang in &language_configurations.language {
         column(&lang.language_id, Color::Reset);
 
         let lsp = lang
@@ -206,24 +210,8 @@ pub fn language(lang_str: String) -> std::io::Result<()> {
     let stdout = std::io::stdout();
     let mut stdout = stdout.lock();
 
-    let syn_loader_conf = match user_syntax_loader() {
-        Ok(conf) => conf,
-        Err(err) => {
-            let stderr = std::io::stderr();
-            let mut stderr = stderr.lock();
-
-            writeln!(
-                stderr,
-                "{}: {}",
-                "Error parsing user language config".red(),
-                err
-            )?;
-            writeln!(stderr, "{}", "Using default language config".yellow())?;
-            default_syntax_loader()
-        }
-    };
-
-    let lang = match syn_loader_conf
+    let language_configurations = load_language_configurations();
+    let lang = match language_configurations
         .language
         .iter()
         .find(|l| l.language_id == lang_str)
@@ -232,7 +220,7 @@ pub fn language(lang_str: String) -> std::io::Result<()> {
         None => {
             let msg = format!("Language '{}' not found", lang_str);
             writeln!(stdout, "{}", msg.red())?;
-            let suggestions: Vec<&str> = syn_loader_conf
+            let suggestions: Vec<&str> = language_configurations
                 .language
                 .iter()
                 .filter(|l| l.language_id.starts_with(lang_str.chars().next().unwrap()))

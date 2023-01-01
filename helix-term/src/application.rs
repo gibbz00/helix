@@ -18,7 +18,6 @@ use crate::{
     commands::apply_workspace_edit,
     compositor::{Compositor, Event},
     config::Config,
-    keymap::Keymap,
     job::Jobs,
     ui::{self, overlay::overlayed},
 };
@@ -125,7 +124,7 @@ impl Application {
     pub fn new(
         args: Args,
         config: Config,
-        syn_loader_conf: syntax::Configuration,
+        language_configurations: syntax::LanguageConfigurations,
     ) -> Result<Self, Error> {
         #[cfg(feature = "integration")]
         setup_integration_logging();
@@ -153,7 +152,7 @@ impl Application {
             })
             .unwrap_or_else(|| theme_loader.default_theme(true_color));
 
-        let syn_loader = std::sync::Arc::new(syntax::Loader::new(syn_loader_conf));
+        let syn_loader = std::sync::Arc::new(syntax::Loader::new(language_configurations));
 
         #[cfg(not(feature = "integration"))]
         let backend = CrosstermBackend::new(stdout());
@@ -164,21 +163,13 @@ impl Application {
         let terminal = Terminal::new(backend)?;
         let area = terminal.size().expect("couldn't get terminal size");
         let mut compositor = Compositor::new(area);
-        let config = Arc::new(ArcSwap::from_pointee(config));
         let mut editor = Editor::new(
             area,
             theme_loader.clone(),
             syn_loader.clone(),
-            Box::new(Map::new(Arc::clone(&config), |config: &Config| {
-                &config.editor
-            })),
+            config
         );
-
-        let keys = Box::new(Map::new(Arc::clone(&config), |config: &Config| {
-            &config.keys
-        }));
-        let editor_view = Box::new(ui::EditorView::new(Keymap::new(keys)));
-        compositor.push(editor_view);
+        compositor.push(Box::new(ui::EditorView::new()));
 
         if args.load_tutor {
             let path = helix_loader::runtime_dir().join("tutor");
@@ -373,7 +364,36 @@ impl Application {
 
     pub fn handle_config_events(&mut self, config_event: ConfigEvent) {
         match config_event {
-            ConfigEvent::Refresh => self.refresh_config(),
+            ConfigEvent::Refresh => {
+                 match Config::load_user_config() {
+                    Ok(config) => {
+                        self.config.store(Arc::new(config));
+                        /// Refresh theme after config change
+                        fn refresh_theme(&mut self, config: &Config) {
+                            if let Some(theme) = config.theme.clone() {
+                                let is_true_color = self.config.load().editor.true_color || crate::true_color();
+                                match self.theme_loader.load(&theme) {
+                                    Ok(theme) => {
+                                        if is_true_color || theme.is_16_color() {
+                                            self.editor.set_theme(theme);
+                                        } else {
+                                            self.editor
+                                                .set_error("theme requires truecolor support, which is not available");
+                                        }
+                                    }
+                                    Err(err) => {
+                                        let err_string = format!("failed to load theme `{}` - {}", theme, err);
+                                        self.editor.set_error(err_string);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        self.editor.set_error(err.to_string());
+                    }
+                }
+            }
 
             // Since only the Application can make changes to Editor's config,
             // the Editor must send up a new copy of a modified config so that
@@ -388,45 +408,6 @@ impl Application {
         // Update all the relevant members in the editor after updating
         // the configuration.
         self.editor.refresh_config();
-    }
-
-    /// Refresh theme after config change
-    fn refresh_theme(&mut self, config: &Config) {
-        if let Some(theme) = config.theme.clone() {
-            let true_color = self.true_color();
-            match self.theme_loader.load(&theme) {
-                Ok(theme) => {
-                    if true_color || theme.is_16_color() {
-                        self.editor.set_theme(theme);
-                    } else {
-                        self.editor
-                            .set_error("theme requires truecolor support, which is not available");
-                    }
-                }
-                Err(err) => {
-                    let err_string = format!("failed to load theme `{}` - {}", theme, err);
-                    self.editor.set_error(err_string);
-                }
-            }
-        }
-    }
-
-    fn refresh_config(&mut self) {
-        match Config::load_default() {
-            Ok(config) => {
-                self.refresh_theme(&config);
-
-                // Store new config
-                self.config.store(Arc::new(config));
-            }
-            Err(err) => {
-                self.editor.set_error(err.to_string());
-            }
-        }
-    }
-
-    fn true_color(&self) -> bool {
-        self.config.load().editor.true_color || crate::true_color()
     }
 
     #[cfg(windows)]

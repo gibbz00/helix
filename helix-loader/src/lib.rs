@@ -1,35 +1,79 @@
-pub mod config;
 pub mod grammar;
 
 use etcetera::base_strategy::{choose_base_strategy, BaseStrategy};
 use std::path::PathBuf;
 
 pub const VERSION_AND_GIT_HASH: &str = env!("VERSION_AND_GIT_HASH");
-
 pub static RUNTIME_DIR: once_cell::sync::Lazy<PathBuf> = once_cell::sync::Lazy::new(runtime_dir);
 
 static CONFIG_FILE: once_cell::sync::OnceCell<PathBuf> = once_cell::sync::OnceCell::new();
+static LOG_FILE: once_cell::sync::OnceCell<PathBuf> = once_cell::sync::OnceCell::new();
 
+pub fn config_file() -> PathBuf {
+    match CONFIG_FILE.get() {
+        Some(config_path) => config_path.to_path_buf(),
+        None => {
+            initialize_config_file(None);
+            config_file()
+        }
+    }
+}
 pub fn initialize_config_file(specified_file: Option<PathBuf>) {
     let config_file = specified_file.unwrap_or_else(|| {
         let config_dir = config_dir();
-
         if !config_dir.exists() {
             std::fs::create_dir_all(&config_dir).ok();
         }
-
         config_dir.join("config.toml")
     });
-
-    // We should only initialize this value once.
     CONFIG_FILE.set(config_file).ok();
 }
+pub fn config_dir() -> PathBuf {
+    if let Ok(env_config_dir) = std::env::var("HELIX_CONFIG_DIR") {
+        return env_config_dir.into();
+    }
 
+    let strategy = choose_base_strategy().expect("Unable to determine system base directory specification!");
+    let mut path = strategy.config_dir();
+    path.push("helix");
+    path
+}
+pub fn log_file() -> PathBuf {
+    match LOG_FILE.get() {
+        Some(log_path) => log_path.to_path_buf(),
+        None => {
+            initialize_log_file(None);
+            log_file()
+        }
+    }
+}
+pub fn initialize_log_file(specified_file: Option<PathBuf>) {
+    let log_file = specified_file.unwrap_or_else(|| {
+        let log_dir = cache_dir();
+        if !log_dir.exists() {
+            std::fs::create_dir_all(&log_dir).ok();
+        }
+        log_dir.join("helix.log")
+    });
+    LOG_FILE.set(log_file).ok();
+}
+pub fn cache_dir() -> PathBuf {
+    if let Ok(env_config_dir) = std::env::var("HELIX_CACHE_DIR") {
+        return env_config_dir.into();
+    }
+    let strategy = choose_base_strategy().expect("Unable to determine system base directory specification!");
+    let mut path = strategy.cache_dir();
+    path.push("helix");
+    path
+}
+
+// TODO: shouldn't it also look for XDG_RUNTIME_DIR? 
 pub fn runtime_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("HELIX_RUNTIME") {
         return dir.into();
     }
 
+    const RT_DIR: &str = "runtime";
     if let Ok(dir) = std::env::var("CARGO_MANIFEST_DIR") {
         // this is the directory of the crate being run by cargo, we need the workspace path so we take the parent
         let path = std::path::PathBuf::from(dir).parent().unwrap().join(RT_DIR);
@@ -37,7 +81,6 @@ pub fn runtime_dir() -> PathBuf {
         return path;
     }
 
-    const RT_DIR: &str = "runtime";
     let conf_dir = config_dir().join(RT_DIR);
     if conf_dir.exists() {
         return conf_dir;
@@ -52,59 +95,46 @@ pub fn runtime_dir() -> PathBuf {
         .unwrap()
 }
 
-pub fn config_dir() -> PathBuf {
-    // TODO: allow env var override
-    let strategy = choose_base_strategy().expect("Unable to find the config directory!");
-    let mut path = strategy.config_dir();
-    path.push("helix");
-    path
-}
-
-pub fn local_config_dirs() -> Vec<PathBuf> {
-    let directories = find_local_config_dirs()
-        .into_iter()
-        .map(|path| path.join(".helix"))
-        .collect();
-    log::debug!("Located configuration folders: {:?}", directories);
-    directories
-}
-
-pub fn cache_dir() -> PathBuf {
-    // TODO: allow env var override
-    let strategy = choose_base_strategy().expect("Unable to find the config directory!");
-    let mut path = strategy.cache_dir();
-    path.push("helix");
-    path
-}
-
-pub fn config_file() -> PathBuf {
-    CONFIG_FILE
-        .get()
-        .map(|path| path.to_path_buf())
-        .unwrap_or_else(|| config_dir().join("config.toml"))
-}
-
 pub fn lang_config_file() -> PathBuf {
     config_dir().join("languages.toml")
 }
+pub fn default_lang_config() -> toml::Value {
+    toml::from_slice(include_bytes!("../../languages.toml"))
+        .expect("Could not parse built-in languages.toml to valid toml")
+}
+pub fn merged_lang_config() -> Result<toml::Value, toml::de::Error> {
+    let config = local_lang_config_dirs()
+        .into_iter()
+        .chain([config_dir()].into_iter())
+        .map(|path| path.join("languages.toml"))
+        .filter_map(|file| {
+            std::fs::read(&file)
+                .map(|config| toml::from_slice(&config))
+                .ok()
+        })
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .chain([default_lang_config()].into_iter())
+        .fold(toml::Value::Table(toml::value::Table::default()), |a, b| {
+            merge_toml_values(b, a, 3)
+        });
 
-pub fn log_file() -> PathBuf {
-    cache_dir().join("helix.log")
+    Ok(config)
 }
 
-pub fn find_local_config_dirs() -> Vec<PathBuf> {
-    let current_dir = std::env::current_dir().expect("unable to determine current directory");
+pub fn local_lang_config_dirs() -> Vec<PathBuf> {
+    let current_dir = std::env::current_dir().expect("Unable to determine current directory.");
     let mut directories = Vec::new();
-
     for ancestor in current_dir.ancestors() {
         if ancestor.join(".git").exists() {
-            directories.push(ancestor.to_path_buf());
+            directories.push(ancestor.to_path_buf().join(".helix"));
             // Don't go higher than repo if we're in one
             break;
         } else if ancestor.join(".helix").is_dir() {
-            directories.push(ancestor.to_path_buf());
+            directories.push(ancestor.to_path_buf().join(".helix"));
         }
     }
+    log::debug!("Located langauge configuration folders: {:?}", directories);
     directories
 }
 
@@ -121,6 +151,22 @@ pub fn find_local_config_dirs() -> Vec<PathBuf> {
 /// documents that use a top-level array of values like the `languages.toml`,
 /// where one usually wants to override or add to the array instead of
 /// replacing it altogether.
+///
+/// For example:
+///
+/// left:
+///   [[language]]
+///   name = "toml"
+///   language-server = { command = "taplo", args = ["lsp", "stdio"] }
+///
+/// right:
+///   [[language]]
+///   language-server = { command = "/usr/bin/taplo" }
+///
+/// result:
+///   [[language]]
+///   name = "toml"
+///   language-server = { command = "/usr/bin/taplo" }
 pub fn merge_toml_values(left: toml::Value, right: toml::Value, merge_depth: usize) -> toml::Value {
     use toml::Value;
 
