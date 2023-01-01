@@ -111,22 +111,12 @@ pub fn clipboard() -> std::io::Result<()> {
 }
 
 fn load_language_configurations() -> LanguageConfigurations  {
-    match LanguageConfigurations::merged() {
-        Ok(conf) => conf,
-        Err(err) => {
-            let stderr = std::io::stderr();
-            let mut stderr = stderr.lock();
-
-            writeln!(
-                stderr,
-                "{}: {}",
-                "Error parsing user language config".red(),
-                err
-            )?;
+    LanguageConfigurations::merged().unwrap_or_else(|err| {
+            let mut stderr = std::io::stderr().lock();
+            writeln!(stderr,"{}: {}","Error parsing user language config".red(),err)?;
             writeln!(stderr, "{}", "Using default language config".yellow())?;
             LanguageConfigurations::default()
-        }
-    }
+    }) 
 }
 
 pub fn languages_all() -> std::io::Result<()> {
