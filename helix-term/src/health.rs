@@ -1,7 +1,4 @@
-use crossterm::{
-    style::{Color, Print, Stylize},
-    tty::IsTty,
-};
+use crossterm::{style::{Color, Print, Stylize}, tty::IsTty};
 use helix_core::config::LanguageConfigurations;
 use helix_loader::grammar::load_runtime_file;
 use helix_view::clipboard::get_clipboard_provider;
@@ -240,10 +237,18 @@ pub fn language(lang_str: String) -> std::io::Result<()> {
         lang.debugger.as_ref().map(|dap| dap.command.to_string()),
     )?;
 
-    for ts_feat in TsFeature::all() {
-        probe_treesitter_feature(&lang_str, *ts_feat)?
-    }
 
+    let stdout = std::io::stdout();
+    let mut stdout = stdout.lock();
+    for ts_feat in TsFeature::all() {
+        /// Display diagnostics about a feature that requires tree-sitter
+        /// query files (highlights, textobjects, etc).
+        let found = match load_runtime_file(lang, feature.runtime_filename()).is_ok() {
+            true => "✓".green(),
+            false => "✘".red(),
+        };
+        writeln!(stdout, "{} queries: {}", feature.short_title(), found)?;
+    }
     Ok(())
 }
 
@@ -269,20 +274,6 @@ fn probe_protocol(protocol_name: &str, server_cmd: Option<String>) -> std::io::R
     Ok(())
 }
 
-/// Display diagnostics about a feature that requires tree-sitter
-/// query files (highlights, textobjects, etc).
-fn probe_treesitter_feature(lang: &str, feature: TsFeature) -> std::io::Result<()> {
-    let stdout = std::io::stdout();
-    let mut stdout = stdout.lock();
-
-    let found = match load_runtime_file(lang, feature.runtime_filename()).is_ok() {
-        true => "✓".green(),
-        false => "✘".red(),
-    };
-    writeln!(stdout, "{} queries: {}", feature.short_title(), found)?;
-
-    Ok(())
-}
 
 pub fn print_health(health_arg: Option<String>) -> std::io::Result<()> {
     match health_arg.as_deref() {
