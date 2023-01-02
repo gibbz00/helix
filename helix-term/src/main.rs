@@ -44,11 +44,11 @@ async fn main_impl() -> Result<i32> {
         return Ok(0);
     }
     if args.fetch_grammars {
-        helix_loader::grammar::fetch_grammars()?;
+        helix_treesitter::grammar::fetch_grammars()?;
         return Ok(0);
     }
     if args.build_grammars {
-        helix_loader::grammar::build_grammars(None)?;
+        helix_treesitter::grammar::build_grammars(None)?;
         return Ok(0);
     }
 

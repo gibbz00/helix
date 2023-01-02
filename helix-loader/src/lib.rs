@@ -1,5 +1,3 @@
-pub mod grammar;
-
 use etcetera::base_strategy::{choose_base_strategy, BaseStrategy};
 use std::path::PathBuf;
 

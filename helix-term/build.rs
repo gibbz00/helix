@@ -1,4 +1,4 @@
-use helix_loader::grammar::{build_grammars, fetch_grammars};
+use helix_treesitter::grammar::{build_grammars, fetch_grammars};
 
 fn main() {
     if std::env::var("HELIX_DISABLE_AUTO_GRAMMAR_BUILD").is_err() {

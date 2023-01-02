@@ -28,7 +28,7 @@ use std::{
 use once_cell::sync::{Lazy, OnceCell};
 use serde::{Deserialize, Serialize};
 
-use helix_loader::grammar::{get_language, load_runtime_file};
+use helix_treesitter::grammar::{get_language, load_runtime_file};
 
 fn deserialize_regex<'de, D>(deserializer: D) -> Result<Option<Regex>, D::Error>
 where

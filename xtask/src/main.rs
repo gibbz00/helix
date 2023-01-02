@@ -29,13 +29,12 @@ pub mod tasks {
 
     pub fn querycheck() -> Result<(), DynError> {
         use helix_core::{syntax, tree_sitter::Query};
-        use helix_loader::grammar::get_language;
         for language_config in syntax::LangaugeConfigurations::default.language_configurations {
             for ts_feature in TsFeature::all() {
                 // TODO: do language name and grammar name discrepancies exist? 
                 let language_name = &language_config.language_id;
                 let grammar_name = language_config.grammar.as_ref().unwrap_or(language_name);
-                if let Ok(treesitter_parser) = get_language(grammar_name) {
+                if let Ok(treesitter_parser) = helix_treesitter::grammar::get_language(grammar_name) {
                     let query_feature_file_name = ts_feature.runtime_filename();
                     let query_file_text_contents = syntax::read_query(language_name, query_feature_file_name);
                     if !query_file_text_contents.is_empty() {
