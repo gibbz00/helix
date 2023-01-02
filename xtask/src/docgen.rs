@@ -3,7 +3,7 @@ use crate::path;
 use crate::DynError;
 
 use helix_term::commands::TYPABLE_COMMAND_LIST;
-use helix_term::health::TsFeature;
+use helix_treesitter::probe::TsFeature;
 use std::fs;
 
 pub const TYPABLE_COMMANDS_MD_OUTPUT: &str = "typable-cmd.md";

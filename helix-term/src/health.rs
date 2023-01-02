@@ -3,44 +3,6 @@ use helix_core::config::LanguageConfigurations;
 use helix_loader::grammar::load_runtime_file;
 use helix_view::clipboard::get_clipboard_provider;
 use std::io::Write;
-
-#[derive(Copy, Clone)]
-pub enum TsFeature {
-    Highlight,
-    TextObject,
-    AutoIndent,
-}
-
-impl TsFeature {
-    pub fn all() -> &'static [Self] {
-        &[Self::Highlight, Self::TextObject, Self::AutoIndent]
-    }
-
-    pub fn runtime_filename(&self) -> &'static str {
-        match *self {
-            Self::Highlight => "highlights.scm",
-            Self::TextObject => "textobjects.scm",
-            Self::AutoIndent => "indents.scm",
-        }
-    }
-
-    pub fn long_title(&self) -> &'static str {
-        match *self {
-            Self::Highlight => "Syntax Highlighting",
-            Self::TextObject => "Treesitter Textobjects",
-            Self::AutoIndent => "Auto Indent",
-        }
-    }
-
-    pub fn short_title(&self) -> &'static str {
-        match *self {
-            Self::Highlight => "Highlight",
-            Self::TextObject => "Textobject",
-            Self::AutoIndent => "Indent",
-        }
-    }
-}
-
 /// Display general diagnostics.
 pub fn general() -> std::io::Result<()> {
     let stdout = std::io::stdout();
@@ -124,7 +86,7 @@ pub fn languages_all() -> std::io::Result<()> {
 
     let mut headings = vec!["Language", "LSP", "DAP"];
 
-    for feat in TsFeature::all() {
+    for feat in helix_treesitter::probe::TsFeature::all() {
         headings.push(feat.short_title())
     }
 
@@ -178,7 +140,7 @@ pub fn languages_all() -> std::io::Result<()> {
         let dap = lang.debugger.as_ref().map(|dap| dap.command.to_string());
         check_binary(dap);
 
-        for ts_feat in TsFeature::all() {
+        for ts_feat in helix_treesitter::probe::TsFeature::all() {
             match load_runtime_file(&lang.language_id, ts_feat.runtime_filename()).is_ok() {
                 true => column("✓", Color::Green),
                 false => column("✘", Color::Red),
@@ -240,7 +202,7 @@ pub fn language(lang_str: String) -> std::io::Result<()> {
 
     let stdout = std::io::stdout();
     let mut stdout = stdout.lock();
-    for ts_feat in TsFeature::all() {
+    for ts_feat in helix_treesitter::probe::TsFeature::all() {
         /// Display diagnostics about a feature that requires tree-sitter
         /// query files (highlights, textobjects, etc).
         let found = match load_runtime_file(lang, feature.runtime_filename()).is_ok() {

@@ -1,10 +1,11 @@
 [workspace]
 members = [
-  "heix-config"
+  "heix-config",
   "helix-core",
   "helix-view",
   "helix-term",
   "helix-tui",
+  "helix-treesitter",
   "helix-lsp",
   "helix-dap",
   "helix-loader",

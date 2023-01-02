@@ -99,6 +99,7 @@ pub fn lang_config_file() -> PathBuf {
     config_dir().join("languages.toml")
 }
 pub fn default_lang_config() -> toml::Value {
+    // TODO: use path.rs instead of relative file locations
     toml::from_slice(include_bytes!("../../languages.toml"))
         .expect("Could not parse built-in languages.toml to valid toml")
 }

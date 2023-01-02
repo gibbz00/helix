@@ -450,6 +450,7 @@ impl TextObjectQuery {
     }
 }
 
+/// Return contents of a query.scm file.
 pub fn read_query(language: &str, filename: &str) -> String {
     static INHERITS_REGEX: Lazy<Regex> =
         Lazy::new(|| Regex::new(r";+\s*inherits\s*:?\s*([a-z_,()-]+)\s*").unwrap());

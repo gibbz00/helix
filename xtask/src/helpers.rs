@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use crate::path;
 use helix_core::syntax::LanguageConfigurations as LangConfig;
-use helix_term::health::TsFeature;
+use helix_treesitter::probe::TsFeature;
 
 /// Get the list of languages that support a particular tree-sitter
 /// based feature.
@@ -36,9 +36,4 @@ pub fn find_files(dir: &Path, filename: &str) -> Vec<PathBuf> {
         })
         .flatten()
         .collect()
-}
-
-pub fn lang_config() -> LangConfig {
-    let bytes = std::fs::read(path::lang_config()).unwrap();
-    toml::from_slice(&bytes).unwrap()
 }

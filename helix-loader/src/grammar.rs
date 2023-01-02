@@ -64,15 +64,16 @@ pub fn get_language(name: &str) -> Result<Language> {
     unimplemented!()
 }
 
+/// Return Tree-sitter parser for a given language.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn get_language(name: &str) -> Result<Language> {
+pub fn get_language(grammar_name: &str) -> Result<Language> {
     use libloading::{Library, Symbol};
-    let mut library_path = crate::runtime_dir().join("grammars").join(name);
+    let mut library_path = crate::runtime_dir().join("grammars").join(grammar_name);
     library_path.set_extension(DYLIB_EXTENSION);
 
     let library = unsafe { Library::new(&library_path) }
         .with_context(|| format!("Error opening dynamic library {:?}", library_path))?;
-    let language_fn_name = format!("tree_sitter_{}", name.replace('-', "_"));
+    let language_fn_name = format!("tree_sitter_{}", grammar_name.replace('-', "_"));
     let language = unsafe {
         let language_fn: Symbol<unsafe extern "C" fn() -> Language> = library
             .get(language_fn_name.as_bytes())
