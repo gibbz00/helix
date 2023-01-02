@@ -18,7 +18,9 @@ FLAGS:
                                    singular language name.
     -g, --grammar {{fetch|build}}  Fetches or builds tree-sitter grammars listed in languages.toml
     -c, --config <file>            Specifies a file to use for configuration
-    -v                             Increases logging verbosity each use for up to 3 times
+    -v                             Loglevel: Info
+    -vv                            Loglevel: Debug
+    -vvv                           Loglevel: Trace
     --log                          Specifies a file to use for logging
                                    (default file: {log_file_path})
     -V, --version                  Prints version information
