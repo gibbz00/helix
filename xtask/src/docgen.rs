@@ -1,9 +1,7 @@
-use crate::helpers;
-use crate::path;
-use crate::DynError;
-
+use crate::{helpers, DynError};
 use helix_term::commands::TYPABLE_COMMAND_LIST;
 use helix_treesitter::probe::TsFeature;
+use helix_loader::path;
 use std::fs;
 
 pub const TYPABLE_COMMANDS_MD_OUTPUT: &str = "typable-cmd.md";

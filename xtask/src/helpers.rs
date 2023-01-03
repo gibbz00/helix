@@ -1,8 +1,7 @@
-use std::path::{Path, PathBuf};
-
-use crate::path;
-use helix_core::syntax::LanguageConfigurations as LangConfig;
+use helix_loader::path;
+use helix_core::syntax::LanguageConfigurations;
 use helix_treesitter::probe::TsFeature;
+use std::path::{Path, PathBuf};
 
 /// Get the list of languages that support a particular tree-sitter
 /// based feature.

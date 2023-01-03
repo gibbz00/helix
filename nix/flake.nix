@@ -33,17 +33,13 @@
         ".ignore"
         ".github"
         "runtime"
-        "screenshot.png"
+        "nix"
+        "assets"
         "book"
         "contrib"
         "docs"
         "README.md"
         "CHANGELOG.md"
-        "shell.nix"
-        "default.nix"
-        "grammars.nix"
-        "flake.nix"
-        "flake.lock"
       ];
       ignorePaths = path: type: let
         # split the nix store path into its components
@@ -143,11 +139,12 @@
             # link languages and theme toml files since helix-term expects them (for tests)
             preConfigure = ''
               ${prev.preConfigure or ""}
+              BASE="helix-config/src" 
               ${
                 lib.concatMapStringsSep
                 "\n"
                 (path: "ln -sf ${mkRootPath path} ..")
-                ["languages.toml" "theme.toml" "base16_theme.toml"]
+                ["$BASE/language_config/languages.toml" "$BASE/theme_editor/{,base16}theme.toml"]
               }
             '';
             checkPhase = ":";

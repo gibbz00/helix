@@ -1,8 +1,6 @@
-use crate::path;
 use crate::DynError;
-use helix_view::theme::Loader;
-use helix_view::theme::Modifier;
-use helix_view::Theme;
+use helix_loader::path;
+use helix_view::{Theme, theme::{Loader, Modifier}};
 
 struct Rule {
     fg: Option<&'static str>,

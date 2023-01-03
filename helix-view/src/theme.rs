@@ -1,11 +1,10 @@
+use helix_core::hashmap;
+use helix_loader::{merge_toml_values, repo_paths};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
 };
-
 use anyhow::{anyhow, Context, Result};
-use helix_core::hashmap;
-use helix_loader::merge_toml_values;
 use log::warn;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Deserializer};
@@ -16,12 +15,13 @@ pub use crate::graphics::{Color, Modifier, Style};
 
 pub static DEFAULT_THEME: Lazy<Theme> = Lazy::new(|| Theme {
     name: "default".into(),
-    ..toml::from_slice(include_bytes!("../../theme.toml")).expect("Failed to parse default theme")
+    ..toml::from_slice(&std::fs::read(repo_paths::default_theme()).unwrap())
+        .expect("Failed to parse default theme")
 });
 
 pub static BASE16_DEFAULT_THEME: Lazy<Theme> = Lazy::new(|| Theme {
     name: "base16_theme".into(),
-    ..toml::from_slice(include_bytes!("../../base16_theme.toml"))
+    ..toml::from_slice(&std::fs::read(repo_paths::default_base16_theme()).unwrap())
         .expect("Failed to parse base 16 default theme")
 });
 

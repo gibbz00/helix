@@ -1,3 +1,5 @@
+mod repo_paths;
+
 use etcetera::base_strategy::{choose_base_strategy, BaseStrategy};
 use std::path::PathBuf;
 
@@ -97,8 +99,7 @@ pub fn lang_config_file() -> PathBuf {
     config_dir().join("languages.toml")
 }
 pub fn default_lang_config() -> toml::Value {
-    // TODO: use path.rs instead of relative file locations
-    toml::from_slice(include_bytes!("../../languages.toml"))
+    toml::from_slice(&std::fs::read(repo_paths::default_lang_configs()).unwrap())
         .expect("Could not parse built-in languages.toml to valid toml")
 }
 pub fn merged_lang_config() -> Result<toml::Value, toml::de::Error> {
