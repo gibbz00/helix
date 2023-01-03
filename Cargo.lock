@@ -1118,6 +1118,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "helix-config"
+version = "0.1.0"
+
+[[package]]
 name = "helix-core"
 version = "0.6.0"
 dependencies = [
@@ -1234,6 +1238,13 @@ dependencies = [
  "tokio-stream",
  "toml",
  "which",
+]
+
+[[package]]
+name = "helix-treesitter"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
 ]
 
 [[package]]
