@@ -29,7 +29,7 @@ pub mod tasks {
     pub fn querycheck() -> Result<(), DynError> {
         use helix_core::{syntax, tree_sitter::Query};
         for language_config in syntax::LangaugeConfigurations::default.language_configurations {
-            for ts_feature in TsFeature::all() {
+            for ts_feature in helix_loader::TsFeature::all() {
                 // TODO: do language name and grammar name discrepancies exist? 
                 let language_name = &language_config.language_id;
                 let grammar_name = language_config.grammar.as_ref().unwrap_or(language_name);

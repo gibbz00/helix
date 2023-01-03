@@ -1,6 +1,6 @@
 use crossterm::{style::{Color, Print, Stylize}, tty::IsTty};
 use helix_core::config::LanguageConfigurations;
-use helix_treesitter::{grammar, probe};
+use helix_treesitter::{grammar, TsFeature};
 use helix_view::clipboard;
 use std::io::Write;
 
@@ -58,7 +58,7 @@ fn display_clipboard() -> std::io::Result<()> {
     Ok(())
 }
 
-fn load_language_configurations() -> LanguageConfigurations  {
+fn load_merged_language_configurations() -> LanguageConfigurations  {
     LanguageConfigurations::merged().unwrap_or_else(|err| {
             let mut stderr = std::io::stderr().lock();
             writeln!(stderr,"{}: {}","Error parsing user language config".red(),err)?;
@@ -70,7 +70,7 @@ fn load_language_configurations() -> LanguageConfigurations  {
 fn display_language(lang_str: String) -> std::io::Result<()> {
     let mut stdout = std::io::stdout().lock();
 
-    let language_configurations = load_language_configurations();
+    let language_configurations = load_merged_language_configurations();
     let lang = match language_configurations.iter().find(|l| l.language_id == lang_str) {
         Some(found_language) => found_language,
         None => {
@@ -108,7 +108,7 @@ fn display_language(lang_str: String) -> std::io::Result<()> {
     probe_protocol("debug adapter",lang.debugger.as_ref()
         .map(|dap| dap.command.to_string()))?;
 
-    for feature in probe::TsFeature::all() {
+    for feature in TsFeature::all() {
         let supported = match grammar::load_runtime_file(lang, feature.runtime_filename()).is_ok() {
             true => "✓".green(),
             false => "✗".red(),
@@ -122,7 +122,7 @@ fn display_all_languages() -> std::io::Result<()> {
     let mut stdout = std::io::stdout().lock();
 
     let mut column_headers = vec!["Language", "LSP", "DAP"];
-    for treesitter_feature in probe::TsFeature::all() {
+    for treesitter_feature in TsFeature::all() {
         column_headers.push(treesitter_feature.short_title())
     }
 
@@ -153,7 +153,7 @@ fn display_all_languages() -> std::io::Result<()> {
         None => print_column("None", Color::Yellow),
     };
 
-    let mut language_configurations = load_language_configurations();
+    let mut language_configurations = load_merged_language_configurations();
     language_configurations.sort_unstable_by_key(|l| l.language_id.clone());
     for lang in &language_configurations {
         print_column(&lang.language_id, Color::Reset);
@@ -163,8 +163,8 @@ fn display_all_languages() -> std::io::Result<()> {
         let dap = lang.debugger.as_ref().map(|dap| dap.command.to_string());
         check_binary(dap);
 
-        for ts_feat in helix_treesitter::probe::TsFeature::all() {
-            match load_runtime_file(&lang.language_id, ts_feat.runtime_filename()).is_ok() {
+        for ts_feat in TsFeature::all() {
+            match grammar::load_runtime_file(&lang.language_id, ts_feat.runtime_filename()).is_ok() {
                 true => print_column("✓", Color::Green),
                 false => print_column("✗", Color::Red),
             }

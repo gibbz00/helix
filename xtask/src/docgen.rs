@@ -1,6 +1,6 @@
 use crate::{helpers, DynError};
 use helix_term::commands::TYPABLE_COMMAND_LIST;
-use helix_treesitter::probe::TsFeature;
+use helix_treesitter::TsFeature;
 use helix_loader::path;
 use std::fs;
 
@@ -20,6 +20,18 @@ fn md_table_row(cols: &[String]) -> String {
 
 fn md_mono(s: &str) -> String {
     format!("`{}`", s)
+}
+
+/// Returns an unsorted list of language names that
+/// are configured to use a Tree-sitter grammar.
+fn default_langs_with_treesitter_support() -> Vec<&str> {
+    use helix_core::config::LanguageConfigurations;
+    let mut langs_with_ts_support: HashSet<&str> = HashSet::new();
+    for lang in LanguageConfigurations::default().language_configurations {
+        if let Some(_) = lang.grammar {
+            langs_with_ts_support.push(&lang.language_id)
+        }
+    }
 }
 
 pub fn typable_commands() -> Result<String, DynError> {
@@ -71,7 +83,7 @@ pub fn lang_features() -> Result<String, DynError> {
 
     let mut ts_features_to_langs = Vec::new();
     for &feat in ts_features {
-        ts_features_to_langs.push((feat, helpers::ts_lang_support(feat)));
+        ts_features_to_langs.push((feat, helpers::default_langs_with_treesitter_support(feat)));
     }
 
     let mut row = Vec::new();
