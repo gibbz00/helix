@@ -6,7 +6,7 @@ in `languages.toml` files.
 ## `languages.toml` files
 
 There are three possible `languages.toml` files. The first is compiled into
-Helix and lives in the [Helix repository](https://github.com/helix-editor/helix/blob/master/languages.toml).
+Helix and lives in the [Helix repository](https://github.com/helix-editor/helix/blob/master/helix_view/config/languages.toml).
 This provides the default configurations for languages and language servers.
 
 You may define a `languages.toml` in your [configuration directory](./configuration.md)

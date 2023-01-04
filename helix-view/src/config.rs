@@ -1,5 +1,7 @@
-use crate::config::keymap::Keymap;
-use crate::document::Mode;
+mod editor;
+pub mod term_config;
+
+use crate::{document::Mode, keymap::Keymap};
 use serde::Deserialize;
 use std::io::Error;
 use toml::de::Error as TomlError;

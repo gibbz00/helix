@@ -1,6 +1,5 @@
 [workspace]
 members = [
-  "helix-config",
   "helix-core",
   "helix-view",
   "helix-term",

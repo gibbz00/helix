@@ -144,7 +144,7 @@
                 lib.concatMapStringsSep
                 "\n"
                 (path: "ln -sf ${mkRootPath path} ..")
-                ["$BASE/language_config/languages.toml" "$BASE/theme_editor/{,base16}theme.toml"]
+                ["$BASE/languages/languages.toml" "$BASE/theme/{,base16}theme.toml"]
               }
             '';
             checkPhase = ":";

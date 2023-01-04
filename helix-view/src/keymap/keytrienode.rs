@@ -1,17 +1,15 @@
 use super::keytrie::KeyTrie;
-use crate::commands::MappableCommand;
-use helix_view::input::KeyEvent;
+use crate::{input::KeyEvent, command::Command};
 use std::collections::HashMap;
 use serde::{Deserialize, de::Visitor};
 
-/// Each variant includes a documentaion property.
-/// For the MappableCommand and CommandSequence variants, the property is self explanatory.
-/// For KeyTrie, the documentation is used for respective infobox titles,
-/// or infobox KeyEvent descriptions that in themselves trigger the opening of another infobox.
+/// Commands for the added ability to map a sequence commands to one Key Event
+/// Each variant includes a description property.
+/// For the Commands, the property is self explanatory.
+/// For KeyTrie, the description is used for respective infobox titles,
 #[derive(Debug, Clone, PartialEq)]
 pub enum KeyTrieNode {
-    MappableCommand(MappableCommand),
-    CommandSequence(Vec<MappableCommand>),
+    Commands(Vec<Command>),
     KeyTrie(KeyTrie),
 }
 
@@ -33,34 +31,26 @@ impl<'de> Visitor<'de> for KeyTrieNodeVisitor {
         write!(formatter, "a KeyTrieNode")
     }
 
-    fn visit_str<E>(self, command: &str) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        command
-            .parse::<MappableCommand>()
-            .map(KeyTrieNode::MappableCommand)
-            .map_err(E::custom)
+    fn visit_str(self, command: &str) -> Result<Self::Value, dyn serde::de::Error> {
+        let mut commands = Vec::new();
+        commands.push(command.parse::<Command>().map_err(serde::de::Error::custom)?);
+        Ok(KeyTrieNode::Commands(commands))
     }
 
     fn visit_seq<S>(self, mut seq: S) -> Result<Self::Value, S::Error>
     where
-        S: serde::de::SeqAccess<'de>,
+        S: serde::de::SeqAccess<'de>
     {
         let mut commands = Vec::new();
         while let Some(command) = seq.next_element::<&str>()? {
-            commands.push(
-                command
-                    .parse::<MappableCommand>()
-                    .map_err(serde::de::Error::custom)?,
-            )
+            commands.push(command.parse::<Command>().map_err(serde::de::Error::custom)?)
         }
-        Ok(KeyTrieNode::CommandSequence(commands))
+        Ok(KeyTrieNode::Commands(commands))
     }
 
     fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
     where
-        M: serde::de::MapAccess<'de>,
+        M: serde::de::MapAccess<'de>
     {
         let mut sub_key_trie = HashMap::new();
         while let Some((key_event, key_trie_node)) = map.next_entry::<KeyEvent, KeyTrieNode>()? {

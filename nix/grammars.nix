@@ -11,7 +11,7 @@
   # HACK: nix < 2.6 has a bug in the toml parser, so we convert to JSON
   # before parsing
   languages-json = runCommandLocal "languages-toml-to-json" {} ''
-    ${yj}/bin/yj -t < ${./languages.toml} > $out
+    ${yj}/bin/yj -t < ${./helix_config/languages/languages.toml} > $out
   '';
   languagesConfig =
     if lib.versionAtLeast builtins.nixVersion "2.6.0"

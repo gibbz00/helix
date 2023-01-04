@@ -155,7 +155,7 @@ impl EditorView {
                     std::num::NonZeroUsize::new(cxt.editor.count.map_or(i, |c| c.get() * 10 + i));
             }
             // special handling for repeat operator
-            (key!('.'), _) if self.keymap.pending().is_empty() => {
+            (key!('.'), _) if self.keymap.pending_keys().is_empty() => {
                 for _ in 0..cxt.editor.count.map_or(1, NonZeroUsize::into) {
                     // first execute whatever put us into insert mode
                     self.last_insert.0.execute(cxt);
@@ -202,7 +202,7 @@ impl EditorView {
                 cxt.register = cxt.editor.selected_register.take();
 
                 self.handle_keymap_event(mode, cxt, event);
-                if self.keymap.pending().is_empty() {
+                if self.keymap.pending_keys().is_empty() {
                     cxt.editor.count = None
                 }
             }
@@ -1507,7 +1507,7 @@ impl Component for EditorView {
             if let Some(count) = cx.editor.count {
                 disp.push_str(&count.to_string())
             }
-            for key in self.keymap.pending() {
+            for key in self.keymap.pending_keys() {
                 disp.push_str(&key.key_sequence_format());
             }
             for key in &self.keymap.pseudo_pending {

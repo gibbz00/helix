@@ -1,4 +1,3 @@
-pub mod probe;
 pub mod grammar;
 
 // NOTE: not taking folds, injections, locals and tags seperately into account.

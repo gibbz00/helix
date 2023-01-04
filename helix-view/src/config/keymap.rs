@@ -1,5 +1,4 @@
-use super::{macros::keytrie, keytrie::KeyTrie};
-use helix_view::document::Mode;
+use helix_view::{document::Mode, keymap::KeyTrie};
 use helix_core::hashmap;
 use std::collections::HashMap;
 

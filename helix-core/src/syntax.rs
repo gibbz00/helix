@@ -73,7 +73,7 @@ impl LanguageConfigurations {
 
 impl Default for LanguageConfigurations {
     fn default() -> Self {
-        helix_loader::default_lang_config()
+        helix_loader::default_lang_configs()
             .try_into()
             .expect("Failed to deserialize repo languages.toml")
     }
@@ -299,7 +299,6 @@ pub struct IndentationConfiguration {
 pub enum AutoPairConfig {
     /// Enables or disables auto pairing. False means disabled. True means to use the default pairs.
     Enable(bool),
-
     /// The mappings of pairs.
     Pairs(HashMap<char, char>),
 }

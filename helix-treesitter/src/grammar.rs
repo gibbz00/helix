@@ -9,6 +9,7 @@ use std::{
     sync::mpsc::channel,
 };
 use tree_sitter::Language;
+use helix_loader::runtime_dir;
 
 #[cfg(unix)]
 const DYLIB_EXTENSION: &str = "so";
@@ -68,7 +69,7 @@ pub fn get_language(name: &str) -> Result<Language> {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn get_language(grammar_name: &str) -> Result<Language> {
     use libloading::{Library, Symbol};
-    let mut library_path = crate::runtime_dir().join("grammars").join(grammar_name);
+    let mut library_path = helix_loader::runtime_dir().join("grammars").join(grammar_name);
     library_path.set_extension(DYLIB_EXTENSION);
 
     let library = unsafe { Library::new(&library_path) }
@@ -192,7 +193,7 @@ pub fn build_grammars(target: Option<String>) -> Result<()> {
 // merged. The `grammar_selection` key of the config is then used to filter
 // down all grammars into a subset of the user's choosing.
 fn get_grammar_configs() -> Result<Vec<GrammarConfiguration>> {
-    let config: Configuration = crate::merged_lang_config()
+    let config: Configuration = helix_loader::merged_lang_config()
         .context("Could not parse languages.toml")?
         .try_into()?;
 
@@ -253,7 +254,7 @@ fn fetch_grammar(grammar: GrammarConfiguration) -> Result<FetchStatus> {
         remote, revision, ..
     } = grammar.source
     {
-        let grammar_dir = crate::runtime_dir()
+        let grammar_dir = runtime_dir()
             .join("grammars")
             .join("sources")
             .join(&grammar.grammar_id);
@@ -351,7 +352,7 @@ fn build_grammar(grammar: GrammarConfiguration, target: Option<&str>) -> Result<
     let grammar_dir = if let GrammarSource::Local { path } = &grammar.source {
         PathBuf::from(&path)
     } else {
-        crate::runtime_dir()
+        runtime_dir()
             .join("grammars")
             .join("sources")
             .join(&grammar.grammar_id)
@@ -402,7 +403,7 @@ fn build_tree_sitter_library(
             None
         }
     };
-    let parser_lib_path = crate::runtime_dir().join("grammars");
+    let parser_lib_path = runtime_dir().join("grammars");
     let mut library_path = parser_lib_path.join(&grammar.grammar_id);
     library_path.set_extension(DYLIB_EXTENSION);
 
@@ -512,7 +513,7 @@ fn mtime(path: &Path) -> Result<SystemTime> {
 /// Gives the contents of a file from a language's `runtime/queries/<lang>`
 /// directory
 pub fn load_runtime_file(language: &str, filename: &str) -> Result<String, std::io::Error> {
-    let path = crate::RUNTIME_DIR
+    let path = runtime_dir()
         .join("queries")
         .join(language)
         .join(filename);

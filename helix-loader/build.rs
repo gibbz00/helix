@@ -1,8 +1,6 @@
-use std::{borrow::Cow, path::{Path, PathBuf}, process::Command};
-use helix_loader::repo_paths
+use std::{borrow::Cow, process::Command};
 
-const VERSION: &str = repo_paths::version().to_str()
-    .expect("VERSION path should have valid UTF-8 encoding");
+const VERSION_PATH: &str = "VERSION";
 
 fn main() {
     let git_hash = Command::new("git")
@@ -11,11 +9,10 @@ fn main() {
         .and_then(|x| String::from_utf8(x.stdout).ok());
 
     let version: Cow<_> = match git_hash {
-        Some(git_hash) => format!("{} ({})", VERSION, &git_hash[..8]).into(),
-        None => VERSION.into(),
+        Some(git_hash) => format!("{} ({})", VERSION_PATH, &git_hash[..8]).into(),
+        None => VERSION_PATH.into(),
     };
 
-    println!("cargo:rustc-env=BUILD_TARGET={}",std::env::var("TARGET").unwrap());
-    println!("cargo:rerun-if-changed={}", VERSION);
+    println!("cargo:rerun-if-changed={}", VERSION_PATH);
     println!("cargo:rustc-env=VERSION_AND_GIT_HASH={}", version);
 }

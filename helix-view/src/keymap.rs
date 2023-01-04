@@ -1,17 +1,13 @@
 // NOTE: Only pub becuase of their use in macros
 pub mod macros;
-pub mod keytrienode;
-pub mod keytrie;
-mod default;
+
+mod keytrienode;
+mod keytrie;
 mod tests;
 
-use self::{
-    keytrienode::KeyTrieNode,
-    keytrie::KeyTrie,
-};
+pub use {keytrie::KeyTrie, keytrienode::KeyTrieNode};
 
-use helix_term::commands::MappableCommand;
-use crate::document::Mode;
+use crate::{document::Mode, command::Command};
 use std::{sync::Arc, collections::HashMap};
 use arc_swap::{access::{DynAccess, DynGuard}, ArcSwap};
 
@@ -39,7 +35,7 @@ impl Keymap {
     }
 
     fn merge_in_default_keymap(mut self) -> Keymap {
-        let mut delta = std::mem::replace(&mut self.keytries, default::default());
+        let mut delta = std::mem::replace(&mut self.keytries, helix_config::keymap::default());
         for (mode, keytrie) in &mut self {
             keytrie.merge_keytrie(delta.remove(mode).unwrap_or_default())
         }
@@ -68,11 +64,13 @@ impl Keymap {
                         _command_list(list, subtrie_node, &mut temp_prefix);
                     }
                 },
-                KeyTrieNode::MappableCommand(mappable_command) => {
-                        if mappable_command.name() == "no_op" { return }
-                        list.entry(mappable_command.name().to_string()).or_default().push(prefix.to_string());
-                },
-                KeyTrieNode::CommandSequence(_) => {}
+                KeyTrieNode::Commands(commands) => {
+                    if commands.first().name() == "no_op" { return }
+                    // FIX: when descriptions for multiple commands are added
+                    if commands.len() == 1 {
+                        list.entry(commands.first().name().to_string()).or_default().push(prefix.to_string());
+                    }
+                }
             };
         }
     }

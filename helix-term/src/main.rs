@@ -52,7 +52,7 @@ async fn main_impl() -> Result<i32> {
         return Ok(0);
     }
 
-    helix_loader::initialize_config_file(args.config_file);
+    helix_loader::setup_config_file(args.config_file);
     let config = Config::load_user_config().unwrap_or_else(|err| {
         eprintln!("Bad config: {}", err);
         eprintln!("Press <ENTER> to continue with default config");
@@ -76,7 +76,7 @@ async fn main_impl() -> Result<i32> {
 }
 
 fn setup_logging(logpath: Option<PathBuf>, verbosity: u64) -> Result<()> {
-    helix_loader::initialize_log_file(logpath); 
+    helix_loader::setup_log_file(logpath); 
     let logpath = helix_loader::log_file();
 
     let mut base_config = fern::Dispatch::new();

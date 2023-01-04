@@ -1871,7 +1871,7 @@ fn global_search(cx: &mut Context) {
     let (all_matches_sx, all_matches_rx) = tokio::sync::mpsc::unbounded_channel::<FileResult>();
     let config = cx.editor.config();
     let smart_case = config.search.smart_case;
-    let file_picker_config = config.file_picker.clone();
+    let global_search_config = config.search.global.clone();
 
     let reg = cx.register.unwrap_or('/');
 
@@ -1903,14 +1903,14 @@ fn global_search(cx: &mut Context) {
                 let search_root = std::env::current_dir()
                     .expect("Global search error: Failed to get current dir");
                 WalkBuilder::new(search_root)
-                    .hidden(file_picker_config.hidden)
-                    .parents(file_picker_config.parents)
-                    .ignore(file_picker_config.ignore)
-                    .follow_links(file_picker_config.follow_symlinks)
-                    .git_ignore(file_picker_config.git_ignore)
-                    .git_global(file_picker_config.git_global)
-                    .git_exclude(file_picker_config.git_exclude)
-                    .max_depth(file_picker_config.max_depth)
+                    .hidden(global_search_config.hidden)
+                    .parents(global_search_config.parents)
+                    .ignore(global_search_config.ignore)
+                    .follow_links(global_search_config.follow_symlinks)
+                    .git_ignore(global_search_config.git_ignore)
+                    .git_global(global_search_config.git_global)
+                    .git_exclude(global_search_config.git_exclude)
+                    .max_depth(global_search_config.max_depth)
                     // We always want to ignore the .git directory, otherwise if
                     // `ignore` is turned off above, we end up with a lot of noise
                     // in our picker.

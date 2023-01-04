@@ -10,7 +10,6 @@ pub mod gutter;
 pub mod handlers {
     pub mod dap;
     pub mod lsp;
-    pub mod live_keymap;
 }
 pub mod base64;
 pub mod info;
@@ -19,6 +18,10 @@ pub mod keyboard;
 pub mod theme;
 pub mod tree;
 pub mod view;
+pub mod config;
+pub mod event_handler;
+mod keymap;
+mod command;
 
 use std::num::NonZeroUsize;
 

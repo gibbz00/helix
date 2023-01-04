@@ -1,23 +1,33 @@
-use super::keytrienode::KeyTrieNode;
-use helix_view::{info::Info, input::KeyEvent};
+use crate::{keymap::KeyTrieNode, info::Info, input::KeyEvent};
 use std::{collections::HashMap, ops::{Deref, DerefMut}, cmp::Ordering};
 use serde::Deserialize;
 
 /// Edges of the trie are KeyEvents and the nodes are descrbibed by KeyTrieNode
 #[derive(Debug, Clone)]
 pub struct KeyTrie {
-    documentation: String,
+    descrpition: String,
     children: HashMap<KeyEvent, KeyTrieNode>,
-    pub is_sticky: bool,
+    sticky: bool,
 }
 
 impl KeyTrie {
-    pub fn new(documentation: &str, children: HashMap<KeyEvent, KeyTrieNode>) -> Self {
+    pub fn new(description: &str, children: HashMap<KeyEvent, KeyTrieNode>) -> Self {
         Self {
-            documentation: documentation.to_string(),
+            descrpition: description.to_string(),
             children,
-            is_sticky: false,
+            sticky: false,
         }
+    }
+
+    pub fn new_sticky(description: &str, children: HashMap<KeyEvent, KeyTrieNode>) -> Self {
+        Self {
+            sticky: true,
+            ..Self::new(description, children)
+        }
+    }
+
+    pub fn is_sticky() -> bool {
+        sticky
     }
 
     // None symbolizes NotFound
@@ -34,7 +44,7 @@ impl KeyTrie {
                         depth += 1;
                         return _traverse(sub_keytrie, key_events, depth)
                     },
-                    _ => return Some(found_child.clone())
+                    KeyTrieNode::Commands(_) => return Some(found_child.clone())
                 }
             }
             return None;
@@ -51,8 +61,8 @@ impl KeyTrie {
                     else {
                         self.children.insert(other_key_event, KeyTrieNode::KeyTrie(other_child_key_trie));
                     }
-                }
-                KeyTrieNode::MappableCommand(_) | KeyTrieNode::CommandSequence(_) => {
+                },
+                KeyTrieNode::Commands(_) => {
                     self.children.insert(other_key_event, other_child_node);
                 }
             }
@@ -66,17 +76,16 @@ impl KeyTrie {
         let mut body: Vec<(Vec<String>, &str)> = Vec::with_capacity(self.len());
         for (&key_event, key_trie) in self.iter() {
             let documentation: &str = match key_trie {
-                KeyTrieNode::MappableCommand(command) => {
-                    if command.name() == "no_op" {
+                KeyTrieNode::Commands(commands) => {
+                    if commands.first.name() == "no_op" {
                         continue;
                     }
-                    command.description()
+                    if commands.len() == 1 { commands.first().description() }
+                    // NOTE: Giving same description for all command sequences will 
+                    // place them on the same row.
+                    else { "[Multiple commands]" }
                 },
-                KeyTrieNode::KeyTrie(key_trie) => &key_trie.documentation,
-                // FIX: default to a join of all command names
-                // NOTE: Giving same documentation for all sequences will place all sequence keyvents together.
-                // Regardless if the command sequence is different.
-                KeyTrieNode::CommandSequence(_) => "[Multiple commands]",
+                KeyTrieNode::KeyTrie(key_trie) => &key_trie.descrpition,
             };
             match body.iter().position(|(_, existing_documentation)| &documentation == existing_documentation) {
                 Some(position) =>  body[position].0.push(key_event.to_string()),
@@ -84,14 +93,13 @@ impl KeyTrie {
                     let mut temp_vec: Vec<String> = Vec::new();
                     temp_vec.push(key_event.to_string());
                     body.push((temp_vec, documentation))   
-                },
+                }
             }
         }
 
         // Shortest keyevent (as string) appears first, unless is a "C-" KeyEvent
         // Those events will always be placed after the one letter KeyEvent
-        let mut sorted_body = body
-            .iter()
+        let mut sorted_body = body.iter()
             .map(|(key_events, description)| {
                 let mut temp_key_events = key_events.clone();
                 temp_key_events.sort_unstable_by(|a, b| {
@@ -102,8 +110,7 @@ impl KeyTrie {
                     a.len().cmp(&b.len())
                 });
                 (temp_key_events, *description)
-            })
-            .collect::<Vec<(Vec<String>, &str)>>();
+            }).collect::<Vec<(Vec<String>, &str)>>();
         sorted_body.sort_unstable_by(|a, b| a.0[0].to_lowercase().cmp(&b.0[0].to_lowercase()));
         // Consistently place lowercase before uppercase of the same letter.
         if sorted_body.len() > 1 {
@@ -126,8 +133,7 @@ impl KeyTrie {
             }
         }
 
-        let stringified_key_events_body: Vec<(String, &str)> = sorted_body
-            .iter()
+        let stringified_key_events_body: Vec<(String, &str)> = sorted_body.iter()
             .map(|(key_events, description)| {
                 let key_events_string: String = key_events.iter().fold(String::new(), |mut acc, key_event| {
                     if !acc.is_empty() { acc.push_str(", "); }
@@ -135,10 +141,9 @@ impl KeyTrie {
                     acc
                 });
                 (key_events_string, *description)
-            })
-            .collect();
+            }).collect();
 
-        (&self.documentation, &stringified_key_events_body)
+        (&self.descrpition, &stringified_key_events_body)
     }
 }
 
