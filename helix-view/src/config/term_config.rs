@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 // TODO: move to from helix-view 
 // NOTE: not part of docs
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]

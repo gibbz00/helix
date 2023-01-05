@@ -83,7 +83,7 @@ macro_rules! keytrie {
         // modified from the hashmap! macro
         {
             let _cap = hashmap!(@count $($($key),+),*);
-            let mut _map: std::collections::HashMap<::$crate::input::KeyEvent, $crate::config::keymap::keytrienode::KeyTrieNode> = 
+            let mut _map: std::collections::HashMap<$crate::input::KeyEvent, $crate::keymap::KeyTrieNode> = 
                 std::collections::HashMap::with_capacity(_cap);
             $(
                 $(
@@ -92,22 +92,22 @@ macro_rules! keytrie {
                     assert!(_potential_duplicate.is_none(), "Duplicate key found: {:?}", _potential_duplicate.unwrap());
                 )+
             )*
-            let mut _node = $crate::config::keymap::keytrie::KeyTrie::new($label, _map);
+            let mut _node = $crate::keymap::KeyTrie::new($label, _map);
             $( _node.is_sticky = $sticky; )?
             _node
         }
     };
 
     (@trie {$label:literal $(sticky=$sticky:literal)? $($($key:literal)|+ => $value:tt,)+ }) => {
-        $crate::config::keymap::keytrienode::KeyTrieNode::KeyTrie(keytrie!({ $label $(sticky=$sticky)? $($($key)|+ => $value,)+ }))
+        $crate::keymap::KeyTrieNode::KeyTrie(keytrie!({ $label $(sticky=$sticky)? $($($key)|+ => $value,)+ }))
     };
 
     (@trie $cmd:ident) => {
-        $crate::config::keymap::keytrienode::KeyTrieNode::MappableCommand(helix_term::commands::MappableCommand::$cmd)
+        $crate::keymap::KeyTrieNode::Commands($crate::command::Command::$cmd)
     };
 
     (@trie [$($cmd:ident),* $(,)?]) => {
-        $crate::config::keymap::keytrienode::KeyTrieNode::CommandSequence(vec![$(helix_term::commands::Command::$cmd),*])
+        $crate::keymap::KeyTrieNode::Commands(vec![$($crate::command:Command::$cmd),*])
     };
 }
 

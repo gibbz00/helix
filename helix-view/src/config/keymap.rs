@@ -1,4 +1,4 @@
-use helix_view::{document::Mode, keymap::KeyTrie};
+use crate::{document::Mode, keymap::{KeyTrie, macros::keytrie}};
 use helix_core::hashmap;
 use std::collections::HashMap;
 

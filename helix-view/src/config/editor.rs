@@ -1,4 +1,6 @@
-use crate::{config::term_config, document::Mode};
+use serde::{ser::SerializeMap, Deserialize, Deserializer, Serialize, Serializer};
+
+use crate::{config::term_config, document::Mode, gutter::{GutterComponents, LineNumberMode}, graphics::CursorKind};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", default, deny_unknown_fields)]
@@ -15,7 +17,7 @@ pub struct Config {
     pub shell: Vec<String>,
     // TODO: should not be in helix-view, in helix-term if anything
     pub true_color: bool,
-    pub terminal: Option<TerminalConfig>,
+    pub terminal: Option<term_config::TerminalConfig>,
 }
 
 impl Default for Config {
@@ -26,17 +28,17 @@ impl Default for Config {
                 active: true,
                 middle_click_paste: true
             },
-            document: DocumenConfig {
+            document: DocumentConfig {
                 scroll_config: ScrollConfig {
                     scroll_cursor_to_edge_padding: 5,
                     lines_per_scroll: 3,
                 },
-                save_config: SaveConfig {
+                save: SaveConfig {
                     auto_format_on_save: true,
                     auto_save_on_focus_lost: false,
                 },
                 insert_mode_config: InsertModeConfig {
-                    auto_pair: AutoPairConfig::default(),
+                    auto_pair: helix_core::syntax::AutoPairConfig::default(),
                     auto_complete: AutoCompleteConfig {
                         auto_completion_suggestion: true,
                         min_len_before_auto_completion_suggestion: 2,
@@ -108,7 +110,7 @@ impl Default for Config {
                 ],
                 center: vec![],
                 right: vec![
-                    SausLineElement::Diagnostics,
+                    StatusLineElement::Diagnostics,
                     StatusLineElement::SelectionsCount,
                     StatusLineElement::CursorPosition,
                     StatusLineElement::FileEncoding
@@ -128,7 +130,7 @@ impl Default for Config {
             },
             shell: if cfg!(windows) { vec!["cmd".to_owned(), "/C".to_owned()] } 
                    else { vec!["sh".to_owned(), "-c".to_owned()] },
-            terminal: get_terminal_provider(),
+            terminal: term_config::get_terminal_provider(),
             true_color: false,
         }
     }
@@ -142,7 +144,7 @@ pub struct MouseConfig {
 
 pub struct DocumentConfig {
     pub scroll_config: ScrollConfig,
-    pub save_config: SaveConfig,
+    pub save: SaveConfig,
     pub insert_mode_config: InsertModeConfig,
     #[serde(default)]
     pub whitespace: WhitespaceConfig,
@@ -162,7 +164,7 @@ pub struct SaveConfig {
 }
 
 pub struct InsertModeConfig {
-    pub auto_pair: AutoPairConfig,
+    pub auto_pair: helix_core::syntax::AutoPairConfig,
     pub auto_complete: AutoCompleteConfig
 }
 
@@ -207,8 +209,6 @@ pub struct SearchConfig {
     pub file: SearchPickerConfig
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", default, deny_unknown_fields)]
 // TODO: color_remove now that themes can be customized with ease,
 pub struct StatusLineConfig {
     pub left: Vec<StatusLineElement>,
@@ -219,16 +219,12 @@ pub struct StatusLineConfig {
     pub color_modes: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", default, deny_unknown_fields)]
 pub struct ModeString {
     pub normal: String,
     pub insert: String,
     pub select: String,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
 pub enum StatusLineElement {
     Mode,
     LspSpinner,
@@ -251,65 +247,17 @@ pub enum StatusLineElement {
 }
 
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
 pub enum BufferLineConfig {
     Never,
     Always,
     IfMultiple,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum LineNumberMode {
-    Absolute,
-    NorSelRelative,
-}
-
-impl std::str::FromStr for LineNumberMode {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "absolute" | "abs" => Ok(Self::Absolute),
-            "relative" | "rel" => Ok(Self::NorSelRelative),
-            _ => anyhow::bail!("Line number can only be `absolute` or `relative`."),
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum GutterComponents {
-    DiagnosticsAndBreakpoints,
-    LineNumbers,
-    Spacer,
-    VcsDiff,
-}
-
-impl std::str::FromStr for GutterComponents {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "diagnostics_and_breakpoints" => Ok(Self::DiagnosticsAndBreakpoints),
-            "spacer" => Ok(Self::Spacer),
-            "line-numbers" => Ok(Self::LineNumbers),
-            "vcs_diff" => Ok(Self::VcsDiff),
-            _ => anyhow::bail!("Gutter type can only be `diagnostics` or `line-numbers`."),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
 pub struct WhitespaceConfig {
     pub render: WhitespaceRender,
     pub characters: WhitespaceCharacters,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(untagged, rename_all = "kebab-case")]
 pub enum WhitespaceRender {
     Basic(WhitespaceRenderValue),
     Specific {
@@ -321,8 +269,6 @@ pub enum WhitespaceRender {
     },
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
 pub enum WhitespaceRenderValue {
     None,
     All,
@@ -364,8 +310,6 @@ impl WhitespaceRender {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
 pub struct WhitespaceCharacters {
     pub space: char,
     pub nbsp: char,
@@ -374,8 +318,6 @@ pub struct WhitespaceCharacters {
     pub newline: char,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, rename_all = "kebab-case")]
 pub struct IndentGuidesConfig {
     pub render: bool,
     pub character: char,
@@ -398,7 +340,7 @@ impl<'de> Deserialize<'de> for CursorShapeConfig {
     where
         D: Deserializer<'de>,
     {
-        let m = HashMap::<Mode, CursorKind>::deserialize(deserializer)?;
+        let m = std::collections::HashMap::<Mode, CursorKind>::deserialize(deserializer)?;
         let into_cursor = |mode: Mode| m.get(&mode).copied().unwrap_or_default();
         Ok(CursorShapeConfig([
             into_cursor(Mode::Normal),

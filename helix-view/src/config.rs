@@ -1,6 +1,8 @@
-mod editor;
+mod keymap;
+pub mod editor;
 pub mod term_config;
 
+pub use keymap::default as defualt_keymap;
 use crate::{document::Mode, keymap::Keymap};
 use serde::Deserialize;
 use std::io::Error;
@@ -13,7 +15,7 @@ pub struct Config {
     #[serde(default)]
     pub keys: Keymap,
     #[serde(default)]
-    pub editor: helix_view::editor::Config,
+    pub editor: editor::Config,
 }
 
 impl Config {
@@ -31,7 +33,7 @@ impl Default for Config {
             // TODO: Set a theme default?
             theme: None,
             keys: Keymap::default(),
-            editor: helix_view::editor::Config::default(),
+            editor: editor::Config::default(),
         }
     }
 }

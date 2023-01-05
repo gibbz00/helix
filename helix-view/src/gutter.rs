@@ -1,7 +1,8 @@
 use std::fmt::Write;
 
+use serde::{Serialize, Deserialize};
+
 use crate::{
-    editor::GutterType,
     graphics::{Color, Style, UnderlineStyle},
     Document, Editor, Theme, View,
 };
@@ -16,7 +17,15 @@ pub type GutterFn<'doc> = Box<dyn FnMut(usize, bool, &mut String) -> Option<Styl
 pub type Gutter =
     for<'doc> fn(&'doc Editor, &'doc Document, &View, &Theme, bool, usize) -> GutterFn<'doc>;
 
-impl GutterType {
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GutterComponents {
+    DiagnosticsAndBreakpoints,
+    LineNumbers,
+    Spacer,
+    VcsDiff,
+}
+
+impl GutterComponents {
     pub fn style<'doc>(
         self,
         editor: &'doc Editor,
@@ -26,21 +35,54 @@ impl GutterType {
         is_focused: bool,
     ) -> GutterFn<'doc> {
         match self {
-            GutterType::Diagnostics => {
+            GutterComponents::Diagnostics => {
                 diagnostics_or_breakpoints(editor, doc, view, theme, is_focused)
             }
-            GutterType::LineNumbers => line_numbers(editor, doc, view, theme, is_focused),
-            GutterType::Spacer => padding(editor, doc, view, theme, is_focused),
-            GutterType::Diff => diff(editor, doc, view, theme, is_focused),
+            GutterComponents::LineNumbers => line_numbers(editor, doc, view, theme, is_focused),
+            GutterComponents::Spacer => padding(editor, doc, view, theme, is_focused),
+            GutterComponents::Diff => diff(editor, doc, view, theme, is_focused),
         }
     }
 
     pub fn width(self, _view: &View, doc: &Document) -> usize {
         match self {
-            GutterType::Diagnostics => 1,
-            GutterType::LineNumbers => line_numbers_width(_view, doc),
-            GutterType::Spacer => 1,
-            GutterType::Diff => 1,
+            GutterComponents::Diagnostics => 1,
+            GutterComponents::LineNumbers => line_numbers_width(_view, doc),
+            GutterComponents::Spacer => 1,
+            GutterComponents::Diff => 1,
+        }
+    }
+}
+
+impl std::str::FromStr for GutterComponents {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "diagnostics_and_breakpoints" => Ok(Self::DiagnosticsAndBreakpoints),
+            "spacer" => Ok(Self::Spacer),
+            "line-numbers" => Ok(Self::LineNumbers),
+            "vcs_diff" => Ok(Self::VcsDiff),
+            _ => anyhow::bail!("Gutter type can only be `diagnostics` or `line-numbers`."),
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LineNumberMode {
+    Absolute,
+    NorSelRelative,
+}
+
+impl std::str::FromStr for LineNumberMode {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "absolute" | "abs" => Ok(Self::Absolute),
+            "relative" | "rel" => Ok(Self::NorSelRelative),
+            _ => anyhow::bail!("Line number can only be `absolute` or `relative`."),
         }
     }
 }
@@ -141,7 +183,7 @@ pub fn line_numbers<'doc>(
 ) -> GutterFn<'doc> {
     let text = doc.text().slice(..);
     let last_line = view.last_line(doc);
-    let width = GutterType::LineNumbers.width(view, doc);
+    let width = GutterComponents::LineNumbers.width(view, doc);
 
     // Whether to draw the line number for the last line of the
     // document or not.  We only draw it if it's not an empty line.
@@ -162,10 +204,8 @@ pub fn line_numbers<'doc>(
             write!(out, "{:>1$}", '~', width).unwrap();
             Some(linenr)
         } else {
-            use crate::{document::Mode, editor::LineNumber};
-
-            let relative = line_number == LineNumber::Relative
-                && mode != Mode::Insert
+            let relative = line_number == LineNumberMode::Relative
+                && mode != crate::document::Mode::Insert
                 && is_focused
                 && current_line != line;
 

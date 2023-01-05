@@ -26,8 +26,8 @@ impl KeyTrie {
         }
     }
 
-    pub fn is_sticky() -> bool {
-        sticky
+    pub fn is_sticky(&self) -> bool {
+        self.sticky
     }
 
     // None symbolizes NotFound

@@ -3,6 +3,8 @@ enum Consumer {
     Server,    
 }
 
+pub type Commands = Vec<Command>;
+
 #[derive(Clone)]
 pub struct Command {
     name: &'static str,

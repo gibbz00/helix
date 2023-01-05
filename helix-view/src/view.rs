@@ -1,4 +1,4 @@
-use crate::{align_view, editor::GutterType, graphics::Rect, Align, Document, DocumentId, ViewId};
+use crate::{align_view, gutter::GutterComponents, graphics::Rect, Align, Document, DocumentId, ViewId};
 use helix_core::{
     pos_at_visual_coords, visual_coords_at_pos, Position, RopeSlice, Selection, Transaction,
 };
@@ -104,7 +104,7 @@ pub struct View {
     /// used to store previous selections of tree-sitter objects
     pub object_selections: Vec<Selection>,
     /// GutterTypes used to fetch Gutter (constructor) and width for rendering
-    gutters: Vec<GutterType>,
+    gutters: Vec<GutterComponents>,
     /// A mapping between documents and the last history revision the view was updated at.
     /// Changes between documents and views are synced lazily when switching windows. This
     /// mapping keeps track of the last applied history revision so that only new changes
@@ -123,7 +123,7 @@ impl fmt::Debug for View {
 }
 
 impl View {
-    pub fn new(doc: DocumentId, gutter_types: Vec<crate::editor::GutterType>) -> Self {
+    pub fn new(doc: DocumentId, gutter_types: Vec<GutterComponents>) -> Self {
         Self {
             id: ViewId::default(),
             doc,
@@ -153,7 +153,7 @@ impl View {
         self.area.clip_bottom(1).height.into() // -1 for statusline
     }
 
-    pub fn gutters(&self) -> &[GutterType] {
+    pub fn gutters(&self) -> &[GutterComponents] {
         &self.gutters
     }
 
@@ -420,13 +420,13 @@ mod tests {
     const OFFSET_WITHOUT_LINE_NUMBERS: u16 = 1; // 1 diagnostic
                                                 // const OFFSET: u16 = GUTTERS.iter().map(|(_, width)| *width as u16).sum();
     use crate::document::Document;
-    use crate::editor::GutterType;
+    use crate::gutter::GutterComponents;
 
     #[test]
     fn test_text_pos_at_screen_coords() {
         let mut view = View::new(
             DocumentId::default(),
-            vec![GutterType::Diagnostics, GutterType::LineNumbers],
+            vec![GutterComponents::Diagnostics, GutterComponents::LineNumbers],
         );
         view.area = Rect::new(40, 40, 40, 40);
         let rope = Rope::from_str("abc\n\tdef");
@@ -473,7 +473,7 @@ mod tests {
 
     #[test]
     fn test_text_pos_at_screen_coords_without_line_numbers_gutter() {
-        let mut view = View::new(DocumentId::default(), vec![GutterType::Diagnostics]);
+        let mut view = View::new(DocumentId::default(), vec![GutterComponents::Diagnostics]);
         view.area = Rect::new(40, 40, 40, 40);
         let rope = Rope::from_str("abc\n\tdef");
         let doc = Document::from(rope, None);
@@ -496,7 +496,7 @@ mod tests {
     fn test_text_pos_at_screen_coords_cjk() {
         let mut view = View::new(
             DocumentId::default(),
-            vec![GutterType::Diagnostics, GutterType::LineNumbers],
+            vec![GutterComponents::Diagnostics, GutterComponents::LineNumbers],
         );
         view.area = Rect::new(40, 40, 40, 40);
         let rope = Rope::from_str("Hi! こんにちは皆さん");
@@ -536,7 +536,7 @@ mod tests {
     fn test_text_pos_at_screen_coords_graphemes() {
         let mut view = View::new(
             DocumentId::default(),
-            vec![GutterType::Diagnostics, GutterType::LineNumbers],
+            vec![GutterComponents::Diagnostics, GutterComponents::LineNumbers],
         );
         view.area = Rect::new(40, 40, 40, 40);
         let rope = Rope::from_str("Hèl̀l̀ò world!");

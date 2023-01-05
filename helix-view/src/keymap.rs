@@ -35,7 +35,7 @@ impl Keymap {
     }
 
     fn merge_in_default_keymap(mut self) -> Keymap {
-        let mut delta = std::mem::replace(&mut self.keytries, helix_config::keymap::default());
+        let mut delta = std::mem::replace(&mut self.keytries, crate::config::defualt_keymap());
         for (mode, keytrie) in &mut self {
             keytrie.merge_keytrie(delta.remove(mode).unwrap_or_default())
         }
@@ -78,6 +78,6 @@ impl Keymap {
 
 impl Default for Keymap {
     fn default() -> Self {
-        Self::new(Box::new(ArcSwap::new(Arc::new(default::default()))))
+        Self::new(Box::new(ArcSwap::new(Arc::new(crate::config::defualt_keymap()))))
     }
 }

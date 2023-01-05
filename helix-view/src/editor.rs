@@ -8,7 +8,7 @@ use crate::{
     input::KeyEvent,
     theme::{self, Theme},
     tree::{self, Tree},
-    Align, Document, DocumentId, View, ViewId,
+    Align, Document, DocumentId, View, ViewId, config::Config,
 };
 use helix_core::{
     Position,
@@ -73,7 +73,7 @@ pub struct Editor {
     /// Current editing mode.
     pub mode: Mode,
     pub tree: Tree,
-    pub live_keymap: LiveKeymap,
+    pub event_handler: EventHandler,
     pub next_document_id: DocumentId,
     pub documents: BTreeMap<DocumentId, Document>,
 

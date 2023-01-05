@@ -1,5 +1,5 @@
 use super::keytrie::KeyTrie;
-use crate::{input::KeyEvent, command::Command};
+use crate::{input::KeyEvent, command::{Command, Commands}};
 use std::collections::HashMap;
 use serde::{Deserialize, de::Visitor};
 
@@ -9,7 +9,7 @@ use serde::{Deserialize, de::Visitor};
 /// For KeyTrie, the description is used for respective infobox titles,
 #[derive(Debug, Clone, PartialEq)]
 pub enum KeyTrieNode {
-    Commands(Vec<Command>),
+    Commands(Commands),
     KeyTrie(KeyTrie),
 }
 
@@ -31,7 +31,8 @@ impl<'de> Visitor<'de> for KeyTrieNodeVisitor {
         write!(formatter, "a KeyTrieNode")
     }
 
-    fn visit_str(self, command: &str) -> Result<Self::Value, dyn serde::de::Error> {
+    fn visit_str<S: serde::de::Error>(self, command: &str) -> Result<Self::Value, S>
+    {
         let mut commands = Vec::new();
         commands.push(command.parse::<Command>().map_err(serde::de::Error::custom)?);
         Ok(KeyTrieNode::Commands(commands))
