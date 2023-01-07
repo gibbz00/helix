@@ -1,4 +1,4 @@
-use super::{Context, Editor};
+use super::{Context, ui_tree};
 use crate::{
     compositor::{self, Compositor},
     job::{Callback, Jobs},
@@ -56,7 +56,7 @@ impl ui::menu::Item for Thread {
 
 fn thread_picker(
     cx: &mut Context,
-    callback_fn: impl Fn(&mut Editor, &dap::Thread) + Send + 'static,
+    callback_fn: impl Fn(&mut ui_tree, &dap::Thread) + Send + 'static,
 ) {
     let debugger = debugger!(cx.editor);
 
@@ -93,7 +93,7 @@ fn thread_picker(
     );
 }
 
-fn get_breakpoint_at_current_line(editor: &mut Editor) -> Option<(usize, Breakpoint)> {
+fn get_breakpoint_at_current_line(editor: &mut ui_tree) -> Option<(usize, Breakpoint)> {
     let (view, doc) = current!(editor);
     let text = doc.text().slice(..);
 
@@ -113,13 +113,13 @@ fn dap_callback<T, F>(
     callback: F,
 ) where
     T: for<'de> serde::Deserialize<'de> + Send + 'static,
-    F: FnOnce(&mut Editor, &mut Compositor, T) + Send + 'static,
+    F: FnOnce(&mut ui_tree, &mut Compositor, T) + Send + 'static,
 {
     let callback = Box::pin(async move {
         let json = call.await?;
         let response = serde_json::from_value(json)?;
         let call: Callback = Callback::EditorCompositor(Box::new(
-            move |editor: &mut Editor, compositor: &mut Compositor| {
+            move |editor: &mut ui_tree, compositor: &mut Compositor| {
                 callback(editor, compositor, response)
             },
         ));
@@ -223,7 +223,7 @@ pub fn dap_start_impl(
 
     let args = to_value(args).unwrap();
 
-    let callback = |_editor: &mut Editor, _compositor: &mut Compositor, _response: Value| {
+    let callback = |_editor: &mut ui_tree, _compositor: &mut Compositor, _response: Value| {
         // if let Err(e) = result {
         //     editor.set_error(format!("Failed {} target: {}", template.request, e));
         // }

@@ -11,7 +11,7 @@ use helix_core::{
 };
 use helix_view::{
     graphics::{CursorKind, Margin, Rect},
-    Editor,
+    ui_tree,
 };
 
 pub type Completion = (RangeFrom<usize>, Cow<'static, str>);
@@ -25,7 +25,7 @@ pub struct Prompt {
     selection: Option<usize>,
     history_register: Option<char>,
     history_pos: Option<usize>,
-    completion_fn: Box<dyn FnMut(&Editor, &str) -> Vec<Completion>>,
+    completion_fn: Box<dyn FnMut(&ui_tree, &str) -> Vec<Completion>>,
     callback_fn: Box<dyn FnMut(&mut Context, &str, PromptEvent)>,
     pub doc_fn: Box<dyn Fn(&str) -> Option<Cow<str>>>,
     next_char_handler: Option<PromptCharHandler>,
@@ -65,7 +65,7 @@ impl Prompt {
     pub fn new(
         prompt: Cow<'static, str>,
         history_register: Option<char>,
-        completion_fn: impl FnMut(&Editor, &str) -> Vec<Completion> + 'static,
+        completion_fn: impl FnMut(&ui_tree, &str) -> Vec<Completion> + 'static,
         callback_fn: impl FnMut(&mut Context, &str, PromptEvent) + 'static,
     ) -> Self {
         Self {
@@ -83,7 +83,7 @@ impl Prompt {
         }
     }
 
-    pub fn with_line(mut self, line: String, editor: &Editor) -> Self {
+    pub fn with_line(mut self, line: String, editor: &ui_tree) -> Self {
         let cursor = line.len();
         self.line = line;
         self.cursor = cursor;
@@ -95,7 +95,7 @@ impl Prompt {
         &self.line
     }
 
-    pub fn recalculate_completion(&mut self, editor: &Editor) {
+    pub fn recalculate_completion(&mut self, editor: &ui_tree) {
         self.exit_selection();
         self.completion = (self.completion_fn)(editor, &self.line);
     }
@@ -217,7 +217,7 @@ impl Prompt {
         self.recalculate_completion(cx.editor);
     }
 
-    pub fn insert_str(&mut self, s: &str, editor: &Editor) {
+    pub fn insert_str(&mut self, s: &str, editor: &ui_tree) {
         self.line.insert_str(self.cursor, s);
         self.cursor += s.len();
         self.recalculate_completion(editor);
@@ -236,7 +236,7 @@ impl Prompt {
         self.cursor = self.line.len();
     }
 
-    pub fn delete_char_backwards(&mut self, editor: &Editor) {
+    pub fn delete_char_backwards(&mut self, editor: &ui_tree) {
         let pos = self.eval_movement(Movement::BackwardChar(1));
         self.line.replace_range(pos..self.cursor, "");
         self.cursor = pos;
@@ -244,14 +244,14 @@ impl Prompt {
         self.recalculate_completion(editor);
     }
 
-    pub fn delete_char_forwards(&mut self, editor: &Editor) {
+    pub fn delete_char_forwards(&mut self, editor: &ui_tree) {
         let pos = self.eval_movement(Movement::ForwardChar(1));
         self.line.replace_range(self.cursor..pos, "");
 
         self.recalculate_completion(editor);
     }
 
-    pub fn delete_word_backwards(&mut self, editor: &Editor) {
+    pub fn delete_word_backwards(&mut self, editor: &ui_tree) {
         let pos = self.eval_movement(Movement::BackwardWord(1));
         self.line.replace_range(pos..self.cursor, "");
         self.cursor = pos;
@@ -259,14 +259,14 @@ impl Prompt {
         self.recalculate_completion(editor);
     }
 
-    pub fn delete_word_forwards(&mut self, editor: &Editor) {
+    pub fn delete_word_forwards(&mut self, editor: &ui_tree) {
         let pos = self.eval_movement(Movement::ForwardWord(1));
         self.line.replace_range(self.cursor..pos, "");
 
         self.recalculate_completion(editor);
     }
 
-    pub fn kill_to_start_of_line(&mut self, editor: &Editor) {
+    pub fn kill_to_start_of_line(&mut self, editor: &ui_tree) {
         let pos = self.eval_movement(Movement::StartOfLine);
         self.line.replace_range(pos..self.cursor, "");
         self.cursor = pos;
@@ -274,14 +274,14 @@ impl Prompt {
         self.recalculate_completion(editor);
     }
 
-    pub fn kill_to_end_of_line(&mut self, editor: &Editor) {
+    pub fn kill_to_end_of_line(&mut self, editor: &ui_tree) {
         let pos = self.eval_movement(Movement::EndOfLine);
         self.line.replace_range(self.cursor..pos, "");
 
         self.recalculate_completion(editor);
     }
 
-    pub fn clear(&mut self, editor: &Editor) {
+    pub fn clear(&mut self, editor: &ui_tree) {
         self.line.clear();
         self.cursor = 0;
         self.recalculate_completion(editor);
@@ -638,7 +638,7 @@ impl Component for Prompt {
         self.render_prompt(area, surface, cx)
     }
 
-    fn cursor(&self, area: Rect, _editor: &Editor) -> (Option<Position>, CursorKind) {
+    fn cursor(&self, area: Rect, _editor: &ui_tree) -> (Option<Position>, CursorKind) {
         let line = area.height as usize - 1;
         (
             Some(Position::new(

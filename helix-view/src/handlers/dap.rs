@@ -1,5 +1,5 @@
 use crate::editor::{Action, Breakpoint};
-use crate::{align_view, Align, Editor};
+use crate::{align_view, Align, ui_tree};
 use helix_core::Selection;
 use helix_dap::{self as dap, Client, Payload, Request, ThreadId};
 use helix_lsp::block_on;
@@ -26,7 +26,7 @@ pub fn dap_pos_to_pos(doc: &helix_core::Rope, line: usize, column: usize) -> Opt
     Some(pos)
 }
 
-pub async fn select_thread_id(editor: &mut Editor, thread_id: ThreadId, force: bool) {
+pub async fn select_thread_id(editor: &mut ui_tree, thread_id: ThreadId, force: bool) {
     let debugger = debugger!(editor);
 
     if !force && debugger.thread_id.is_some() {
@@ -51,7 +51,7 @@ pub async fn fetch_stack_trace(debugger: &mut Client, thread_id: ThreadId) {
     debugger.active_frame = Some(0);
 }
 
-pub fn jump_to_stack_frame(editor: &mut Editor, frame: &helix_dap::StackFrame) {
+pub fn jump_to_stack_frame(editor: &mut ui_tree, frame: &helix_dap::StackFrame) {
     let path = if let Some(helix_dap::Source {
         path: Some(ref path),
         ..
@@ -138,7 +138,7 @@ pub fn breakpoints_changed(
     Ok(())
 }
 
-impl Editor {
+impl ui_tree {
     pub async fn handle_debugger_message(&mut self, payload: helix_dap::Payload) -> bool {
         use dap::requests::RunInTerminal;
         use helix_dap::{events, Event};

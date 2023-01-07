@@ -159,21 +159,12 @@ impl fmt::Display for KeyEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
             "{}{}{}",
-            if self.modifiers.contains(KeyModifiers::SHIFT) {
-                "S-"
-            } else {
-                ""
-            },
-            if self.modifiers.contains(KeyModifiers::ALT) {
-                "A-"
-            } else {
-                ""
-            },
-            if self.modifiers.contains(KeyModifiers::CONTROL) {
-                "C-"
-            } else {
-                ""
-            },
+            if self.modifiers.contains(KeyModifiers::SHIFT) { "S-" }
+            else { "" },
+            if self.modifiers.contains(KeyModifiers::ALT) { "A-" } 
+            else { "" },
+            if self.modifiers.contains(KeyModifiers::CONTROL) { "C-" }
+            else { "" },
         ))?;
         match self.code {
             KeyCode::Backspace => f.write_str(keys::BACKSPACE)?,

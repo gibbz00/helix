@@ -10,7 +10,7 @@ use tui::{
     widgets::Row,
 };
 
-use super::{align_view, push_jump, Align, Context, Editor, Open};
+use super::{align_view, push_jump, Align, Context, ui_tree, Open};
 
 use helix_core::{path, Selection};
 use helix_view::{apply_transaction, document::Mode, editor::Action, theme::Style};
@@ -167,7 +167,7 @@ fn location_to_file_location(location: &lsp::Location) -> FileLocation {
 
 // TODO: share with symbol picker(symbol.location)
 fn jump_to_location(
-    editor: &mut Editor,
+    editor: &mut ui_tree,
     location: &lsp::Location,
     offset_encoding: OffsetEncoding,
     action: Action,
@@ -392,7 +392,7 @@ pub fn workspace_symbol_picker(cx: &mut Context) {
         move |_editor, compositor, response: Option<Vec<lsp::SymbolInformation>>| {
             let symbols = response.unwrap_or_default();
             let picker = sym_picker(symbols, current_url, offset_encoding);
-            let get_symbols = |query: String, editor: &mut Editor| {
+            let get_symbols = |query: String, editor: &mut ui_tree| {
                 let doc = doc!(editor);
                 let language_server = match doc.language_server() {
                     Some(s) => s,
@@ -671,7 +671,7 @@ impl ui::menu::Item for lsp::Command {
     }
 }
 
-pub fn execute_lsp_command(editor: &mut Editor, cmd: lsp::Command) {
+pub fn execute_lsp_command(editor: &mut ui_tree, cmd: lsp::Command) {
     let doc = doc!(editor);
     let language_server = language_server!(editor, doc);
 
@@ -752,7 +752,7 @@ pub fn apply_document_resource_op(op: &lsp::ResourceOp) -> std::io::Result<()> {
 }
 
 pub fn apply_workspace_edit(
-    editor: &mut Editor,
+    editor: &mut ui_tree,
     offset_encoding: OffsetEncoding,
     workspace_edit: &lsp::WorkspaceEdit,
 ) {
@@ -871,7 +871,7 @@ pub fn apply_workspace_edit(
 }
 
 fn goto_impl(
-    editor: &mut Editor,
+    editor: &mut ui_tree,
     compositor: &mut Compositor,
     locations: Vec<lsp::Location>,
     offset_encoding: OffsetEncoding,

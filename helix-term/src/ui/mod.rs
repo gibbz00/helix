@@ -27,7 +27,7 @@ pub use text::Text;
 
 use helix_core::regex::Regex;
 use helix_core::regex::RegexBuilder;
-use helix_view::Editor;
+use helix_view::ui_tree;
 
 use std::path::PathBuf;
 
@@ -35,7 +35,7 @@ pub fn prompt(
     cx: &mut crate::commands::Context,
     prompt: std::borrow::Cow<'static, str>,
     history_register: Option<char>,
-    completion_fn: impl FnMut(&Editor, &str) -> Vec<prompt::Completion> + 'static,
+    completion_fn: impl FnMut(&ui_tree, &str) -> Vec<prompt::Completion> + 'static,
     callback_fn: impl FnMut(&mut crate::compositor::Context, &str, PromptEvent) + 'static,
 ) {
     let mut prompt = Prompt::new(prompt, history_register, completion_fn, callback_fn);
@@ -49,7 +49,7 @@ pub fn prompt_with_input(
     prompt: std::borrow::Cow<'static, str>,
     input: String,
     history_register: Option<char>,
-    completion_fn: impl FnMut(&Editor, &str) -> Vec<prompt::Completion> + 'static,
+    completion_fn: impl FnMut(&ui_tree, &str) -> Vec<prompt::Completion> + 'static,
     callback_fn: impl FnMut(&mut crate::compositor::Context, &str, PromptEvent) + 'static,
 ) {
     let prompt = Prompt::new(prompt, history_register, completion_fn, callback_fn)
@@ -61,8 +61,8 @@ pub fn regex_prompt(
     cx: &mut crate::commands::Context,
     prompt: std::borrow::Cow<'static, str>,
     history_register: Option<char>,
-    completion_fn: impl FnMut(&Editor, &str) -> Vec<prompt::Completion> + 'static,
-    fun: impl Fn(&mut Editor, Regex, PromptEvent) + 'static,
+    completion_fn: impl FnMut(&ui_tree, &str) -> Vec<prompt::Completion> + 'static,
+    fun: impl Fn(&mut ui_tree, Regex, PromptEvent) + 'static,
 ) {
     let (view, doc) = current!(cx.editor);
     let doc_id = view.doc;
@@ -122,7 +122,7 @@ pub fn regex_prompt(
                             if event == PromptEvent::Validate {
                                 let callback = async move {
                                     let call: job::Callback = Callback::EditorCompositor(Box::new(
-                                        move |_editor: &mut Editor, compositor: &mut Compositor| {
+                                        move |_editor: &mut ui_tree, compositor: &mut Compositor| {
                                             let contents = Text::new(format!("{}", err));
                                             let size = compositor.size();
                                             let mut popup = Popup::new("invalid-regex", contents)
@@ -241,18 +241,18 @@ pub mod completers {
     use fuzzy_matcher::FuzzyMatcher;
     use helix_view::document::SCRATCH_BUFFER_NAME;
     use helix_view::theme;
-    use helix_view::{editor::Config, Editor};
+    use helix_view::{editor::Config, ui_tree};
     use once_cell::sync::Lazy;
     use std::borrow::Cow;
     use std::cmp::Reverse;
 
-    pub type Completer = fn(&Editor, &str) -> Vec<Completion>;
+    pub type Completer = fn(&ui_tree, &str) -> Vec<Completion>;
 
-    pub fn none(_editor: &Editor, _input: &str) -> Vec<Completion> {
+    pub fn none(_editor: &ui_tree, _input: &str) -> Vec<Completion> {
         Vec::new()
     }
 
-    pub fn buffer(editor: &Editor, input: &str) -> Vec<Completion> {
+    pub fn buffer(editor: &ui_tree, input: &str) -> Vec<Completion> {
         let mut names: Vec<_> = editor
             .documents
             .values()
@@ -280,7 +280,7 @@ pub mod completers {
         names
     }
 
-    pub fn theme(_editor: &Editor, input: &str) -> Vec<Completion> {
+    pub fn theme(_editor: &ui_tree, input: &str) -> Vec<Completion> {
         let mut names = theme::Loader::read_names(&helix_loader::runtime_dir().join("themes"));
         names.extend(theme::Loader::read_names(
             &helix_loader::config_dir().join("themes"),
@@ -328,7 +328,7 @@ pub mod completers {
         }
     }
 
-    pub fn setting(_editor: &Editor, input: &str) -> Vec<Completion> {
+    pub fn setting(_editor: &ui_tree, input: &str) -> Vec<Completion> {
         static KEYS: Lazy<Vec<String>> = Lazy::new(|| {
             let mut keys = Vec::new();
             let json = serde_json::json!(Config::default());
@@ -350,7 +350,7 @@ pub mod completers {
             .collect()
     }
 
-    pub fn filename(editor: &Editor, input: &str) -> Vec<Completion> {
+    pub fn filename(editor: &ui_tree, input: &str) -> Vec<Completion> {
         filename_impl(editor, input, |entry| {
             let is_dir = entry.file_type().map_or(false, |entry| entry.is_dir());
 
@@ -362,7 +362,7 @@ pub mod completers {
         })
     }
 
-    pub fn language(editor: &Editor, input: &str) -> Vec<Completion> {
+    pub fn language(editor: &ui_tree, input: &str) -> Vec<Completion> {
         let matcher = Matcher::default();
 
         let text: String = "text".into();
@@ -391,7 +391,7 @@ pub mod completers {
             .collect()
     }
 
-    pub fn lsp_workspace_command(editor: &Editor, input: &str) -> Vec<Completion> {
+    pub fn lsp_workspace_command(editor: &ui_tree, input: &str) -> Vec<Completion> {
         let matcher = Matcher::default();
 
         let (_, doc) = current_ref!(editor);
@@ -430,7 +430,7 @@ pub mod completers {
             .collect()
     }
 
-    pub fn directory(editor: &Editor, input: &str) -> Vec<Completion> {
+    pub fn directory(editor: &ui_tree, input: &str) -> Vec<Completion> {
         filename_impl(editor, input, |entry| {
             let is_dir = entry.file_type().map_or(false, |entry| entry.is_dir());
 
@@ -454,7 +454,7 @@ pub mod completers {
     }
 
     // TODO: we could return an iter/lazy thing so it can fetch as many as it needs.
-    fn filename_impl<F>(_editor: &Editor, input: &str, filter_fn: F) -> Vec<Completion>
+    fn filename_impl<F>(_editor: &ui_tree, input: &str, filter_fn: F) -> Vec<Completion>
     where
         F: Fn(&ignore::DirEntry) -> FileMatch,
     {

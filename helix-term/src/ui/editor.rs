@@ -25,7 +25,7 @@ use helix_view::{
     graphics::{Color, CursorKind, Modifier, Rect, Style},
     input::{KeyEvent, MouseButton, MouseEvent, MouseEventKind},
     keyboard::{KeyCode, KeyModifiers},
-    Document, Editor, Theme, View,
+    Document, ui_tree, Theme, View,
 };
 use std::{borrow::Cow, cmp::min, num::NonZeroUsize, path::PathBuf};
 
@@ -217,7 +217,7 @@ impl EditorView {
 
     pub fn render_view(
         &self,
-        editor: &Editor,
+        editor: &ui_tree,
         doc: &Document,
         view: &View,
         viewport: Rect,
@@ -328,7 +328,7 @@ impl EditorView {
     }
 
     pub fn render_rulers(
-        editor: &Editor,
+        editor: &ui_tree,
         doc: &Document,
         view: &View,
         viewport: Rect,
@@ -799,7 +799,7 @@ impl EditorView {
     }
 
     /// Render bufferline at the top
-    pub fn render_bufferline(editor: &Editor, viewport: Rect, surface: &mut Surface) {
+    pub fn render_bufferline(editor: &ui_tree, viewport: Rect, surface: &mut Surface) {
         let scratch = PathBuf::from(SCRATCH_BUFFER_NAME); // default filename to use for scratch buffer
         surface.clear_with(
             viewport,
@@ -852,7 +852,7 @@ impl EditorView {
     }
 
     pub fn render_gutter(
-        editor: &Editor,
+        editor: &ui_tree,
         doc: &Document,
         view: &View,
         viewport: Rect,
@@ -1061,7 +1061,7 @@ impl EditorView {
 
     pub fn set_completion(
         &mut self,
-        editor: &mut Editor,
+        editor: &mut ui_tree,
         items: Vec<helix_lsp::lsp::CompletionItem>,
         offset_encoding: helix_lsp::OffsetEncoding,
         start_offset: usize,
@@ -1087,7 +1087,7 @@ impl EditorView {
         self.completion = Some(completion);
     }
 
-    pub fn clear_completion(&mut self, editor: &mut Editor) {
+    pub fn clear_completion(&mut self, editor: &mut ui_tree) {
         self.completion = None;
 
         // Clear any savepoints
@@ -1130,14 +1130,14 @@ impl EditorView {
             ..
         } = *event;
 
-        let pos_and_view = |editor: &Editor, row, column| {
+        let pos_and_view = |editor: &ui_tree, row, column| {
             editor.tree.views().find_map(|(view, _focus)| {
                 view.pos_at_screen_coords(&editor.documents[&view.doc], row, column)
                     .map(|pos| (pos, view.id))
             })
         };
 
-        let gutter_coords_and_view = |editor: &Editor, row, column| {
+        let gutter_coords_and_view = |editor: &ui_tree, row, column| {
             editor.tree.views().find_map(|(view, _focus)| {
                 view.gutter_coords_at_screen_coords(row, column)
                     .map(|coords| (coords, view.id))
@@ -1545,7 +1545,7 @@ impl Component for EditorView {
         }
     }
 
-    fn cursor(&self, _area: Rect, editor: &Editor) -> (Option<Position>, CursorKind) {
+    fn cursor(&self, _area: Rect, editor: &ui_tree) -> (Option<Position>, CursorKind) {
         match editor.cursor() {
             // All block cursors are drawn manually
             (pos, CursorKind::Block) => (pos, CursorKind::Hidden),

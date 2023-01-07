@@ -1,5 +1,6 @@
 use crate::{
     event_handler::EventHandler,
+    lists,
     align_view,
     clipboard::{get_clipboard_provider, ClipboardProvider},
     document::{DocumentSavedEventFuture, DocumentSavedEventResult, Mode},
@@ -42,9 +43,9 @@ use tokio::{
     time::{sleep, Duration, Instant, Sleep},
 };
 
-pub struct Motion(pub Box<dyn Fn(&mut Editor)>);
+pub struct Motion(pub Box<dyn Fn(&mut UITree)>);
 impl Motion {
-    pub fn run(&self, e: &mut Editor) {
+    pub fn run(&self, e: &mut UITree) {
         (self.0)(e)
     }
 }
@@ -69,13 +70,14 @@ pub struct Breakpoint {
 
 use futures_util::stream::{Flatten, Once};
 
-pub struct Editor {
+pub struct UITree {
     /// Current editing mode.
     pub mode: Mode,
     pub tree: Tree,
     pub event_handler: EventHandler,
     pub next_document_id: DocumentId,
     pub documents: BTreeMap<DocumentId, Document>,
+    pub lists: Vec<Lists>;
 
     // We Flatten<> to resolve the inner DocumentSavedEventFuture. For that we need a stream of streams, hence the Once<>.
     // https://stackoverflow.com/a/66875668
@@ -174,7 +176,7 @@ pub enum CloseError {
     SaveError(anyhow::Error),
 }
 
-impl Editor {
+impl UITree {
     pub fn new(
         mut area: Rect,
         theme_loader: Arc<theme::Loader>,

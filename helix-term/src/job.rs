@@ -1,4 +1,4 @@
-use helix_view::Editor;
+use helix_view::ui_tree;
 
 use crate::compositor::Compositor;
 
@@ -6,8 +6,8 @@ use futures_util::future::{BoxFuture, Future, FutureExt};
 use futures_util::stream::{FuturesUnordered, StreamExt};
 
 pub enum Callback {
-    EditorCompositor(Box<dyn FnOnce(&mut Editor, &mut Compositor) + Send>),
-    Editor(Box<dyn FnOnce(&mut Editor) + Send>),
+    EditorCompositor(Box<dyn FnOnce(&mut ui_tree, &mut Compositor) + Send>),
+    Editor(Box<dyn FnOnce(&mut ui_tree) + Send>),
 }
 
 pub type JobFuture = BoxFuture<'static, anyhow::Result<Option<Callback>>>;
@@ -66,7 +66,7 @@ impl Jobs {
 
     pub fn handle_callback(
         &self,
-        editor: &mut Editor,
+        editor: &mut ui_tree,
         compositor: &mut Compositor,
         call: anyhow::Result<Option<Callback>>,
     ) {
@@ -100,7 +100,7 @@ impl Jobs {
     /// Blocks until all the jobs that need to be waited on are done.
     pub async fn finish(
         &mut self,
-        editor: &mut Editor,
+        editor: &mut ui_tree,
         mut compositor: Option<&mut Compositor>,
     ) -> anyhow::Result<()> {
         log::debug!("waiting on jobs...");

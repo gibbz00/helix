@@ -27,7 +27,7 @@ use helix_core::{
 };
 
 use crate::editor::RedrawHandle;
-use crate::{apply_transaction, DocumentId, Editor, View, ViewId};
+use crate::{apply_transaction, DocumentId, ui_tree, View, ViewId};
 
 /// 8kB of buffer space for encoding and decoding `Rope`s.
 const BUF_SIZE: usize = 8192;
@@ -1178,7 +1178,7 @@ impl Document {
     /// language config with auto pairs configured, returns that;
     /// otherwise, falls back to the global auto pairs config. If the global
     /// config is false, then ignore language settings.
-    pub fn auto_pairs<'a>(&'a self, editor: &'a Editor) -> Option<&'a AutoPairs> {
+    pub fn auto_pairs<'a>(&'a self, editor: &'a ui_tree) -> Option<&'a AutoPairs> {
         let global_config = (editor.auto_pairs).as_ref();
 
         // NOTE: If the user specifies the global auto pairs config as false, then

@@ -4,7 +4,7 @@ use helix_view::{
     document::{Mode, SCRATCH_BUFFER_NAME},
     graphics::Rect,
     theme::Style,
-    Document, Editor, View,
+    Document, ui_tree, View,
 };
 
 use crate::ui::ProgressSpinners;
@@ -14,7 +14,7 @@ use tui::buffer::Buffer as Surface;
 use tui::text::{Span, Spans};
 
 pub struct RenderContext<'a> {
-    pub editor: &'a Editor,
+    pub editor: &'a ui_tree,
     pub doc: &'a Document,
     pub view: &'a View,
     pub focused: bool,
@@ -24,7 +24,7 @@ pub struct RenderContext<'a> {
 
 impl<'a> RenderContext<'a> {
     pub fn new(
-        editor: &'a Editor,
+        editor: &'a ui_tree,
         doc: &'a Document,
         view: &'a View,
         focused: bool,

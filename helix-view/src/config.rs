@@ -1,21 +1,19 @@
 mod keymap;
-pub mod editor;
-pub mod term_config;
+mod view;
 
-pub use keymap::default as defualt_keymap;
+pub use keymap::default as default_keymap;
+
+use {keymap::default, view::ViewConfig};
 use crate::{document::Mode, keymap::Keymap};
 use serde::Deserialize;
 use std::io::Error;
 use toml::de::Error as TomlError;
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, default)]
 pub struct Config {
-    pub theme: Option<String>,
-    #[serde(default)]
     pub keys: Keymap,
-    #[serde(default)]
-    pub editor: editor::Config,
+    pub view: ViewConfig,
 }
 
 impl Config {
@@ -30,10 +28,8 @@ impl Config {
 impl Default for Config {
     fn default() -> Config {
         Config {
-            // TODO: Set a theme default?
-            theme: None,
             keys: Keymap::default(),
-            editor: editor::Config::default(),
+            view: ViewConfig::default(),
         }
     }
 }

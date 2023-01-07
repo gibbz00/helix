@@ -18,6 +18,9 @@ pub fn config_file() -> PathBuf {
         }
     }
 }
+pub fn user_themes_dir() -> PathBuf {
+    config_dir().join("themes")
+}
 pub fn setup_config_file(specified_file: Option<PathBuf>) {
     let config_file = specified_file.unwrap_or_else(|| {
         let config_dir = config_dir();
@@ -67,6 +70,10 @@ pub fn cache_dir() -> PathBuf {
     path
 }
 
+pub fn runtime_themes() -> PathBuf {
+    runtime_dir().join("themes")
+}
+
 pub fn runtime_dir() -> PathBuf {
     if let Some(runtime_dir) = RUNTIME_DIR.get() {
         return runtime_dir.to_path_buf();
@@ -113,7 +120,7 @@ pub fn default_lang_configs() -> toml::Value {
 /// Searces for language.toml in config path (user config) and in 'helix' directories
 /// in opened git repository (local). Merge order:
 /// local -> user config -> default 
-pub fn merged_lang_config() -> Result<toml::Value, toml::de::Error> {
+pub fn merged_lang_configs() -> Result<toml::Value, toml::de::Error> {
     let config = local_lang_config_dirs()
         .into_iter()
         .chain([config_dir()].into_iter())

@@ -1,7 +1,7 @@
 use helix_core::Position;
 use helix_view::{
     graphics::{CursorKind, Rect},
-    Editor,
+    ui_tree,
 };
 use tui::buffer::Buffer;
 
@@ -65,7 +65,7 @@ impl<T: Component + 'static> Component for Overlay<T> {
         self.content.handle_event(event, ctx)
     }
 
-    fn cursor(&self, area: Rect, ctx: &Editor) -> (Option<Position>, CursorKind) {
+    fn cursor(&self, area: Rect, ctx: &ui_tree) -> (Option<Position>, CursorKind) {
         let dimensions = (self.calc_child_size)(area);
         self.content.cursor(dimensions, ctx)
     }

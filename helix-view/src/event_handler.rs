@@ -1,4 +1,4 @@
-use crate::{input::KeyEvent, keyboard::KeyCode, document::Mode, keymap::{KeyTrie, KeyTrieNode, Keymap}, command::Commands};
+use crate::{input::KeyEvent, keyboard::KeyCode, document::Mode, keymap::{KeyTrie, KeyTrieNode, Keymap}, command::MappableCommands};
 
 pub struct EventHandler {
     pub keymap: Keymap,
@@ -19,7 +19,7 @@ impl EventHandler {
         &self.pending_keys
     }
 
-    pub fn handle_key_event(&mut self, mode: Mode, key_event: KeyEvent) -> Option<Commands> {
+    pub fn handle_key_event(&mut self, mode: Mode, key_event: KeyEvent) -> Option<MappableCommands> {
         let mut key_trie_path = self.pending_keys.into_flattened();
         key_trie_path.push(key_event.clone());
         let found_key_trie = self.get_keytrie(mode).traverse(key_trie_path);

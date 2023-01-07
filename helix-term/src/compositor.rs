@@ -15,12 +15,12 @@ pub enum EventResult {
 }
 
 use crate::job::Jobs;
-use helix_view::Editor;
+use helix_view::ui_tree;
 
 pub use helix_view::input::Event;
 
 pub struct Context<'a> {
-    pub editor: &'a mut Editor,
+    pub editor: &'a mut ui_tree,
     pub scroll: Option<usize>,
     pub jobs: &'a mut Jobs,
 }
@@ -51,7 +51,7 @@ pub trait Component: Any + AnyComponent {
     fn render(&mut self, area: Rect, frame: &mut Surface, ctx: &mut Context);
 
     /// Get cursor position and cursor kind.
-    fn cursor(&self, _area: Rect, _ctx: &Editor) -> (Option<Position>, CursorKind) {
+    fn cursor(&self, _area: Rect, _ctx: &ui_tree) -> (Option<Position>, CursorKind) {
         (None, CursorKind::Hidden)
     }
 
@@ -168,7 +168,7 @@ impl Compositor {
         }
     }
 
-    pub fn cursor(&self, area: Rect, editor: &Editor) -> (Option<Position>, CursorKind) {
+    pub fn cursor(&self, area: Rect, editor: &ui_tree) -> (Option<Position>, CursorKind) {
         for layer in self.layers.iter().rev() {
             if let (Some(pos), kind) = layer.cursor(area, editor) {
                 return (Some(pos), kind);

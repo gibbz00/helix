@@ -23,7 +23,7 @@ use helix_view::{
     editor::Action,
     graphics::{CursorKind, Margin, Modifier, Rect},
     theme::Style,
-    Document, DocumentId, Editor,
+    Document, DocumentId, ui_tree,
 };
 
 use super::{menu::Item, overlay::Overlay};
@@ -70,7 +70,7 @@ pub struct FilePicker<T: Item> {
     preview_cache: HashMap<PathBuf, CachedPreview>,
     read_buffer: Vec<u8>,
     /// Given an item in the picker, return the file path and line number to display.
-    file_fn: Box<dyn Fn(&Editor, &T) -> Option<FileLocation>>,
+    file_fn: Box<dyn Fn(&ui_tree, &T) -> Option<FileLocation>>,
 }
 
 pub enum CachedPreview {
@@ -115,7 +115,7 @@ impl<T: Item> FilePicker<T> {
         options: Vec<T>,
         editor_data: T::Data,
         callback_fn: impl Fn(&mut Context, &T, Action) + 'static,
-        preview_fn: impl Fn(&Editor, &T) -> Option<FileLocation> + 'static,
+        preview_fn: impl Fn(&ui_tree, &T) -> Option<FileLocation> + 'static,
     ) -> Self {
         let truncate_start = true;
         let mut picker = Picker::new(options, editor_data, callback_fn);
@@ -136,7 +136,7 @@ impl<T: Item> FilePicker<T> {
         self
     }
 
-    fn current_file(&self, editor: &Editor) -> Option<FileLocation> {
+    fn current_file(&self, editor: &ui_tree) -> Option<FileLocation> {
         self.picker
             .selection()
             .and_then(|current| (self.file_fn)(editor, current))
@@ -148,7 +148,7 @@ impl<T: Item> FilePicker<T> {
     fn get_preview<'picker, 'editor>(
         &'picker mut self,
         path_or_id: PathOrId,
-        editor: &'editor Editor,
+        editor: &'editor ui_tree,
     ) -> Preview<'picker, 'editor> {
         match path_or_id {
             PathOrId::Path(path) => {
@@ -330,7 +330,7 @@ impl<T: Item + 'static> Component for FilePicker<T> {
         self.picker.handle_event(event, ctx)
     }
 
-    fn cursor(&self, area: Rect, ctx: &Editor) -> (Option<Position>, CursorKind) {
+    fn cursor(&self, area: Rect, ctx: &ui_tree) -> (Option<Position>, CursorKind) {
         self.picker.cursor(area, ctx)
     }
 
@@ -829,7 +829,7 @@ impl<T: Item + 'static> Component for Picker<T> {
         );
     }
 
-    fn cursor(&self, area: Rect, editor: &Editor) -> (Option<Position>, CursorKind) {
+    fn cursor(&self, area: Rect, editor: &ui_tree) -> (Option<Position>, CursorKind) {
         let block = Block::default().borders(Borders::ALL);
         // calculate the inner area inside the box
         let inner = block.inner(area);
@@ -844,7 +844,7 @@ impl<T: Item + 'static> Component for Picker<T> {
 /// Returns a new list of options to replace the contents of the picker
 /// when called with the current picker query,
 pub type DynQueryCallback<T> =
-    Box<dyn Fn(String, &mut Editor) -> BoxFuture<'static, anyhow::Result<Vec<T>>>>;
+    Box<dyn Fn(String, &mut ui_tree) -> BoxFuture<'static, anyhow::Result<Vec<T>>>>;
 
 /// A picker that updates its contents via a callback whenever the
 /// query string changes. Useful for live grep, workspace symbols, etc.
@@ -903,7 +903,7 @@ impl<T: Item + Send + 'static> Component for DynamicPicker<T> {
         EventResult::Consumed(None)
     }
 
-    fn cursor(&self, area: Rect, ctx: &Editor) -> (Option<Position>, CursorKind) {
+    fn cursor(&self, area: Rect, ctx: &ui_tree) -> (Option<Position>, CursorKind) {
         self.file_picker.cursor(area, ctx)
     }
 

@@ -1,5 +1,5 @@
 use super::keytrie::KeyTrie;
-use crate::{input::KeyEvent, command::{Command, Commands}};
+use crate::{input::KeyEvent, command::{Command, MappableCommands}};
 use std::collections::HashMap;
 use serde::{Deserialize, de::Visitor};
 
@@ -9,7 +9,7 @@ use serde::{Deserialize, de::Visitor};
 /// For KeyTrie, the description is used for respective infobox titles,
 #[derive(Debug, Clone, PartialEq)]
 pub enum KeyTrieNode {
-    Commands(Commands),
+    Commands(MappableCommands),
     KeyTrie(KeyTrie),
 }
 

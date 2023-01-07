@@ -4,7 +4,7 @@ use crate::{config::term_config, document::Mode, gutter::{GutterComponents, Line
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", default, deny_unknown_fields)]
-pub struct Config {
+pub struct ViewConfig {
     pub mouse: MouseConfig,
     pub document: DocumentConfig,
     pub lsp: LspConfig,
@@ -20,7 +20,7 @@ pub struct Config {
     pub terminal: Option<term_config::TerminalConfig>,
 }
 
-impl Default for Config {
+impl Default for ViewConfig {
     fn default() -> Self {
         Self {
             keymap_suggestions: true,

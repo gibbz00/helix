@@ -11,7 +11,7 @@ use helix_view::{
     graphics::Rect,
     theme,
     tree::Layout,
-    Align, Editor,
+    Align, ui_tree,
 };
 use crate::{
     args::Args,
@@ -66,7 +66,7 @@ type Terminal = tui::terminal::Terminal<TestBackend>;
 pub struct Application {
     compositor: Compositor,
     terminal: Terminal,
-    pub editor: Editor,
+    pub editor: ui_tree,
 
     config: Arc<ArcSwap<Config>>,
 
@@ -163,7 +163,7 @@ impl Application {
         let terminal = Terminal::new(backend)?;
         let area = terminal.size().expect("couldn't get terminal size");
         let mut compositor = Compositor::new(area);
-        let mut editor = Editor::new(
+        let mut editor = ui_tree::new(
             area,
             theme_loader.clone(),
             syn_loader.clone(),

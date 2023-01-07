@@ -8,7 +8,7 @@ use helix_core::{Change, Transaction};
 use helix_view::{
     graphics::Rect,
     input::{KeyCode, KeyEvent},
-    Document, Editor,
+    Document, ui_tree,
 };
 
 use crate::commands;
@@ -89,7 +89,7 @@ impl Completion {
     pub const ID: &'static str = "completion";
 
     pub fn new(
-        editor: &Editor,
+        editor: &ui_tree,
         mut items: Vec<CompletionItem>,
         offset_encoding: helix_lsp::OffsetEncoding,
         start_offset: usize,
@@ -99,7 +99,7 @@ impl Completion {
         items.sort_by_key(|item| !item.preselect.unwrap_or(false));
 
         // Then create the menu
-        let menu = Menu::new(items, (), move |editor: &mut Editor, item, event| {
+        let menu = Menu::new(items, (), move |editor: &mut ui_tree, item, event| {
             fn item_to_transaction(
                 doc: &Document,
                 view_id: ViewId,
@@ -269,7 +269,7 @@ impl Completion {
         }
     }
 
-    pub fn recompute_filter(&mut self, editor: &Editor) {
+    pub fn recompute_filter(&mut self, editor: &ui_tree) {
         // recompute menu based on matches
         let menu = self.popup.contents_mut();
         let (view, doc) = current_ref!(editor);

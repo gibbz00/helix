@@ -11,7 +11,7 @@ pub use tui::widgets::{Cell, Row};
 use fuzzy_matcher::skim::SkimMatcherV2 as Matcher;
 use fuzzy_matcher::FuzzyMatcher;
 
-use helix_view::{graphics::Rect, Editor};
+use helix_view::{graphics::Rect, ui_tree};
 use tui::layout::Constraint;
 
 pub trait Item {
@@ -55,7 +55,7 @@ pub struct Menu<T: Item> {
 
     widths: Vec<Constraint>,
 
-    callback_fn: Box<dyn Fn(&mut Editor, Option<&T>, MenuEvent)>,
+    callback_fn: Box<dyn Fn(&mut ui_tree, Option<&T>, MenuEvent)>,
 
     scroll: usize,
     size: (u16, u16),
@@ -71,7 +71,7 @@ impl<T: Item> Menu<T> {
     pub fn new(
         options: Vec<T>,
         editor_data: <T as Item>::Data,
-        callback_fn: impl Fn(&mut Editor, Option<&T>, MenuEvent) + 'static,
+        callback_fn: impl Fn(&mut ui_tree, Option<&T>, MenuEvent) + 'static,
     ) -> Self {
         let matches = (0..options.len()).map(|i| (i, 0)).collect();
         Self {

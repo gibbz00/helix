@@ -3,7 +3,7 @@ pub mod macros;
 
 pub mod clipboard;
 pub mod document;
-pub mod editor;
+pub mod ui_tree;
 pub mod env;
 pub mod graphics;
 pub mod gutter;
@@ -22,7 +22,12 @@ pub mod config;
 pub mod event_handler;
 mod keymap;
 mod command;
+mod lists;
 
+pub use document::Document;
+pub use ui_tree::UITree;
+pub use theme::Theme;
+pub use view::View;
 use std::num::NonZeroUsize;
 
 // uses NonZeroUsize so Option<DocumentId> use a byte rather than two
@@ -81,7 +86,3 @@ pub fn apply_transaction(
     doc.apply(transaction, view.id)
 }
 
-pub use document::Document;
-pub use editor::Editor;
-pub use theme::Theme;
-pub use view::View;
