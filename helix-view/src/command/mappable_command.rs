@@ -5,7 +5,18 @@ use super::{
 /// The start of a command that can eventually be mapped to a Command in the COMMAND_LIST
 pub struct MappableCommand {
     name: &str,
-    supplied_args: &[&str]    
+    pub supplied_args: &[&str]    
+}
+
+impl MappableCommand {
+    /// Promt input of remaining args goes here
+    pub fn execute(&self) {
+        todo!()
+    }
+
+    pub fn name(&self) -> &str {
+        self.name
+    }
 }
 
 impl std::str::FromStr for MappableCommand {
