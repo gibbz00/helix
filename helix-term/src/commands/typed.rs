@@ -1798,27 +1798,12 @@ fn run_shell_command(
     Ok(())
 }
 
-
-
-pub static TYPABLE_COMMAND_MAP: Lazy<HashMap<&'static str, &'static TypableCommand>> =
-    Lazy::new(|| {
-        TYPABLE_COMMAND_LIST
-            .iter()
-            .flat_map(|cmd| {
-                std::iter::once((cmd.name, cmd))
-                    .chain(cmd.aliases.iter().map(move |&alias| (alias, cmd)))
-            })
-            .collect()
-    });
-
 #[allow(clippy::unnecessary_unwrap)]
 pub(super) fn command_mode(cx: &mut Context) {
     use shellwords::Shellwords;
+    use helix_view::command::{Command, COMMAND_MAP, CommandArguments};
 
-    let mut prompt = Prompt::new(
-        ":".into(),
-        Some(':'),
-        |editor: &ui_tree, input: &str| {
+    let mut prompt = Prompt::new(":".into(), Some(':'), |editor: &ui_tree, input: &str| {
             static FUZZY_MATCHER: Lazy<fuzzy_matcher::skim::SkimMatcherV2> =
                 Lazy::new(fuzzy_matcher::skim::SkimMatcherV2::default);
 
@@ -1827,7 +1812,7 @@ pub(super) fn command_mode(cx: &mut Context) {
 
             if words.is_empty() || (words.len() == 1 && !shellwords.ends_with_whitespace()) {
                 // If the command has not been finished yet, complete commands.
-                let mut matches: Vec<_> = typed::TYPABLE_COMMAND_LIST
+                let mut matches: Vec<_> = COMMAND_MAP
                     .iter()
                     .filter_map(|command| {
                         FUZZY_MATCHER
@@ -1853,10 +1838,12 @@ pub(super) fn command_mode(cx: &mut Context) {
                     )
                 };
 
-                if let Some(typed::TypableCommand {
-                    completer: Some(completer),
+                // TODO: show the completer for the respective argument
+                todo!();
+                if let Some( Command {
+                    args: Some(CommandArgument),
                     ..
-                }) = typed::TYPABLE_COMMAND_MAP.get(&words[0] as &str)
+                }) = .get(&words[0] as &str)
                 {
                     completer(editor, part)
                         .into_iter()
@@ -1889,7 +1876,7 @@ pub(super) fn command_mode(cx: &mut Context) {
             }
 
             // Handle typable commands
-            if let Some(cmd) = typed::TYPABLE_COMMAND_MAP.get(parts[0]) {
+            if let Some(cmd) = COMMAND_MAP.get(parts[0]) {
                 let shellwords = Shellwords::from(input);
                 let args = shellwords.words();
 
@@ -1904,16 +1891,12 @@ pub(super) fn command_mode(cx: &mut Context) {
     );
     prompt.doc_fn = Box::new(|input: &str| {
         let part = input.split(' ').next().unwrap_or_default();
-
-        if let Some(typed::TypableCommand { doc, aliases, .. }) =
-            typed::TYPABLE_COMMAND_MAP.get(part)
-        {
+        if let Some(Command {description, aliases, ..}) = COMMAND_MAP.get(part) {
             if aliases.is_empty() {
-                return Some((*doc).into());
+                return Some((*description).into());
             }
-            return Some(format!("{}\nAliases: {}", doc, aliases.join(", ")).into());
+            return Some(format!("{descrpition}\nAliases: {}", command.aliases.join(", ")).into());
         }
-
         None
     });
 

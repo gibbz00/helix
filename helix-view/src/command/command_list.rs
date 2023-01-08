@@ -1,4 +1,13 @@
-use super::{Command, CommandArguments};
+use super::{Command, CommandArgument};
+
+/// Access elements in COMMAND_LIST by aliases too.
+pub static COMMAND_MAP: Lazy<HashMap<&'static str, &'static Command>> =
+    Lazy::new(|| COMMAND_LIST.iter()
+        .flat_map(|command| {
+            std::iter::once((command.name, command))
+                .chain(command.aliases.iter().map(move |&alias| (alias, command)))
+        }).collect()
+    );
 
 pub const COMMAND_LIST: &'static[Command] = &[
     Command {
@@ -17,19 +26,19 @@ pub const COMMAND_LIST: &'static[Command] = &[
         name: "open",
         aliases: &["o"],
         description: "Open file(s)",
-        args: &[FilePaths],
+        args: &[Required(FilePaths)],
     },
     Command {
         name: "buffer-close",
         aliases: &["bc", "bclose"],
         description: "Close buffer(s).",
-        args: &[OptionalBuffers],
+        args: &[Optional(Buffers)],
     },
     Command {
         name: "buffer-close!",
         aliases: &["bc!", "bclose!"],
         description: "Close buffer(s) forcefully, ignoring unsaved changes.",
-        args: &[OptionalBuffers],
+        args: &[Optional(Buffers)],
     },
     Command {
         name: "buffer-close-others",
@@ -71,13 +80,13 @@ pub const COMMAND_LIST: &'static[Command] = &[
         name: "write",
         aliases: &["w"],
         description: "Write changes to disk. Accepts an optional path (:write some/path.txt)",
-        args: &[OptionalFilePath],
+        args: &[Optional(FilePath)],
     },
     Command {
         name: "write!",
         aliases: &["w!"],
         description: "Forcefully write changes to disk by creating necessary subdirectories. Accepts an optional path (:write some/path.txt)",
-        args: &[OptionalFilePath]
+        args: &[Optional(FilePath)]
     },
     Command {
         name: "new",
@@ -89,13 +98,13 @@ pub const COMMAND_LIST: &'static[Command] = &[
         name: "format",
         aliases: &["fmt"],
         description: "Format file(s) with the LSP server provided formatter.",
-        args: &[OptionalFilePaths],
+        args: &[Optional(FilePaths)],
     },
     Command {
         name: "indent-style",
         aliases: &[],
         description: "Set the indentation style. Syntax: [s,t] number. t for tabs, s for spaces. If neither s or t is supplied, number is assumed to be in spaces.",
-        args: &[IndentStyle],
+        args: &[Required(IndentStyle)],
     },
     Command {
         name: "line-ending",
@@ -104,31 +113,31 @@ pub const COMMAND_LIST: &'static[Command] = &[
         description: "Set the document's default line ending. Options: crlf, lf.",
         #[cfg(feature = "unicode-lines")]
         description: "Set the document's default line ending. Options: crlf, lf, cr, ff, nel.",
-        args: &[LineEnding],
+        args: &[Required(LineEnding)],
     },
     Command {
         name: "earlier",
         aliases: &["ear"],
-        description: "Jump back to an earlier point in edit history. Optionally accepts a number of steps or a time duration.",
-        args: &[OptionalUndoKind],
+        description: "Jump back to an earlier point in edit history. Optional(ly) accepts a number of steps or a time duration.",
+        args: &[Optional(UndoKind)],
     },
     Command {
         name: "later",
         aliases: &["lat"],
         description: "Jump to a later point in edit history. Accepts a number of steps or a time span.",
-        args: &[OptionalUndoKind],
+        args: &[Optional(UndoKind)],
     },
     Command {
         name: "write-quit",
         aliases: &["wq", "x"],
         description: "Write changes to disk and close the current view. Accepts an optional path (:wq some/path.txt)",
-        args: &[OptionalFilePath],
+        args: &[Optional(FilePath)],
     },
     Command {
         name: "write-quit!",
         aliases: &["wq!", "x!"],
         description: "Write changes to disk and close the current view forcefully. Accepts an optional path (:wq! some/path.txt)",
-        args: &[OptionalFilePath],
+        args: &[Optional(FilePath)],
     },
     Command {
         name: "write-all",
@@ -176,7 +185,7 @@ pub const COMMAND_LIST: &'static[Command] = &[
         name: "theme",
         aliases: &[],
         description: "Change the editor theme (show current theme if no name specified).",
-        args: &[OptionalTheme],
+        args: &[Optional(Theme)],
     },
     Command {
         name: "clipboard-yank",
@@ -248,7 +257,7 @@ pub const COMMAND_LIST: &'static[Command] = &[
         name: "change-current-directory",
         aliases: &["cd"],
         description: "Change the current working directory.",
-        args: &[DirectoryPath],
+        args: &[Required(DirectoryPath)],
     },
     Command {
         name: "show-directory",
@@ -320,7 +329,7 @@ pub const COMMAND_LIST: &'static[Command] = &[
         name: "vsplit",
         aliases: &["vs"],
         description: "Open file(s) in vertical splits.",
-        args: &[FilePaths],
+        args: &[Required(FilePaths)],
     },
     Command {
         name: "vsplit-new",
@@ -332,7 +341,7 @@ pub const COMMAND_LIST: &'static[Command] = &[
         name: "hsplit",
         aliases: &["hs", "sp"],
         description: "Open file(s) in horizontal splits.",
-        args: &[FilePaths],
+        args: &[Required(FilePaths)],
     },
     Command {
         name: "hsplit-new",
@@ -356,19 +365,19 @@ pub const COMMAND_LIST: &'static[Command] = &[
         name: "set-language",
         aliases: &["lang"],
         description: "Set the language of current buffer.",
-        args: &[Languages],
+        args: &[Required(Languages)],
     },
     Command {
         name: "set-option",
         aliases: &["set"],
         description: "Set a config option at runtime.\n To disable smart case search for example; `:set search.smart-case false`.",
-        args: &[ConfigOptions],
+        args: &[Required(ConfigOptions)],
     },
     Command {
         name: "get-option",
         aliases: &["get"],
         description: "Get the current value of a config option.",
-        args: &[ConfigOptions],
+        args: &[Required(ConfigOptions)],
     },
     Command {
         name: "sort",
@@ -416,31 +425,31 @@ pub const COMMAND_LIST: &'static[Command] = &[
         name: "insert-output",
         aliases: &[],
         description: "Run shell command, inserting output before each selection.",
-        args: &[ShellCommand],
+        args: &[Required(ShellCommand)],
     },
     Command {
         name: "append-output",
         aliases: &[],
         description: "Run shell command, appending output after each selection.",
-        args: &[ShellCommand],
+        args: &[Required(ShellCommand)],
     },
     Command {
         name: "pipe",
         aliases: &[],
         description: "Pipe each selection to the shell command.",
-        args: &[ShellCommand],
+        args: &[Required(ShellCommand)],
     },
     Command {
         name: "pipe-to",
         aliases: &[],
         description: "Pipe each selection to the shell command, ignoring output.",
-        args: &[ShellCommand],
+        args: &[Required(ShellCommand)],
     },
     Command {
         name: "run-shell-command",
         aliases: &["sh"],
         description: "Run a shell command",
-        args: &[ShellCommand],
+        args: &[Required(ShellCommand)],
     },
     // ## CLIENT
     Command {

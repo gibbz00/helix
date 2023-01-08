@@ -8,12 +8,12 @@ type DynError = Box<dyn Error>;
 
 pub mod tasks {
     use crate::docgen::{lang_features, typable_commands, write};
-    use crate::docgen::{LANG_SUPPORT_MD_OUTPUT, TYPABLE_COMMANDS_MD_OUTPUT};
+    use crate::docgen::{LANG_SUPPORT_MD_OUTPUT, COMMANDS_MD_OUTPUT};
     use crate::themelint::{lint, lint_all};
     use crate::DynError;
 
     pub fn docgen() -> Result<(), DynError> {
-        write(TYPABLE_COMMANDS_MD_OUTPUT, &typable_commands()?);
+        write(COMMANDS_MD_OUTPUT, &typable_commands()?);
         write(LANG_SUPPORT_MD_OUTPUT, &lang_features()?);
         Ok(())
     }

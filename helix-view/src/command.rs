@@ -2,6 +2,7 @@ mod command_list;
 mod mappable_command;
 
 pub use command_list::COMMAND_LIST as COMMAND_LIST;
+pub use command_list::COMMAND_MAP as COMMAND_MAP;
 use crate::lists::List;
 
 #[derive(Clone, Debug)]
@@ -9,26 +10,28 @@ pub struct Command {
     name: &'static str,
     aliases: &'static [&'static str],
     description: &'static str,
-    args: &'static [&'static CommandArguments],
+    args: &'static [&'static CommandArgument],
 }
 
 #[derive(FromStr)]
-pub enum CommandArguments {
+pub enum CommandArgument {
+    Required(CommandArgumentVariants),
+    Optional(CommandArgumentVariants),
+}
+
+pub enum CommandArgumentVariants {
     FilePath,
-    OptionalFilePath(Option<Path>),
     FilePaths(Vec<Path>),
-    OptionalFilePaths(Option<Paths>),
     DicectoryPath,
     Buffer,
     Buffers(Vec<Buffer>),
-    OptionalBuffers(Option<Buffers>),
     IndentStyle((Option<Spacing>, usize)),
     LineEnding(LineEnding),
-    OptionalUndoKind(Option<helix_core::history::UndoKind>),
-    OptionalTheme(Option<todo!()>),
+    UndoKind(helix_core::history::UndoKind),
+    Theme,
     Languages,
     ConfigOptions,
-    ShellCommand(&str)
+    ShellCommand,
 }
 
 

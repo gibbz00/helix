@@ -41,9 +41,8 @@ impl Keymap {
         }
         self
     }
-    /// Returns a key-value list of all commands associated to a given Keymap.
-    /// Keys are the node names (see KeyTrieNode documentation)
-    /// Values are lists of stringified KeyEvents that triger the command.
+    /// Returns a key-value list of all commands associated to a given Mode.
+    /// Keys are the command names. Values are lists of stringified KeyEvents that triger the command.
     /// Each element in the KeyEvent list is prefixed with prefixed the ancestor KeyEvents. 
     /// For example: Stringified KeyEvent element for the 'goto_next_window' command could be "space>w>w".
     /// Ancestor KeyEvents are in this case "space" and "w".

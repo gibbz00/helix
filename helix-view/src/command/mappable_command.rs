@@ -1,17 +1,37 @@
 use super::{
     Command,
-    COMMAND_LIST
+    COMMAND_LIST,
+    CommandArgument
 };
 /// The start of a command that can eventually be mapped to a Command in the COMMAND_LIST
 pub struct MappableCommand {
     name: &str,
-    pub supplied_args: &[&str]    
+    pub supplied_args: &mut [&str]    
 }
 
 impl MappableCommand {
-    /// Promt input of remaining args goes here
-    pub fn execute(&self) {
+    pub fn execute(&self, &ui_tree: UITree) {
         todo!()
+        // Pseudocode ish for completing arguments
+        if Some(uncompleted_argument_index) self.supplied_args.iter().position(|arg| arg == "-") {
+            let completeted_argument = await argument_completer(self.supplied_args[uncompleted_argument_index]);
+            self.supplied_args[uncompletex_argument_index] = completed_argument;
+            self.execute();
+        }
+
+        // Calc nr of expected arguments, and check if enough have been supplied (Also psedocode ish)
+        // IMPROVEMENT: should need to be calculated once
+        let mut required_arguments: usize = 0;
+        for argument in COMMAND_LIST.get(self.name).expect("Mappable should only be created if its name exists in COMMAND_MAP.").args {
+            match argument {
+                CommandArgument::Required => { required_arguments += 1; },
+                CommandArgument::Optional => {},
+            }
+        }
+        if self.supplied_args < required_arguments {
+            ui_tree.error_bar.set("Insufficient arguments provided for {}, expected {}, got {}."
+                ,self.command, required_arguments, self.supplied_args.len());
+        }
     }
 
     pub fn name(&self) -> &str {
@@ -31,8 +51,8 @@ impl std::str::FromStr for MappableCommand {
             cmd.name == name_or_alias ||
             cmd.aliases.contains(&name_or_alias)
         }) {
-            if args.len() > command.max_expected_args {
-                return Err(anyhow!("Command '{name_or_alias}' expected at most {}, recieved {}", command.max_expected_args, supplied_args.len()))
+            if args.len() > command.args.len() {
+                return Err(anyhow!("Command '{name_or_alias}' expected at most {}, recieved {}", command.args.len(), supplied_args.len()))
             }
             return Ok(MappableCommand { name: command.name, supplied_args })
         }

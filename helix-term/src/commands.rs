@@ -2047,31 +2047,18 @@ fn jumplist_picker(cx: &mut Context) {
 
 
 
-
-impl ui::menu::Item for MappableCommand {
+// NOTE: does not present aliases
+impl ui::menu::Item for Command {
     type Data = CommandList;
 
-    fn format(&self, command_list: &Self::Data) -> Row {
-        match self {
-            MappableCommand::Typable { description: doc, name, .. } => {
-                let mut row: Vec<Cell> = vec![Cell::from(&*name.as_str()), Cell::from(""), Cell::from(&*doc.as_str())];
-                match command_list.get(name as &String) {
-                    Some(key_events) => { row[1] = Cell::from(format_key_events(key_events)); },
-                    None => {}
-                }
-                return Row::new(row);
-            },
-            MappableCommand::Static { description: doc, name, .. } => {
-                let mut row: Vec<Cell> = vec![Cell::from(*name), Cell::from(""), Cell::from(*doc)];
-                match command_list.get(*name) {
-                    Some(key_events) => { row[1] = Cell::from(format_key_events(key_events)); },
-                    None => {}
-                }
-                return Row::new(row)
-            } 
+    fn format(&self, key_events_in_command_list: &Self::Data) -> Row {
+        let mut row: Vec<Cell> = vec![Cell::from(self.name), Cell::from(""), Cell::from(self.description)];
+        if Some(key_events) = key_events_in_command_list.get(self.name as &String) {
+            row[1] = Cell::from(format_key_events(key_events));
         }
+        return Row::new(row);
 
-        // TODO: Generalize into a Vec<String> Display implemention?
+        // TODO: can probably be done with a cleaner join()
         fn format_key_events(key_events: &Vec<String>) -> String {
             let mut result_string: String = String::new();
             for key_event in key_events {
@@ -2088,18 +2075,9 @@ impl ui::menu::Item for MappableCommand {
 pub fn command_palette(cx: &mut Context) {
     cx.callback = Some(Box::new(
         move |compositor: &mut Compositor, cx: &mut compositor::Context| {
-            let keymap_command_lists = compositor.find::<ui::EditorView>().unwrap().keymap.command_list(&cx.editor.mode);
-
-            let mut typable_commands: Vec<MappableCommand> = MappableCommand::STATIC_COMMAND_LIST.into();
-            typable_commands.extend(typed::TYPABLE_COMMAND_LIST.iter().map(|cmd| {
-                MappableCommand::Typable {
-                    name: cmd.name.to_owned(),
-                    description: cmd.doc.to_owned(),
-                    args: Vec::new(),
-                }
-            }));
-
-            let picker = Picker::new(typable_commands, keymap_command_lists, move |cx, command, _action| {
+            let command_list_key_events = compositor.find::<ui::EditorView>().unwrap().keymap.command_list(&cx.editor.mode);
+            let command_list = helix_view::command::COMMAND_LIST.to_vec();
+            let picker = Picker::new(command_list, command_list_key_events, move |cx, command, _action| {
                 let mut ctx = Context {
                     register: None,
                     count: std::num::NonZeroUsize::new(1),

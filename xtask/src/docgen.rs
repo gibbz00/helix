@@ -1,10 +1,10 @@
 use crate::{helpers, DynError};
-use helix_term::commands::TYPABLE_COMMAND_LIST;
+use helix_view::commands::COMMAND_LIST;
 use helix_treesitter::TsFeature;
 use helix_loader::path;
 use std::fs;
 
-pub const TYPABLE_COMMANDS_MD_OUTPUT: &str = "typable-cmd.md";
+pub const COMMANDS_MD_OUTPUT: &str = "commands.md";
 pub const LANG_SUPPORT_MD_OUTPUT: &str = "lang-support.md";
 
 fn md_table_heading(cols: &[String]) -> String {
@@ -41,20 +41,16 @@ pub fn typable_commands() -> Result<String, DynError> {
         "Description".to_owned(),
     ]));
 
-    let cmdify = |s: &str| format!("`:{}`", s);
-
-    for cmd in TYPABLE_COMMAND_LIST {
-        let names = std::iter::once(&cmd.name)
-            .chain(cmd.aliases.iter())
-            .map(|a| cmdify(a))
+    for commmand in COMMAND_LIST {
+        let names = std::iter::once(&commmand.name)
+            .chain(commmand.aliases.iter())
             .collect::<Vec<_>>()
             .join(", ");
 
-        let doc = cmd.doc.replace('\n', "<br>");
+        let description = commmand.description.replace('\n', "<br>");
 
-        md.push_str(&md_table_row(&[names.to_owned(), doc.to_owned()]));
+        md.push_str(&md_table_row(&[names.to_owned(), description.to_owned()]));
     }
-
     Ok(md)
 }
 
