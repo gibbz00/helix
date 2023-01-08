@@ -1,5 +1,6 @@
 mod command_list;
 mod mappable_command;
+mod client;
 
 pub use command_list::COMMAND_LIST as COMMAND_LIST;
 pub use command_list::COMMAND_MAP as COMMAND_MAP;
@@ -11,6 +12,7 @@ pub struct Command {
     aliases: &'static [&'static str],
     description: &'static str,
     args: &'static [&'static CommandArgument],
+    function: fn(&self)
 }
 
 #[derive(FromStr)]
