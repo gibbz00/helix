@@ -10,682 +10,676 @@ pub static COMMAND_MAP: Lazy<HashMap<&'static str, &'static Command>> =
     );
 
 pub const COMMAND_LIST: &'static[Command] = &[
-    // ## CLIENT
+    // ### CLIENT only commands
     // Config
     Command {
-        name: "tree-sitter-subtree",
-        aliases: &["ts-subtree"],
-        description: "Display tree sitter subtree under cursor, primarily for debugging queries.",
-        args: &[],
-        function: client::
-    },
-    Command {
-        name: "config-reload",
+        name: "config_reload",
         aliases: &[],
         description: "Refresh user config.",
         args: &[],
-        function: client::
-    },
-    Command {
-        name: "config-open",
-        aliases: &[],
-        description: "Open the user config.toml file.",
-        args: &[],
-        function: client::
+        function: config_reload
     },
     Command {
         name: "theme",
         aliases: &[],
         description: "Change the editor theme (show current theme if no name specified).",
         args: &[Optional(Theme)],
-        function: client::
+        function: theme
     },
     Command {
-        name: "set-option",
+        name: "set_option",
         aliases: &["set"],
-        description: "Set a config option at runtime.\n To disable smart case search for example; `:set search.smart-case false`.",
+        description: "Set a config option at runtime.\n To disable smart case search for example; `:set search.smart_case false`.",
         args: &[Required(ConfigOptions)],
-        function: client::
+        function: set_option
     },
     Command {
-        name: "get-option",
+        name: "get_option",
         aliases: &["get"],
         description: "Get the current value of a config option.",
         args: &[Required(ConfigOptions)],
-        function: client::
+        function: get_option
     },
+    // ## MISC
     Command {
-        name: "show-clipboard-provider",
+        name: "show_clipboard_provider",
         aliases: &[],
         description: "Show clipboard provider name in status bar.",
         args: &[],
-        function: client::
+        function: show_clipboard_provider
     },
     Command {
-            name: "no_op",
-            aliases: &[],
-            description: "Do nothing",
-            args: &[]
-        function: client::
+        name: "no_op",
+        aliases: &[],
+        description: "Do nothing",
+        args: &[],
+        function: no_op
     },
     // Selection movement
         Command {
                 name: "repeat_last_motion",
                 aliases: &[],
                 description: "Repeat last motion",
-                args: &[]
-        function: client::
+                args: &[],
+        function: repeat_last_motion
         },
     Command {
         name: "goto",
         aliases: &["g"],
         description: "Goto line number.",
         args: &[],
-        function: client::
+        function: goto
     },
         Command {
             name: "goto_line_start",
             aliases: &[],
             description: "Goto line start",
-            args: &[]
-        function: client::
+            args: &[],
+        function: goto_line_start
     },
         Command {
             name: "extend_to_line_start",
             aliases: &[],
             description: "Extend to line start",
-            args: &[]
-        function: client::
+            args: &[],
+        function: extend_to_line_start
         },
         Command {
             name: "goto_line_end",
             aliases: &[],
             description: "Goto line end",
-            args: &[]
-        function: client::
+            args: &[],
+        function: goto_line_end
         },
         Command {
             name: "extend_to_line_end",
             aliases: &[],
             description: "Extend to line end",
-            args: &[]
-        function: client::
+            args: &[],
+        function: extend_to_line_end
         },
         Command {
             name: "goto_line_end_newline",
             aliases: &[],
             description: "Goto newline at line end",
-            args: &[]
-        function: client::
+            args: &[],
+        function: goto_line_end_newline
         },
         Command {
             name: "extend_to_line_end_newline",
             aliases: &[],
             description: "Extend to line end",
-            args: &[]
-        function: client::
+            args: &[],
+        function: extend_to_line_end_newline
         },
         Command {
             name: "extend_line",
             aliases: &[],
             description: "Select current line, if already selected, extend to another line based on the anchor",
-            args: &[]
-        function: client::
+            args: &[],
+        function: extend_line
         },
         Command {
             name: "extend_line_below",
             aliases: &[],
             description: "Select current line, if already selected, extend to next line",
-            args: &[]
-        function: client::
+            args: &[],
+        function: extend_line_below
         },
         Command {
             name: "extend_line_above",
             aliases: &[],
             description: "Select current line, if already selected, extend to previous line",
-            args: &[]
-        function: client::
+            args: &[],
+        function: extend_line_above
         },
         Command {
             name: "extend_to_line_bounds",
             aliases: &[],
             description: "Extend selection to line bounds",
-            args: &[]
-        function: client::
+            args: &[],
+        function: extend_to_line_bounds
         },
         Command {
             name: "move_char_left",
             aliases: &[],
             description: "Move left",
-            args: &[]
-        function: client::
+            args: &[],
+        function: move_char_left
         },
         Command {
             name: "extend_char_left",
             aliases: &[],
             description: "Extend left",
-            args: &[]
-        function: client::
+            args: &[],
+        function: extend_char_left
         },
         Command {
             name: "move_char_right",
             aliases: &[],
             description: "Move right",
-            args: &[]
-        function: client::
+            args: &[],
+        function: move_char_right
         },
         Command {
             name: "extend_char_right",
             aliases: &[],
             description: "Extend right",
-            args: &[]
-        function: client::
+            args: &[],
+        function: extend_char_right
         },
         Command {
             name: "move_line_up",
             aliases: &[],
             description: "Move up",
-            args: &[]
-        function: client::
+            args: &[],
+        function: move_line_up
         },
         Command {
             name: "extend_line_up",
             aliases: &[],
             description: "Extend up",
-            args: &[]
-        function: client::
+            args: &[],
+        function: extend_line_up
         },
         Command {
             name: "move_line_down",
             aliases: &[],
             description: "Move down",
-            args: &[]
-        function: client::
+            args: &[],
+        function: move_line_down
         },
         Command {
             name: "extend_line_down",
             aliases: &[],
             description: "Extend down",
-            args: &[]
-        function: client::
+            args: &[],
+        function: extend_line_down
         },
         Command {
             name: "move_next_word_start",
             aliases: &[],
             description: "Move to start of next word",
-            args: &[]
-        function: client::
+            args: &[],
+        function: move_next_word_start
         },
         Command {
             name: "extend_next_word_start",
             aliases: &[],
             description: "Extend to start of next word",
-            args: &[]
-        function: client::
+            args: &[],
+        function: extend_next_word_start
         },
         Command {
             name: "move_prev_word_start",
             aliases: &[],
             description: "Move to start of previous word",
-            args: &[]
-        function: client::
+            args: &[],
+        function: move_prev_word_start
         },
         Command {
             name: "extend_prev_word_start",
             aliases: &[],
             description: "Extend to start of previous word",
-            args: &[]
-        function: client::
+            args: &[],
+        function: extend_prev_word_start
         },
         Command {
             name: "move_next_word_end",
             aliases: &[],
             description: "Move to end of next word",
-            args: &[]
-        function: client::
+            args: &[],
+        function: move_next_word_end
         },
         Command {
             name: "extend_next_word_end",
             aliases: &[],
             description: "Extend to end of next word",
-            args: &[]
-        function: client::
+            args: &[],
+        function: extend_next_word_end
         },
         Command {
             name: "move_prev_word_end",
             aliases: &[],
             description: "Move to end of previous word",
-            args: &[]
-        function: client::
+            args: &[],
+        function: move_prev_word_end
         },
         Command {
             name: "extend_prev_word_end",
             aliases: &[],
             description: "Extend to end of previous word",
-            args: &[]
-        function: client::
+            args: &[],
+        function: extend_prev_word_end
         },
         Command {
             name: "move_next_long_word_start",
             aliases: &[],
             description: "Move to start of next long word",
-            args: &[]
-        function: client::
+            args: &[],
+        function: move_next_long_word_start
         },
         Command {
             name: "extend_next_long_word_start",
             aliases: &[],
             description: "Extend to start of next long word",
-            args: &[]
-        function: client::
+            args: &[],
+        function: extend_next_long_word_start
         },
         Command {
             name: "move_prev_long_word_start",
             aliases: &[],
             description: "Move to start of previous long word",
-            args: &[]
-        function: client::
+            args: &[],
+        function: move_prev_long_word_start
         },
         Command {
             name: "extend_prev_long_word_start",
             aliases: &[],
             description: "Extend to start of previous long word",
-            args: &[]
-        function: client::
+            args: &[],
+        function: extend_prev_long_word_start
         },
         Command {
             name: "move_next_long_word_end",
             aliases: &[],
             description: "Move to end of next long word",
-            args: &[]
-        function: client::
+            args: &[],
+        function: move_next_long_word_end
         },
         Command {
             name: "extend_next_long_word_end",
             aliases: &[],
             description: "Extend to end of next long word",
-            args: &[]
-        function: client::
+            args: &[],
+        function: extend_next_long_word_end
         },
         Command {
             name: "goto_first_nonwhitespace",
             aliases: &[],
-            description: "Goto first non-blank in line",
-            args: &[]
-        function: client::
+            description: "Goto first non_blank in line",
+            args: &[],
+        function: goto_first_nonwhitespace
         },
         Command {
             name: "find_till_char",
             aliases: &[],
             description: "Move till next occurrence of char",
-            args: &[]
-        function: client::
+            args: &[],
+        function: find_till_char
         },
         Command {
             name: "extend_till_char",
             aliases: &[],
             description: "Extend till next occurrence of char",
-            args: &[]
-        function: client::
+            args: &[],
+        function: extend_till_char
         },      
         Command {
             name: "find_next_char",
             aliases: &[],
             description: "Move to next occurrence of char",
-            args: &[]
-        function: client::
+            args: &[],
+        function: find_next_char
         },
         Command {
             name: "extend_next_char",
             aliases: &[],
             description: "Extend to next occurrence of char",
-            args: &[]
-        function: client::
+            args: &[],
+        function: extend_next_char
         },      
         Command {
             name: "till_prev_char",
             aliases: &[],
             description: "Move till previous occurrence of char",
-            args: &[]
-        function: client::
+            args: &[],
+        function: till_prev_char
         },
         Command {
             name: "extend_till_prev_char",
             aliases: &[],
             description: "Extend till previous occurrence of char",
-            args: &[]
-        function: client::
+            args: &[],
+        function: extend_till_prev_char
         },      
         Command {
             name: "find_prev_char",
             aliases: &[],
             description: "Move to previous occurrence of char",
-            args: &[]
-        function: client::
+            args: &[],
+        function: find_prev_char
         },
         Command {
             name: "extend_prev_char",
             aliases: &[],
             description: "Extend to previous occurrence of char",
-            args: &[]
-        function: client::
+            args: &[],
+        function: extend_prev_char
         },      
         Command {
             name: "copy_selection_on_next_line",
             aliases: &[],
             description: "Copy selection on next line",
-            args: &[]
-        function: client::
+            args: &[],
+        function: copy_selection_on_next_line
         },
         Command {
             name: "copy_selection_on_prev_line",
             aliases: &[],
             description: "Copy selection on previous line",
-            args: &[]
-        function: client::
+            args: &[],
+        function: copy_selection_on_prev_line
         },
         Command {
             name: "select_all",
             aliases: &[],
             description: "Select whole document",
-            args: &[]
-        function: client::
+            args: &[],
+        function: select_all
         },
         Command {
             name: "select_regex",
             aliases: &[],
             description: "Select all regex matches inside selections",
-            args: &[]
-        function: client::
+            args: &[],
+        function: select_regex
         },
         Command {
             name: "keep_selections",
             aliases: &[],
             description: "Keep selections matching regex",
-            args: &[]
-        function: client::
+            args: &[],
+        function: keep_selections
         },
         Command {
             name: "remove_selections",
             aliases: &[],
             description: "Remove selections matching regex",
-            args: &[]
-        function: client::
+            args: &[],
+        function: remove_selections
         },
         Command {
             name: "split_selection",
             aliases: &[],
             description: "Split selections on regex matches",
-            args: &[]
-        function: client::
+            args: &[],
+        function: split_selection
         },
         Command {
             name: "split_selection_on_newline",
             aliases: &[],
             description: "Split selection on newlines",
-            args: &[]
-        function: client::
+            args: &[],
+        function: split_selection_on_newline
         },
         Command {
             name: "shrink_to_line_bounds",
             aliases: &[],
             description: "Shrink selection to line bounds",
-            args: &[]
-        function: client::
+            args: &[],
+        function: shrink_to_line_bounds
         },
         Command {
             name: "collapse_selection",
             aliases: &[],
             description: "Collapse selection into single cursor",
-            args: &[]
-        function: client::
+            args: &[],
+        function: collapse_selection
         },
         Command {
             name: "flip_selections",
             aliases: &[],
             description: "Flip selection cursor and anchor",
-            args: &[]
-        function: client::
+            args: &[],
+        function: flip_selections
         },
         Command {
             name: "ensure_selections_forward",
             aliases: &[],
             description: "Ensure all selections face forward",
-            args: &[]
-        function: client::
+            args: &[],
+        function: ensure_selections_forward
         },
         Command {
             name: "keep_primary_selection",
             aliases: &[],
             description: "Keep primary selection",
-            args: &[]
-        function: client::
+            args: &[],
+        function: keep_primary_selection
         },
         Command {
             name: "remove_primary_selection",
             aliases: &[],
             description: "Remove primary selection",
-            args: &[]
-        function: client::
+            args: &[],
+        function: remove_primary_selection
         },
         Command {
             name: "rotate_selections_forward",
             aliases: &[],
             description: "Rotate selections forward",
-            args: &[]
-        function: client::
+            args: &[],
+        function: rotate_selections_forward
         },
         Command {
             name: "rotate_selections_backward",
             aliases: &[],
             description: "Rotate selections backward",
-            args: &[]
-        function: client::
+            args: &[],
+        function: rotate_selections_backward
         },
         // Remove duplicates
         Command {
             name: "yank",
             aliases: &[],
             description: "Yank selection",
-            args: &[]
-        function: client::
+            args: &[],
+        function: yank
         },
         Command {
             name: "yank_joined_to_clipboard",
             aliases: &[],
             description: "Join and yank selections to clipboard",
-            args: &[]
-        function: client::
+            args: &[],
+        function: yank_joined_to_clipboard
         },
         Command {
             name: "yank_main_selection_to_clipboard",
             aliases: &[],
             description: "Yank main selection to clipboard",
-            args: &[]
-        function: client::
+            args: &[],
+        function: yank_main_selection_to_clipboard
         },
         Command {
             name: "yank_joined_to_primary_clipboard",
             aliases: &[],
             description: "Join and yank selections to primary clipboard",
-            args: &[]
-        function: client::
+            args: &[],
+        function: yank_joined_to_primary_clipboard
         },
         Command {
             name: "yank_main_selection_to_primary_clipboard",
             aliases: &[],
             description: "Yank main selection to primary clipboard",
-            args: &[]
-        function: client::
+            args: &[],
+        function: yank_main_selection_to_primary_clipboard
         },
         Command {
-            name: "clipboard-yank",
+            name: "clipboard_yank",
             aliases: &[],
             description: "Yank main selection into system clipboard.",
             args: &[],
-            function: client::
+            function: clipboard_yank
         },
         Command {
-            name: "clipboard-yank-join",
+            name: "clipboard_yank_join",
             aliases: &[],
             description: "Yank joined selections into system clipboard. A separator can be provided as first argument. Default value is newline.", // FIXME: current UI can't display long doc.
             args: &[],
-            function: client::
+            function: clipboard_yank_join
         },
         Command {
-            name: "primary-clipboard-yank",
+            name: "primary_clipboard_yank",
             aliases: &[],
             description: "Yank main selection into system primary clipboard.",
             args: &[],
-            function: client::
+            function: primary_clipboard_yank
         },
         Command {
-            name: "primary-clipboard-yank-join",
+            name: "primary_clipboard_yank_join",
             aliases: &[],
             description: "Yank joined selections into system primary clipboard. A separator can be provided as first argument. Default value is newline.", // FIXME: current UI can't display long doc.
             args: &[],
-            function: client::
+            function: primary_clipboard_yank_join
         },
         // Treesitter objects
         Command {
-            name: "tree-sitter-scopes",
+            name: "tree_sitter_subtree",
+            aliases: &["ts_subtree"],
+            description: "Display tree sitter subtree under cursor, primarily for debugging queries.",
+            args: &[],
+            function: tree_sitter_subtree
+        },
+        Command {
+            name: "tree_sitter_scopes",
             aliases: &[],
             description: "Display tree sitter scopes, primarily for theming and development.",
             args: &[],
-            function: client::
+            function: tree_sitter_scopes
        },
         Command {
             name: "match_brackets",
             aliases: &[],
             description: "Goto matching bracket",
-            args: &[]
-        function: client::
+            args: &[],
+        function: match_brackets
         },
         Command {
             name: "select_textobject_around",
             aliases: &[],
             description: "Select around object",
-            args: &[]
-        function: client::
+            args: &[],
+        function: select_textobject_around
         },
         Command {
             name: "select_textobject_inner",
             aliases: &[],
             description: "Select inside object",
-            args: &[]
-        function: client::
+            args: &[],
+        function: select_textobject_inner
         },
         Command {
             name: "expand_selection",
             aliases: &[],
             description: "Expand selection to parent syntax node",
-            args: &[]
-        function: client::
+            args: &[],
+        function: expand_selection
         },
         Command {
             name: "shrink_selection",
             aliases: &[],
             description: "Shrink selection to previously expanded syntax node",
-            args: &[]
-        function: client::
+            args: &[],
+        function: shrink_selection
         },
         Command {
             name: "select_next_sibling",
             aliases: &[],
             description: "Select next sibling in syntax tree",
-            args: &[]
-        function: client::
+            args: &[],
+        function: select_next_sibling
         },
         Command {
             name: "select_prev_sibling",
             aliases: &[],
             description: "Select previous sibling in syntax tree",
-            args: &[]
-        function: client::
+            args: &[],
+        function: select_prev_sibling
         },
         Command {
             name: "goto_next_function",
             aliases: &[],
             description: "Goto next function",
-            args: &[]
-        function: client::
+            args: &[],
+        function: goto_next_function
         },
         Command {
             name: "goto_prev_function",
             aliases: &[],
             description: "Goto previous function",
-            args: &[]
-        function: client::
+            args: &[],
+        function: goto_prev_function
         },
         Command {
             name: "goto_next_class",
             aliases: &[],
             description: "Goto next type definition",
-            args: &[]
-        function: client::
+            args: &[],
+        function: goto_next_class
         },
         Command {
             name: "goto_prev_class",
             aliases: &[],
             description: "Goto previous type definition",
-            args: &[]
-        function: client::
+            args: &[],
+        function: goto_prev_class
         },
         Command {
             name: "goto_next_parameter",
             aliases: &[],
             description: "Goto next parameter",
-            args: &[]
-        function: client::
+            args: &[],
+        function: goto_next_parameter
         },
         Command {
             name: "goto_prev_parameter",
             aliases: &[],
             description: "Goto previous parameter",
-            args: &[]
-        function: client::
+            args: &[],
+        function: goto_prev_parameter
         },
         Command {
             name: "goto_next_comment",
             aliases: &[],
             description: "Goto next comment",
-            args: &[]
-        function: client::
+            args: &[],
+        function: goto_next_comment
         },
         Command {
             name: "goto_prev_comment",
             aliases: &[],
             description: "Goto previous comment",
-            args: &[]
-        function: client::
+            args: &[],
+        function: goto_prev_comment
         },
         Command {
             name: "goto_next_test",
             aliases: &[],
             description: "Goto next test",
-            args: &[]
-        function: client::
+            args: &[],
+        function: goto_next_test
         },
         Command {
             name: "goto_prev_test",
             aliases: &[],
             description: "Goto previous test",
-            args: &[]
-        function: client::
+            args: &[],
+        function: goto_prev_test
         },
         Command {
             name: "goto_next_paragraph",
             aliases: &[],
             description: "Goto next paragraph",
-            args: &[]
-        function: client::
+            args: &[],
+        function: goto_next_paragraph
         },
         Command {
             name: "goto_prev_paragraph",
             aliases: &[],
             description: "Goto previous paragraph",
-            args: &[]
-        function: client::
+            args: &[],
+        function: goto_prev_paragraph
         },
 
         // Search
@@ -693,64 +687,64 @@ pub const COMMAND_LIST: &'static[Command] = &[
             name: "search",
             aliases: &[],
             description: "Search for regex pattern",
-            args: &[]
-        function: client::
+            args: &[],
+        function: search
         },
         Command {
             name: "rsearch",
             aliases: &[],
             description: "Reverse search for regex pattern",
-            args: &[]
-        function: client::
+            args: &[],
+        function: rsearch
         },
         Command {
             name: "search_next",
             aliases: &[],
             description: "Select next search match",
-            args: &[]
-        function: client::
+            args: &[],
+        function: search_next
         },
         Command {
             name: "search_prev",
             aliases: &[],
             description: "Select previous search match",
-            args: &[]
-        function: client::
+            args: &[],
+        function: search_prev
         },
         Command {
             name: "search_selection",
             aliases: &[],
             description: "Use current selection as search pattern",
-            args: &[]
-        function: client::
+            args: &[],
+        function: search_selection
         },
         Command {
             name: "make_search_word_bounded",
             aliases: &[],
             description: "Modify current search to make it word bounded",
-            args: &[]
-        function: client::
+            args: &[],
+        function: make_search_word_bounded
         },
         Command {
             name: "global_search",
             aliases: &[],
             description: "Global search in workspace folder",
-            args: &[]
-        function: client::
+            args: &[],
+        function: global_search
         },
         Command {
             name: "extend_search_next",
             aliases: &[],
             description: "Add next search match to selection",
-            args: &[]
-        function: client::
+            args: &[],
+        function: extend_search_next
         },
         Command {
             name: "extend_search_prev",
             aliases: &[],
             description: "Add previous search match to selection",
-            args: &[]
-        function: client::
+            args: &[],
+        function: extend_search_prev
         },
 
         // Document movement/panning
@@ -758,120 +752,120 @@ pub const COMMAND_LIST: &'static[Command] = &[
             name: "align_view_middle",
             aliases: &[],
             description: "Align view middle",
-            args: &[]
-        function: client::
+            args: &[],
+        function: align_view_middle
         },
         Command {
             name: "align_view_top",
             aliases: &[],
             description: "Align view top",
-            args: &[]
-        function: client::
+            args: &[],
+        function: align_view_top
         },
         Command {
             name: "align_view_center",
             aliases: &[],
             description: "Align view center",
-            args: &[]
-        function: client::
+            args: &[],
+        function: align_view_center
         },
         Command {
             name: "align_view_bottom",
             aliases: &[],
             description: "Align view bottom",
-            args: &[]
-        function: client::
+            args: &[],
+        function: align_view_bottom
         },
         Command {
             name: "scroll_up",
             aliases: &[],
             description: "Scroll view up",
-            args: &[]
-        function: client::
+            args: &[],
+        function: scroll_up
         },
         Command {
             name: "scroll_down",
             aliases: &[],
             description: "Scroll view down",
-            args: &[]
-        function: client::
+            args: &[],
+        function: scroll_down
         },
         Command {
             name: "page_up",
             aliases: &[],
             description: "Move page up",
-            args: &[]
-        function: client::
+            args: &[],
+        function: page_up
         },
         Command {
             name: "page_down",
             aliases: &[],
             description: "Move page down",
-            args: &[]
-        function: client::
+            args: &[],
+        function: page_down
         },
         Command {
             name: "half_page_up",
             aliases: &[],
             description: "Move half page up",
-            args: &[]
-        function: client::
+            args: &[],
+        function: half_page_up
         },
         Command {
             name: "half_page_down",
             aliases: &[],
             description: "Move half page down",
-            args: &[]
-        function: client::
+            args: &[],
+        function: half_page_down
         },
         Command {
             name: "goto_file_start",
             aliases: &[],
             description: "Goto line number <n> else file start",
-            args: &[]
-        function: client::
+            args: &[],
+        function: goto_file_start
         },
         Command {
             name: "goto_file_end",
             aliases: &[],
             description: "Goto file end",
-            args: &[]
-        function: client::
+            args: &[],
+        function: goto_file_end
         },
         Command {
             name: "goto_window_top",
             aliases: &[],
             description: "Goto window top",
-            args: &[]
-        function: client::
+            args: &[],
+        function: goto_window_top
         },
         Command {
             name: "goto_window_center",
             aliases: &[],
             description: "Goto window center",
-            args: &[]
-        function: client::
+            args: &[],
+        function: goto_window_center
         },
         Command {
             name: "goto_window_bottom",
             aliases: &[],
             description: "Goto window bottom",
-            args: &[]
-        function: client::
+            args: &[],
+        function: goto_window_bottom
         },
         Command {
             name: "goto_line",
             aliases: &[],
             description: "Goto line",
-            args: &[]
-        function: client::
+            args: &[],
+        function: goto_line
         },
         Command {
             name: "goto_last_line",
             aliases: &[],
             description: "Goto last line",
-            args: &[]
-        function: client::
+            args: &[],
+        function: goto_last_line
         },
         // Window
             // movement
@@ -879,71 +873,71 @@ pub const COMMAND_LIST: &'static[Command] = &[
             name: "jump_view_right",
             aliases: &[],
             description: "Jump to right split",
-            args: &[]
-        function: client::
+            args: &[],
+        function: jump_view_right
         },
         Command {
             name: "jump_view_left",
             aliases: &[],
             description: "Jump to left split",
-            args: &[]
-        function: client::
+            args: &[],
+        function: jump_view_left
         },
         Command {
             name: "jump_view_up",
             aliases: &[],
             description: "Jump to split above",
-            args: &[]
-        function: client::
+            args: &[],
+        function: jump_view_up
         },
         Command {
             name: "jump_view_down",
             aliases: &[],
             description: "Jump to split below",
-            args: &[]
-        function: client::
+            args: &[],
+        function: jump_view_down
         },
         Command {
             name: "swap_view_right",
             aliases: &[],
             description: "Swap with right split",
-            args: &[]
-        function: client::
+            args: &[],
+        function: swap_view_right
         },
         Command {
             name: "swap_view_left",
             aliases: &[],
             description: "Swap with left split",
-            args: &[]
-        function: client::
+            args: &[],
+        function: swap_view_left
         },
         Command {
             name: "swap_view_up",
             aliases: &[],
             description: "Swap with split above",
-            args: &[]
-        function: client::
+            args: &[],
+        function: swap_view_up
         },
         Command {
             name: "swap_view_down",
             aliases: &[],
             description: "Swap with split below",
-            args: &[]
-        function: client::
+            args: &[],
+        function: swap_view_down
         },
         Command {
             name: "transpose_view",
             aliases: &[],
             description: "Transpose splits",
-            args: &[]
-        function: client::
+            args: &[],
+        function: transpose_view
         },
         Command {
             name: "rotate_view",
             aliases: &[],
             description: "Goto next window",
-            args: &[]
-        function: client::
+            args: &[],
+        function: rotate_view
         },
         // Open / Close
         Command {
@@ -951,116 +945,116 @@ pub const COMMAND_LIST: &'static[Command] = &[
             aliases: &["q"],
             description: "Close document view. Exit helix if none remain.",
             args: &[],
-            function: client::
+            function: quit
         },
         Command {
             name: "quit!",
             aliases: &["q!"],
             description: "Force close document view, ignoring unsaved changes. Exit helix if none remain.",
             args: &[],
-            function: client::
+            function: quit_force
         },
         Command {
             name: "wclose",
             aliases: &[],
             description: "Close window",
-            args: &[]
-        function: client::
+            args: &[],
+        function: wclose
         },
         Command {
             name: "wonly",
             aliases: &[],
             description: "Close windows except current",
-            args: &[]
-        function: client::
+            args: &[],
+        function: wonly
         },
         // MODE change
         Command {
             name: "command_mode",
             aliases: &[],
             description: "Enter command mode",
-            args: &[]
-        function: client::
+            args: &[],
+        function: command_mode
         },
         Command {
             name: "normal_mode",
             aliases: &[],
             description: "Enter normal mode",
-            args: &[]
-        function: client::
+            args: &[],
+        function: normal_mode
         },
         Command {
             name: "select_mode",
             aliases: &[],
             description: "Enter selection extend mode",
-            args: &[]
-        function: client::
+            args: &[],
+        function: select_mode
         },
         Command {
             name: "exit_select_mode",
             aliases: &[],
             description: "Exit selection mode",
-            args: &[]
-        function: client::
+            args: &[],
+        function: exit_select_mode
         },
 
         Command {
             name: "append_mode",
             aliases: &[],
             description: "Append after selection",
-            args: &[]
-        function: client::
+            args: &[],
+        function: append_mode
         },
         Command {
             name: "append_at_line_end",
             aliases: &[],
             description: "Insert at end of line",
-            args: &[]
-        function: client::
+            args: &[],
+        function: append_at_line_end
         },
 
         Command {
             name: "insert_mode",
             aliases: &[],
             description: "Insert before selection",
-            args: &[]
-        function: client::
+            args: &[],
+        function: insert_mode
         },
         Command {
             name: "insert_at_line_start",
             aliases: &[],
             description: "Insert at start of line",
-            args: &[]
-        function: client::
+            args: &[],
+        function: insert_at_line_start
         },
         // Register
         Command {
             name: "select_register",
             aliases: &[],
             description: "Select register",
-            args: &[]
-        function: client::
+            args: &[],
+        function: select_register
         },
         Command {
             name: "insert_register",
             aliases: &[],
             description: "Insert register",
-            args: &[]
-        function: client::
+            args: &[],
+        function: insert_register
         },
         Command {
             name: "record_macro",
             aliases: &[],
             description: "Record macro",
-            args: &[]
-        function: client::
+            args: &[],
+        function: record_macro
         },
         Command {
             name: "replay_macro",
             aliases: &[],
             description: "Replay macro",
-            args: &[]
-        function: client::
+            args: &[],
+        function: replay_macro
         },
     // Commandrow/shell
     Command {
@@ -1068,49 +1062,49 @@ pub const COMMAND_LIST: &'static[Command] = &[
         aliases: &[],
         description: "Pipe each selection to the shell command.",
         args: &[Required(ShellCommand)],
-        function: client::
+        function: pipe
     },
     Command {
-        name: "pipe-to",
+        name: "pipe_to",
         aliases: &[],
         description: "Pipe each selection to the shell command, ignoring output.",
         args: &[Required(ShellCommand)],
-        function: client::
+        function: pipe_to
     },
     Command {
-        name: "run-shell-command",
+        name: "run_shell_command",
         aliases: &["sh"],
         description: "Run a shell command",
         args: &[Required(ShellCommand)],
-        function: client::
+        function: run_shell_command
     },
             Command {
             name: "shell_pipe",
             aliases: &[],
             description: "Pipe selections through shell command",
-            args: &[]
-        function: client::
+            args: &[],
+        function: shell_pipe
         },
         Command {
             name: "shell_pipe_to",
             aliases: &[],
             description: "Pipe selections into shell command ignoring output",
-            args: &[]
-        function: client::
+            args: &[],
+        function: shell_pipe_to
         },
         Command {
             name: "shell_keep_pipe",
             aliases: &[],
             description: "Filter selections with shell predicate",
-            args: &[]
-        function: client::
+            args: &[],
+        function: shell_keep_pipe
         },
         Command {
             name: "suspend",
             aliases: &[],
             description: "Suspend and return to shell",
-            args: &[]
-        function: client::
+            args: &[],
+        function: suspend
         },
 
         // Window manipulation
@@ -1120,77 +1114,77 @@ pub const COMMAND_LIST: &'static[Command] = &[
             aliases: &["cq"],
             description: "Quit with exit code (default 1). Accepts an optional integer exit code (:cq 2).",
             args: &[],
-            function: client::
+            function: cquit
         },
         Command {
             name: "cquit!",
             aliases: &["cq!"],
             description: "Force quit with exit code (default 1) ignoring unsaved changes. Accepts an optional integer exit code (:cq! 2).",
             args: &[],
-            function: client::
+            function: cquit_force
         },
         Command {
-            name: "quit-all",
+            name: "quit_all",
             aliases: &["qa"],
             description: "Close all views.",
             args: &[],
-            function: client::
+            function: quit_all
         },
         Command {
-            name: "quit-all!",
+            name: "quit_all!",
             aliases: &["qa!"],
             description: "Force close all views ignoring unsaved changes.",
             args: &[],
-            function: client::
+            function: quit_all_force
         },
         Command {
-            name: "buffer-next",
+            name: "buffer_next",
             aliases: &["bn", "bnext"],
             description: "Goto next buffer.",
             args: &[],
-            function: client::
+            function: buffer_next
         },
         Command {
-            name: "buffer-previous",
+            name: "buffer_previous",
             aliases: &["bp", "bprev"],
             description: "Goto previous buffer.",
             args: &[],
-            function: client::
+            function: buffer_previous
         },
         Command {
             name: "goto_next_buffer",
             aliases: &[],
             description: "Goto next buffer",
-            args: &[]
-            function: client::
+            args: &[],
+            function: goto_next_buffer
         },
         Command {
             name: "goto_previous_buffer",
             aliases: &[],
             description: "Goto previous buffer",
-            args: &[]
-            function: client::
+            args: &[],
+            function: goto_previous_buffer
         },
         Command {
             name: "goto_last_accessed_file",
             aliases: &[],
             description: "Goto last accessed file",
-            args: &[]
-        function: client::
+            args: &[],
+        function: goto_last_accessed_file
         },
         Command {
             name: "goto_last_modified_file",
             aliases: &[],
             description: "Goto last modified file",
-            args: &[]
-        function: client::
+            args: &[],
+        function: goto_last_modified_file
         },
         Command {
             name: "goto_last_modification",
             aliases: &[],
             description: "Goto last modification",
-            args: &[]
-        function: client::
+            args: &[],
+        function: goto_last_modification
         },
         // UI modes
             // Pickers
@@ -1198,345 +1192,353 @@ pub const COMMAND_LIST: &'static[Command] = &[
             name: "last_picker",
             aliases: &[],
             description: "Open last picker",
-            args: &[]
-        function: client::
+            args: &[],
+        function: last_picker
         },
         // Jumplist
         Command {
             name: "jumplist_picker",
             aliases: &[],
             description: "Open jumplist picker",
-            args: &[]
-        function: client::
+            args: &[],
+        function: jumplist_picker
         },
                     // jumplist commands
         Command {
             name: "jump_forward",
             aliases: &[],
             description: "Jump forward on jumplist",
-            args: &[]
-        function: client::
+            args: &[],
+        function: jump_forward
         },
         Command {
             name: "jump_backward",
             aliases: &[],
             description: "Jump backward on jumplist",
-            args: &[]
-        function: client::
+            args: &[],
+        function: jump_backward
         },
         Command {
             name: "save_selection",
             aliases: &[],
             description: "Save current selection to jumplist",
-            args: &[]
-        function: client::
+            args: &[],
+        function: save_selection
         },
     // Command palette
         Command {
             name: "command_palette",
             aliases: &[],
             description: "Open command palette",
-            args: &[]
-        function: client::
+            args: &[],
+        function: command_palette
         },
     // Server
     // Buffer CRUD
 
     Command {
-        name: "log-open",
+        name: "config_open",
+        aliases: &[],
+        description: "Open the user config.toml file.",
+        args: &[],
+        function: config_open
+    },
+    Command {
+        name: "log_open",
         aliases: &[],
         description: "Open the helix log file.",
         args: &[],
-        function: client::
+        function: log_open
     },
     Command {
-        name: "insert-output",
+        name: "insert_output",
         aliases: &[],
         description: "Run shell command, inserting output before each selection.",
         args: &[Required(ShellCommand)],
-        function: client::
+        function: insert_output
     },
     Command {
-        name: "append-output",
+        name: "append_output",
         aliases: &[],
         description: "Run shell command, appending output after each selection.",
         args: &[Required(ShellCommand)],
-        function: client::
+        function: append_output
     },
     Command {
         name: "reflow",
         aliases: &[],
-        description: "Hard-wrap the current selection of lines to a given width.",
+        description: "Hard_wrap the current selection of lines to a given width.",
         args: &[],
-        function: client::
+        function: reflow
     },
         Command {
         name: "sort",
         aliases: &[],
         description: "Sort ranges in selection.",
         args: &[],
-        function: client::
+        function: sort
     },
     Command {
         name: "rsort",
         aliases: &[],
         description: "Sort ranges in selection in reverse order.",
         args: &[],
-        function: client::
+        function: rsort
     },
         Command {
             name: "shell_insert_output",
             aliases: &[],
             description: "Insert shell command output before selections",
-            args: &[]
-        function: client::
+            args: &[],
+        function: shell_insert_output
         },
         Command {
             name: "shell_append_output",
             aliases: &[],
             description: "Append shell command output after selections",
-            args: &[]
-        function: client::
+            args: &[],
+        function: shell_append_output
         },
             Command {
             name: "tutor",
             aliases: &[],
             description: "Open the tutorial.",
             args: &[],
-            function: client::
+            function: tutor
         },
         Command {
             name: "vsplit",
             aliases: &["vs"],
             description: "Open file(s) in vertical splits.",
             args: &[Required(FilePaths)],
-            function: client::
+            function: vsplit
         },
         Command {
-            name: "vsplit-new",
+            name: "vsplit_new",
             aliases: &["vnew"],
             description: "Open a scratch buffer in a vertical split.",
             args: &[],
-            function: client::
+            function: vsplit_new
         },
         Command {
             name: "hsplit",
             aliases: &["hs", "sp"],
             description: "Open file(s) in horizontal splits.",
             args: &[Required(FilePaths)],
-            function: client::
+            function: hsplit
         },
         Command {
-            name: "hsplit-new",
+            name: "hsplit_new",
             aliases: &["hnew"],
             description: "Open a scratch buffer in a horizontal split.",
             args: &[],
-            function: client::
+            function: hsplit_new
         },        Command {
             name: "hsplit",
             aliases: &[],
             description: "Horizontal bottom split",
-            args: &[]
-        function: client::
+            args: &[],
+        function: hsplit
         },
         Command {
             name: "hsplit_new",
             aliases: &[],
             description: "Horizontal bottom split scratch buffer",
-            args: &[]
-        function: client::
+            args: &[],
+        function: hsplit_new
         },
         Command {
             name: "vsplit",
             aliases: &[],
             description: "Vertical right split",
-            args: &[]
-        function: client::
+            args: &[],
+        function: vsplit
         },
         Command {
             name: "vsplit_new",
             aliases: &[],
             description: "Vertical right split scratch buffer",
-            args: &[]
-        function: client::
+            args: &[],
+        function: vsplit_new
         },
 Command {
-        name: "change-current-directory",
+        name: "change_current_directory",
         aliases: &["cd"],
         description: "Change the current working directory.",
         args: &[Required(DirectoryPath)],
-        function: client::
+        function: change_current_directory
     },
     Command {
-        name: "show-directory",
+        name: "show_directory",
         aliases: &["pwd"],
         description: "Show the current working directory.",
         args: &[],
-        function: client::
+        function: show_directory
     },
     Command {
         name: "encoding",
         aliases: &[],
         description: "Set encoding. Based on `https://encoding.spec.whatwg.org`.",
         args: &[],
-        function: client::
+        function: encoding
     },
     Command {
         name: "reload",
         aliases: &[],
         description: "Discard changes and reload from the source file.",
         args: &[],
-        function: client::
+        function: reload
     },
     Command {
-        name: "reload-all",
+        name: "reload_all",
         aliases: &[],
         description: "Discard changes and reload all documents from the source files.",
         args: &[],
-        function: client::
+        function: reload_all
     },
     Command {
         name: "update",
         aliases: &[],
         description: "Write changes only if the file has been modified.",
         args: &[],
-        function: client::
+        function: update
     },
     Command {
-        name: "write-quit",
+        name: "write_quit",
         aliases: &["wq", "x"],
         description: "Write changes to disk and close the current view. Accepts an optional path (:wq some/path.txt)",
         args: &[Optional(FilePath)],
-        function: client::
+        function: write_quit
     },
     Command {
-        name: "write-quit!",
+        name: "write_quit!",
         aliases: &["wq!", "x!"],
         description: "Write changes to disk and close the current view forcefully. Accepts an optional path (:wq! some/path.txt)",
         args: &[Optional(FilePath)],
-        function: client::
+        function: write_quit_force
     },
     Command {
-        name: "write-all",
+        name: "write_all",
         aliases: &["wa"],
         description: "Write changes from all buffers to disk.",
         args: &[],
-        function: client::
+        function: write_all
     },
     Command {
-        name: "write-quit-all",
+        name: "write_quit_all",
         aliases: &["wqa", "xa"],
         description: "Write changes from all buffers to disk and close all views.",
         args: &[],
-        function: client::
+        function: write_quit_all
     },
     Command {
-        name: "write-quit-all!",
+        name: "write_quit_all!",
         aliases: &["wqa!", "xa!"],
         description: "Write changes from all buffers to disk and close all views forcefully (ignoring unsaved changes).",
         args: &[],
-        function: client::
+        function: write_quit_all_force
     },
     Command {
         name: "earlier",
         aliases: &["ear"],
         description: "Jump back to an earlier point in edit history. Optional(ly) accepts a number of steps or a time duration.",
         args: &[Optional(UndoKind)],
-        function: client::
+        function: earlier
     },
     Command {
         name: "later",
         aliases: &["lat"],
         description: "Jump to a later point in edit history. Accepts a number of steps or a time span.",
         args: &[Optional(UndoKind)],
-        function: client::
+        function: later
     },
     Command {
-        name: "indent-style",
+        name: "indent_style",
         aliases: &[],
         description: "Set the indentation style. Syntax: [s,t] number. t for tabs, s for spaces. If neither s or t is supplied, number is assumed to be in spaces.",
         args: &[Required(IndentStyle)],
-        function: server::
+        function: indent_style
     },
     Command {
         name: "new",
         aliases: &["n"],
         description: "Create a new scratch buffer.",
         args: &[],
-        function: server::
+        function: new
     },
     Command {
-        name: "line-ending",
+        name: "line_ending",
         aliases: &[],
-        #[cfg(not(feature = "unicode-lines"))]
+        #[cfg(not(feature = "unicode_lines"))]
         description: "Set the document's default line ending. Options: crlf, lf.",
-        #[cfg(feature = "unicode-lines")]
+        #[cfg(feature = "unicode_lines")]
         description: "Set the document's default line ending. Options: crlf, lf, cr, ff, nel.",
         args: &[Required(LineEnding)],
-        function: server::
+        // TODO: use cfg attribute in function definition
+        function: line_ending
     },
     Command {
         name: "write",
         aliases: &["w"],
         description: "Write changes to disk. Accepts an optional path (:write some/path.txt)",
         args: &[Optional(FilePath)],
-        function: server::
+        function: write
     },
     Command {
         name: "write!",
         aliases: &["w!"],
         description: "Forcefully write changes to disk by creating necessary parent directories. Accepts an optional path (:write some/path.txt)",
-        args: &[Optional(FilePath)]
-        function: server::
+        args: &[Optional(FilePath)],
+        function: write_force
     },
     Command {
         name: "open",
         aliases: &["o"],
         description: "Open file(s)",
         args: &[Required(FilePaths)],
-        function: server::
+        function: open
     },
     Command {
-        name: "buffer-close",
+        name: "buffer_close",
         aliases: &["bc", "bclose"],
         description: "Close buffer(s).",
         args: &[Optional(Buffers)],
-        function: server::
+        function: buffer_close
     },
     Command {
-        name: "buffer-close!",
+        name: "buffer_close!",
         aliases: &["bc!", "bclose!"],
         description: "Close buffer(s) forcefully, ignoring unsaved changes.",
         args: &[Optional(Buffers)],
-        function: server::
+        function: buffer_close_force
     },
     Command {
-        name: "buffer-close-others",
+        name: "buffer_close_others",
         aliases: &["bco", "bcloseother"],
         description: "Close all buffers exept the one in focus.",
         args: &[],
-        function: server::
+        function: buffer_close_others
     },
     Command {
-        name: "buffer-close-others!",
+        name: "buffer_close_others!",
         aliases: &["bco!", "bcloseother!"],
         description: "Forcefully close all buffers exept the one in focus.",
         args: &[],
-        function: server::
+        function: buffer_close_others_force
     },
     Command {
-        name: "buffer-close-all",
+        name: "buffer_close_all",
         aliases: &["bca", "bcloseall"],
         description: "Close all buffers.",
         args: &[],
-        function: server::
+        function: buffer_close_all
     },
     Command {
-        name: "buffer-close-all!",
+        name: "buffer_close_all!",
         aliases: &["bca!", "bcloseall!"],
         description: "Forcefully close all buffers, ignoring unsaved.",
         args: &[],
-        function: server::
+        function: buffer_close_all_force
     },
     // EDITS
         // Selections
@@ -1544,765 +1546,765 @@ Command {
             name: "rotate_selection_contents_forward",
             aliases: &[],
             description: "Rotate selection contents forward",
-            args: &[]
-        function: server::
+            args: &[],
+        function: rotate_selection_contents_forward
         },
         Command {
             name: "rotate_selection_contents_backward",
             aliases: &[],
             description: "Rotate selections contents backward",
-            args: &[]
-        function: server::
+            args: &[],
+        function: rotate_selection_contents_backward
         },
         Command {
             name: "align_selections",
             aliases: &[],
             description: "Align selections in column",
-            args: &[]
-            function: server::
+            args: &[],
+            function: align_selections
         },
         Command {
             name: "trim_selections",
             aliases: &[],
             description: "Trim whitespace from selections",
-            args: &[]
-            function: server::
+            args: &[],
+            function: trim_selections
         },
         Command {
             name: "join_selections",
             aliases: &[],
             description: "Join lines inside selection",
-            args: &[]
-        function: server::
+            args: &[],
+        function: join_selections
         },
         Command {
             name: "join_selections_space",
             aliases: &[],
             description: "Join lines inside selection and select spaces",
-            args: &[]
-        function: server::
+            args: &[],
+        function: join_selections_space
         },
         // Caseing
         Command {
             name: "switch_case",
             aliases: &[],
             description: "Switch (toggle) case",
-            args: &[]
-        function: server::
+            args: &[],
+        function: switch_case
         },
         Command {
             name: "switch_to_uppercase",
             aliases: &[],
             description: "Switch to uppercase",
-            args: &[]
-        function: server::
+            args: &[],
+        function: switch_to_uppercase
         },
         Command {
             name: "switch_to_lowercase",
             aliases: &[],
             description: "Switch to lowercase",
-            args: &[]
-        function: server::
+            args: &[],
+        function: switch_to_lowercase
         },
         // Surround
         Command {
             name: "surround_add",
             aliases: &[],
             description: "Surround add",
-            args: &[]
-        function: server::
+            args: &[],
+        function: surround_add
         },
         Command {
             name: "surround_replace",
             aliases: &[],
             description: "Surround replace",
-            args: &[]
-        function: server::
+            args: &[],
+        function: surround_replace
         },
         Command {
             name: "surround_delete",
             aliases: &[],
             description: "Surround delete",
-            args: &[]
-        function: server::
+            args: &[],
+        function: surround_delete
         },
         // Transaction history
         Command {
             name: "commit_undo_checkpoint",
             aliases: &[],
             description: "Commit changes to new checkpoint",
-            args: &[]
-        function: server::
+            args: &[],
+        function: commit_undo_checkpoint
         },
         Command {
             name: "undo",
             aliases: &[],
             description: "Undo change",
-            args: &[]
-        function: server::
+            args: &[],
+        function: undo
         },
         Command {
             name: "redo",
             aliases: &[],
             description: "Redo change",
-            args: &[]
-        function: server::
+            args: &[],
+        function: redo
         },
         Command {
             name: "earlier",
             aliases: &[],
             description: "Move backward in history",
-            args: &[]
-        function: server::
+            args: &[],
+        function: earlier
         },
         Command {
             name: "later",
             aliases: &[],
             description: "Move forward in history",
-            args: &[]
-        function: server::
+            args: &[],
+        function: later
         },
          // Change
         Command {
             name: "change_selection",
             aliases: &[],
             description: "Change selection",
-            args: &[]
-        function: server::
+            args: &[],
+        function: change_selection
         },
         Command {
             name: "change_selection_noyank",
             aliases: &[],
             description: "Change selection without yanking",
-            args: &[]
-        function: server::
+            args: &[],
+        function: change_selection_noyank
         },
         // Delete
         Command {
             name: "delete_selection",
             aliases: &[],
             description: "Delete selection",
-            args: &[]
-        function: server::
+            args: &[],
+        function: delete_selection
         },
         Command {
             name: "delete_selection_noyank",
             aliases: &[],
             description: "Delete selection without yanking",
-            args: &[]
-        function: server::
+            args: &[],
+        function: delete_selection_noyank
         },
         Command {
             name: "delete_char_backward",
             aliases: &[],
             description: "Delete previous char",
-            args: &[]
-        function: server::
+            args: &[],
+        function: delete_char_backward
         },
         Command {
             name: "delete_char_forward",
             aliases: &[],
             description: "Delete next char",
-            args: &[]
-        function: server::
+            args: &[],
+        function: delete_char_forward
         },
         Command {
             name: "delete_word_backward",
             aliases: &[],
             description: "Delete previous word",
-            args: &[]
-        function: server::
+            args: &[],
+        function: delete_word_backward
         },
         Command {
             name: "delete_word_forward",
             aliases: &[],
             description: "Delete next word",
-            args: &[]
-        function: server::
+            args: &[],
+        function: delete_word_forward
         },
         Command {
             name: "kill_to_line_start",
             aliases: &[],
             description: "Delete till start of line",
-            args: &[]
-        function: server::
+            args: &[],
+        function: kill_to_line_start
         },
         Command {
             name: "kill_to_line_end",
             aliases: &[],
             description: "Delete till end of line",
-            args: &[]
-        function: server::
+            args: &[],
+        function: kill_to_line_end
         },
         // Replace
         Command {
             name: "replace",
             aliases: &[],
             description: "Replace with new char",
-            args: &[]
-        function: server::
+            args: &[],
+        function: replace
         },
         Command {
             name: "replace_with_yanked",
             aliases: &[],
             description: "Replace with yanked text",
-            args: &[]
-        function: server::
+            args: &[],
+        function: replace_with_yanked
         },
         Command {
             name: "replace_selections_with_clipboard",
             aliases: &[],
             description: "Replace selections by clipboard content",
-            args: &[]
-        function: server::
+            args: &[],
+        function: replace_selections_with_clipboard
         },
         Command {
             name: "replace_selections_with_primary_clipboard",
             aliases: &[],
             description: "Replace selections by primary clipboard",
-            args: &[]
-        function: server::
+            args: &[],
+        function: replace_selections_with_primary_clipboard
         },
         // Paste
         Command {
             name: "paste_after",
             aliases: &[],
             description: "Paste after selection",
-            args: &[]
-        function: server::
+            args: &[],
+        function: paste_after
         },
         Command {
             name: "paste_before",
             aliases: &[],
             description: "Paste before selection",
-            args: &[]
-        function: server::
+            args: &[],
+        function: paste_before
         },
         Command {
             name: "paste_clipboard_after",
             aliases: &[],
             description: "Paste clipboard after selections",
-            args: &[]
-        function: server::
+            args: &[],
+        function: paste_clipboard_after
         },
         Command {
             name: "paste_clipboard_before",
             aliases: &[],
             description: "Paste clipboard before selections",
-            args: &[]
-        function: server::
+            args: &[],
+        function: paste_clipboard_before
         },
         Command {
             name: "paste_primary_clipboard_after",
             aliases: &[],
             description: "Paste primary clipboard after selections",
-            args: &[]
-        function: server::
+            args: &[],
+        function: paste_primary_clipboard_after
         },
         Command {
             name: "paste_primary_clipboard_before",
             aliases: &[],
             description: "Paste primary clipboard before selections",
-            args: &[]
-        function: server::
+            args: &[],
+        function: paste_primary_clipboard_before
         },
     Command {
-        name: "clipboard-paste-after",
+        name: "clipboard_paste_after",
         aliases: &[],
         description: "Paste system clipboard after selections.",
         args: &[],
-        function: client::
+        function: clipboard_paste_after
     },
     Command {
-        name: "clipboard-paste-before",
+        name: "clipboard_paste_before",
         aliases: &[],
         description: "Paste system clipboard before selections.",
         args: &[],
-        function: client::
+        function: clipboard_paste_before
     },
     Command {
-        name: "clipboard-paste-replace",
+        name: "clipboard_paste_replace",
         aliases: &[],
         description: "Replace selections with content of system clipboard.",
         args: &[],
-        function: client::
+        function: clipboard_paste_replace
     },
     Command {
-        name: "primary-clipboard-paste-after",
+        name: "primary_clipboard_paste_after",
         aliases: &[],
         description: "Paste primary clipboard after selections.",
         args: &[],
-        function: client::
+        function: primary_clipboard_paste_after
     },
     Command {
-        name: "primary-clipboard-paste-before",
+        name: "primary_clipboard_paste_before",
         aliases: &[],
         description: "Paste primary clipboard before selections.",
         args: &[],
-        function: client::
+        function: primary_clipboard_paste_before
     },
     Command {
-        name: "primary-clipboard-paste-replace",
+        name: "primary_clipboard_paste_replace",
         aliases: &[],
         description: "Replace selections with content of system primary clipboard.",
         args: &[],
-        function: client::
+        function: primary_clipboard_paste_replace
     },
         // Open
         Command {
             name: "open_below",
             aliases: &[],
             description: "Open new line below selection",
-            args: &[]
-        function: server::
+            args: &[],
+        function: open_below
         },
         Command {
             name: "open_above",
             aliases: &[],
             description: "Open new line above selection",
-            args: &[]
-        function: server::
+            args: &[],
+        function: open_above
         },
         // Special insert mode keybindings
         Command {
             name: "insert_tab",
             aliases: &[],
             description: "Insert tab char",
-            args: &[]
-        function: server::
+            args: &[],
+        function: insert_tab
         },
         Command {
             name: "insert_newline",
             aliases: &[],
             description: "Insert newline char",
-            args: &[]
-        function: server::
+            args: &[],
+        function: insert_newline
         },
         // *crement
         Command {
             name: "increment",
             aliases: &[],
             description: "Increment item under cursor",
-            args: &[]
-        function: server::
+            args: &[],
+        function: increment
         },
         Command {
             name: "decrement",
             aliases: &[],
             description: "Decrement item under cursor",
-            args: &[]
-        function: server::
+            args: &[],
+        function: decrement
         },
         // Indent
         Command {
             name: "indent",
             aliases: &[],
             description: "Indent selection",
-            args: &[]
-        function: server::
+            args: &[],
+        function: indent
         },
         Command {
             name: "unindent",
             aliases: &[],
             description: "Unindent selection",
-            args: &[]
-        function: server::
+            args: &[],
+        function: unindent
         },
         // Lineadds
         Command {
             name: "add_newline_above",
             aliases: &[],
             description: "Add newline above",
-            args: &[]
-        function: server::
+            args: &[],
+        function: add_newline_above
         },
         Command {
             name: "add_newline_below",
             aliases: &[],
             description: "Add newline below",
-            args: &[]
-        function: server::
+            args: &[],
+        function: add_newline_below
         },
         // Lang
         Command {
             name: "toggle_comments",
             aliases: &[],
             description: "Comment/uncomment selections",
-            args: &[]
-        function: server::
+            args: &[],
+        function: toggle_comments
         },
                 // File
         Command {
             name: "file_picker",
             aliases: &[],
             description: "Open file picker",
-            args: &[]
-        function: client::
+            args: &[],
+        function: file_picker
         },
         Command {
             name: "file_picker_in_current_directory",
             aliases: &[],
             description: "Open file picker at current working directory",
-            args: &[]
-        function: client::
+            args: &[],
+        function: file_picker_in_current_directory
         },
                 // Buffer
         Command {
             name: "buffer_picker",
             aliases: &[],
             description: "Open buffer picker",
-            args: &[]
-        function: client::
+            args: &[],
+        function: buffer_picker
         },
                 // Symbol
         Command {
             name: "symbol_picker",
             aliases: &[],
             description: "Open symbol picker",
-            args: &[]
-        function: client::
+            args: &[],
+        function: symbol_picker
         },
         Command {
             name: "workspace_symbol_picker",
             aliases: &[],
             description: "Open workspace symbol picker",
-            args: &[]
-        function: client::
+            args: &[],
+        function: workspace_symbol_picker
         },
                 // Diagnostics
         Command {
             name: "diagnostics_picker",
             aliases: &[],
             description: "Open diagnostic picker",
-            args: &[]
-        function: client::
+            args: &[],
+        function: diagnostics_picker
         },
         Command {
             name: "workspace_diagnostics_picker",
             aliases: &[],
             description: "Open workspace diagnostic picker",
-            args: &[]
-        function: client::
+            args: &[],
+        function: workspace_diagnostics_picker
         },
         // LSP
 
         Command {
-            name: "set-language",
+            name: "set_language",
             aliases: &["lang"],
             description: "Set the language of current buffer.",
             args: &[Required(Languages)],
-            function: client::
+            function: set_language
         },
         Command {
             name: "format_selections",
             aliases: &[],
             description: "Format selection using the LSP server provided formatter.",
-            args: &[]
-            function: server::
+            args: &[],
+            function: format_selections
         },
         Command {
             name: "format",
             aliases: &["fmt"],
             description: "Format file(s) with the LSP server provided formatter.",
             args: &[Optional(FilePaths)],
-            function: client::
+            function: format
         },
         Command {
-        name: "lsp-workspace-command",
+        name: "lsp_workspace_command",
         aliases: &[],
         description: "Open workspace command picker",
         args: &[],
-        function: client::
+        function: lsp_workspace_command
     },
     Command {
-        name: "lsp-restart",
+        name: "lsp_restart",
         aliases: &[],
         description: "Restarts the Language Server that is in use by the current doc",
         args: &[],
-        function: client::
+        function: lsp_restart
     },
         Command {
                 name: "select_references_to_symbol_under_cursor",
                 aliases: &[],
                 description: "Select symbol references",
-                args: &[]
-        function: server::
+                args: &[],
+        function: select_references_to_symbol_under_cursor
         },
         Command {
             name: "code_action",
             aliases: &[],
             description: "Perform code action",
-            args: &[]
-        function: server::
+            args: &[],
+        function: code_action
         },
         Command {
             name: "goto_definition",
             aliases: &[],
             description: "Goto definition",
-            args: &[]
-        function: server::
+            args: &[],
+        function: goto_definition
         },
         Command {
             name: "goto_implementation",
             aliases: &[],
             description: "Goto implimentation",
-            args: &[]
-        function: server::
+            args: &[],
+        function: goto_implementation
         },
         Command {
             name: "goto_type_definition",
             aliases: &[],
             description: "Goto type definition",
-            args: &[]
-        function: server::
+            args: &[],
+        function: goto_type_definition
         },
         Command {
             name: "goto_last_modification",
             aliases: &[],
             description: "Goto last modification",
-            args: &[]
-        function: server::
+            args: &[],
+        function: goto_last_modification
         },
         Command {
             name: "goto_reference",
             aliases: &[],
             description: "Goto references",
-            args: &[]
-        function: server::
+            args: &[],
+        function: goto_reference
         },
         Command {
             name: "goto_first_diag",
             aliases: &[],
             description: "Goto first diagnostic",
-            args: &[]
-        function: server::
+            args: &[],
+        function: goto_first_diag
         },
         Command {
             name: "goto_last_diag",
             aliases: &[],
             description: "Goto last diagnostic",
-            args: &[]
-        function: server::
+            args: &[],
+        function: goto_last_diag
         },
         Command {
             name: "goto_next_diag",
             aliases: &[],
             description: "Goto next diagnostic",
-            args: &[]
-        function: server::
+            args: &[],
+        function: goto_next_diag
         },
         Command {
             name: "goto_prev_diag",
             aliases: &[],
             description: "Goto previous diagnostic",
-            args: &[]
-        function: server::
+            args: &[],
+        function: goto_prev_diag
         },
         Command {
             name: "signature_help",
             aliases: &[],
             description: "Show signature help",
-            args: &[]
-        function: server::
+            args: &[],
+        function: signature_help
         },
         Command {
             name: "completion",
             aliases: &[],
             description: "Invoke completion popup",
-            args: &[]
-        function: server::
+            args: &[],
+        function: completion
         },
         Command {
             name: "hover",
             aliases: &[],
             description: "Show docs for item under cursor",
-            args: &[]
-        function: server::
+            args: &[],
+        function: hover
         },
         Command {
             name: "rename_symbol",
             aliases: &[],
             description: "Rename symbol",
-            args: &[]
-        function: server::
+            args: &[],
+        function: rename_symbol
         },
         // DAP
         Command {
-            name: "debug-start",
+            name: "debug_start",
             aliases: &["dbg"],
             description: "Start a debug session from a given template with given parameters.",
             args: &[],
-            function: client::
+            function: debug_start
         },
         Command {
-            name: "debug-remote",
-            aliases: &["dbg-tcp"],
+            name: "debug_remote",
+            aliases: &["dbg_tcp"],
             description: "Connect to a debug adapter by TCP address and start a debugging session from a given template with given parameters.",
             args: &[],
-            function: client::
+            function: debug_remote
         },
         Command {
-            name: "debug-eval",
+            name: "debug_eval",
             aliases: &[],
             description: "Evaluate expression in current debug context.",
             args: &[],
-            function: client::
+            function: debug_eval
         },
         Command {
             name: "dap_launch",
             aliases: &[],
             description: "Launch debug target",
-            args: &[]
-        function: server::
+            args: &[],
+        function: dap_launch
         },
         Command {
             name: "dap_toggle_breakpoint",
             aliases: &[],
             description: "Toggle breakpoint",
-            args: &[]
-        function: server::
+            args: &[],
+        function: dap_toggle_breakpoint
         },
         Command {
             name: "dap_continue",
             aliases: &[],
             description: "Continue program execution",
-            args: &[]
-        function: server::
+            args: &[],
+        function: dap_continue
         },
         Command {
             name: "dap_pause",
             aliases: &[],
             description: "Pause program execution",
-            args: &[]
-        function: server::
+            args: &[],
+        function: dap_pause
         },
         Command {
             name: "dap_step_in",
             aliases: &[],
             description: "Step in",
-            args: &[]
-        function: server::
+            args: &[],
+        function: dap_step_in
         },
         Command {
             name: "dap_step_out",
             aliases: &[],
             description: "Step out",
-            args: &[]
-        function: server::
+            args: &[],
+        function: dap_step_out
         },
         Command {
             name: "dap_next",
             aliases: &[],
             description: "Step to next",
-            args: &[]
-        function: server::
+            args: &[],
+        function: dap_next
         },
         Command {
             name: "dap_variables",
             aliases: &[],
             description: "List variables",
-            args: &[]
-        function: server::
+            args: &[],
+        function: dap_variables
         },
         Command {
             name: "dap_terminate",
             aliases: &[],
             description: "End debug session",
-            args: &[]
-        function: server::
+            args: &[],
+        function: dap_terminate
         },
         Command {
             name: "dap_edit_condition",
             aliases: &[],
             description: "Edit breakpoint condition on current line",
-            args: &[]
-        function: server::
+            args: &[],
+        function: dap_edit_condition
         },
         Command {
             name: "dap_edit_log",
             aliases: &[],
             description: "Edit breakpoint log message on current line",
-            args: &[]
-        function: server::
+            args: &[],
+        function: dap_edit_log
         },
         Command {
             name: "dap_switch_thread",
             aliases: &[],
             description: "Switch current thread",
-            args: &[]
-        function: server::
+            args: &[],
+        function: dap_switch_thread
         },
         Command {
             name: "dap_switch_stack_frame",
             aliases: &[],
             description: "Switch stack frame",
-            args: &[]
-        function: server::
+            args: &[],
+        function: dap_switch_stack_frame
         },
         Command {
             name: "dap_enable_exceptions",
             aliases: &[],
             description: "Enable exception breakpoints",
-            args: &[]
-        function: server::
+            args: &[],
+        function: dap_enable_exceptions
         },
         Command {
             name: "dap_disable_exceptions",
             aliases: &[],
             description: "Disable exception breakpoints",
-            args: &[]
-        function: server::
+            args: &[],
+        function: dap_disable_exceptions
         },
         // VCS
         Command {
             name: "goto_next_change",
             aliases: &[],
             description: "Goto next change",
-            args: &[]
-        function: server::
+            args: &[],
+        function: goto_next_change
         },
         Command {
             name: "goto_prev_change",
             aliases: &[],
             description: "Goto previous change",
-            args: &[]
-        function: server::
+            args: &[],
+        function: goto_prev_change
         },
         Command {
             name: "goto_first_change",
             aliases: &[],
             description: "Goto first change",
-            args: &[]
-        function: server::
+            args: &[],
+        function: goto_first_change
         },
         Command {
             name: "goto_last_change",
             aliases: &[],
             description: "Goto last change",
-            args: &[]
-        function: server::
+            args: &[],
+        function: goto_last_change
         },
         // File open from selection
         Command {
             name: "goto_file",
             aliases: &[],
             description: "Goto files in selection",
-            args: &[]
-        function: server::
+            args: &[],
+        function: goto_file
         },
         Command {
             name: "goto_file_hsplit",
             aliases: &[],
             description: "Goto files in selection (hsplit)",
-            args: &[]
-        function: server::
+            args: &[],
+        function: goto_file_hsplit
         },
         Command {
             name: "goto_file_vsplit",
             aliases: &[],
             description: "Goto files in selection (vsplit)",
-            args: &[]
-        function: server::
+            args: &[],
+        function: goto_file_vsplit
         }
 ];
 
