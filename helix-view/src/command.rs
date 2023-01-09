@@ -34,6 +34,8 @@ pub enum CommandArgumentVariants {
     Languages,
     ConfigOptions,
     ShellCommand,
+    Char(char),
+    Integer(isize)
 }
 
 
