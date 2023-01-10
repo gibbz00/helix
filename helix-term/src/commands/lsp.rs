@@ -279,10 +279,10 @@ fn diag_picker(
     }
 
     let styles = DiagnosticStyles {
-        hint: cx.editor.theme.get("hint"),
-        info: cx.editor.theme.get("info"),
-        warning: cx.editor.theme.get("warning"),
-        error: cx.editor.theme.get("error"),
+        hint: cx.ui_tree.theme.get("hint"),
+        info: cx.ui_tree.theme.get("info"),
+        warning: cx.ui_tree.theme.get("warning"),
+        error: cx.ui_tree.theme.get("error"),
     };
 
     FilePicker::new(
@@ -333,16 +333,16 @@ pub fn symbol_picker(cx: &mut Context) {
             nested_to_flat(list, file, child);
         }
     }
-    let doc = doc!(cx.editor);
+    let doc = doc!(cx.ui_tree);
 
-    let language_server = language_server!(cx.editor, doc);
+    let language_server = language_server!(cx.ui_tree, doc);
     let current_url = doc.url();
     let offset_encoding = language_server.offset_encoding();
 
     let future = match language_server.document_symbols(doc.identifier()) {
         Some(future) => future,
         None => {
-            cx.editor
+            cx.ui_tree
                 .set_error("Language server does not support document symbols");
             return;
         }
@@ -374,14 +374,14 @@ pub fn symbol_picker(cx: &mut Context) {
 }
 
 pub fn workspace_symbol_picker(cx: &mut Context) {
-    let doc = doc!(cx.editor);
+    let doc = doc!(cx.ui_tree);
     let current_url = doc.url();
-    let language_server = language_server!(cx.editor, doc);
+    let language_server = language_server!(cx.ui_tree, doc);
     let offset_encoding = language_server.offset_encoding();
     let future = match language_server.workspace_symbols("".to_string()) {
         Some(future) => future,
         None => {
-            cx.editor
+            cx.ui_tree
                 .set_error("Language server does not support workspace symbols");
             return;
         }
@@ -432,12 +432,12 @@ pub fn workspace_symbol_picker(cx: &mut Context) {
 }
 
 pub fn diagnostics_picker(cx: &mut Context) {
-    let doc = doc!(cx.editor);
-    let language_server = language_server!(cx.editor, doc);
+    let doc = doc!(cx.ui_tree);
+    let language_server = language_server!(cx.ui_tree, doc);
     if let Some(current_url) = doc.url() {
         let offset_encoding = language_server.offset_encoding();
         let diagnostics = cx
-            .editor
+            .ui_tree
             .diagnostics
             .get(&current_url)
             .cloned()
@@ -454,11 +454,11 @@ pub fn diagnostics_picker(cx: &mut Context) {
 }
 
 pub fn workspace_diagnostics_picker(cx: &mut Context) {
-    let doc = doc!(cx.editor);
-    let language_server = language_server!(cx.editor, doc);
+    let doc = doc!(cx.ui_tree);
+    let language_server = language_server!(cx.ui_tree, doc);
     let current_url = doc.url();
     let offset_encoding = language_server.offset_encoding();
-    let diagnostics = cx.editor.diagnostics.clone();
+    let diagnostics = cx.ui_tree.diagnostics.clone();
     let picker = diag_picker(
         cx,
         diagnostics,
@@ -537,9 +537,9 @@ fn action_fixes_diagnostics(action: &CodeActionOrCommand) -> bool {
 }
 
 pub fn code_action(cx: &mut Context) {
-    let (view, doc) = current!(cx.editor);
+    let (view, doc) = current!(cx.ui_tree);
 
-    let language_server = language_server!(cx.editor, doc);
+    let language_server = language_server!(cx.ui_tree, doc);
 
     let selection_range = doc.selection(view.id).primary();
     let offset_encoding = language_server.offset_encoding();
@@ -565,7 +565,7 @@ pub fn code_action(cx: &mut Context) {
     ) {
         Some(future) => future,
         None => {
-            cx.editor
+            cx.ui_tree
                 .set_error("Language server does not support code actions");
             return;
         }
@@ -915,8 +915,8 @@ fn to_locations(definitions: Option<lsp::GotoDefinitionResponse>) -> Vec<lsp::Lo
 }
 
 pub fn goto_definition(cx: &mut Context) {
-    let (view, doc) = current!(cx.editor);
-    let language_server = language_server!(cx.editor, doc);
+    let (view, doc) = current!(cx.ui_tree);
+    let language_server = language_server!(cx.ui_tree, doc);
     let offset_encoding = language_server.offset_encoding();
 
     let pos = doc.position(view.id, offset_encoding);
@@ -924,7 +924,7 @@ pub fn goto_definition(cx: &mut Context) {
     let future = match language_server.goto_definition(doc.identifier(), pos, None) {
         Some(future) => future,
         None => {
-            cx.editor
+            cx.ui_tree
                 .set_error("Language server does not support goto-definition");
             return;
         }
@@ -940,8 +940,8 @@ pub fn goto_definition(cx: &mut Context) {
 }
 
 pub fn goto_type_definition(cx: &mut Context) {
-    let (view, doc) = current!(cx.editor);
-    let language_server = language_server!(cx.editor, doc);
+    let (view, doc) = current!(cx.ui_tree);
+    let language_server = language_server!(cx.ui_tree, doc);
     let offset_encoding = language_server.offset_encoding();
 
     let pos = doc.position(view.id, offset_encoding);
@@ -949,7 +949,7 @@ pub fn goto_type_definition(cx: &mut Context) {
     let future = match language_server.goto_type_definition(doc.identifier(), pos, None) {
         Some(future) => future,
         None => {
-            cx.editor
+            cx.ui_tree
                 .set_error("Language server does not support goto-type-definition");
             return;
         }
@@ -965,8 +965,8 @@ pub fn goto_type_definition(cx: &mut Context) {
 }
 
 pub fn goto_implementation(cx: &mut Context) {
-    let (view, doc) = current!(cx.editor);
-    let language_server = language_server!(cx.editor, doc);
+    let (view, doc) = current!(cx.ui_tree);
+    let language_server = language_server!(cx.ui_tree, doc);
     let offset_encoding = language_server.offset_encoding();
 
     let pos = doc.position(view.id, offset_encoding);
@@ -974,7 +974,7 @@ pub fn goto_implementation(cx: &mut Context) {
     let future = match language_server.goto_implementation(doc.identifier(), pos, None) {
         Some(future) => future,
         None => {
-            cx.editor
+            cx.ui_tree
                 .set_error("Language server does not support goto-implementation");
             return;
         }
@@ -990,8 +990,8 @@ pub fn goto_implementation(cx: &mut Context) {
 }
 
 pub fn goto_reference(cx: &mut Context) {
-    let (view, doc) = current!(cx.editor);
-    let language_server = language_server!(cx.editor, doc);
+    let (view, doc) = current!(cx.ui_tree);
+    let language_server = language_server!(cx.ui_tree, doc);
     let offset_encoding = language_server.offset_encoding();
 
     let pos = doc.position(view.id, offset_encoding);
@@ -999,7 +999,7 @@ pub fn goto_reference(cx: &mut Context) {
     let future = match language_server.goto_reference(doc.identifier(), pos, None) {
         Some(future) => future,
         None => {
-            cx.editor
+            cx.ui_tree
                 .set_error("Language server does not support goto-reference");
             return;
         }
@@ -1025,7 +1025,7 @@ pub fn signature_help(cx: &mut Context) {
 }
 
 pub fn signature_help_impl(cx: &mut Context, invoked: SignatureHelpInvoked) {
-    let (view, doc) = current!(cx.editor);
+    let (view, doc) = current!(cx.ui_tree);
     let was_manually_invoked = invoked == SignatureHelpInvoked::Manual;
 
     let language_server = match doc.language_server() {
@@ -1034,7 +1034,7 @@ pub fn signature_help_impl(cx: &mut Context, invoked: SignatureHelpInvoked) {
             // Do not show the message if signature help was invoked
             // automatically on backspace, trigger characters, etc.
             if was_manually_invoked {
-                cx.editor
+                cx.ui_tree
                     .set_status("Language server not active for current buffer");
             }
             return;
@@ -1048,7 +1048,7 @@ pub fn signature_help_impl(cx: &mut Context, invoked: SignatureHelpInvoked) {
         Some(f) => f,
         None => {
             if was_manually_invoked {
-                cx.editor
+                cx.ui_tree
                     .set_error("Language server does not support signature-help");
             }
             return;
@@ -1145,8 +1145,8 @@ pub fn signature_help_impl(cx: &mut Context, invoked: SignatureHelpInvoked) {
 }
 
 pub fn hover(cx: &mut Context) {
-    let (view, doc) = current!(cx.editor);
-    let language_server = language_server!(cx.editor, doc);
+    let (view, doc) = current!(cx.ui_tree);
+    let language_server = language_server!(cx.ui_tree, doc);
     let offset_encoding = language_server.offset_encoding();
 
     // TODO: factor out a doc.position_identifier() that returns lsp::TextDocumentPositionIdentifier
@@ -1156,7 +1156,7 @@ pub fn hover(cx: &mut Context) {
     let future = match language_server.text_document_hover(doc.identifier(), pos, None) {
         Some(future) => future,
         None => {
-            cx.editor
+            cx.ui_tree
                 .set_error("Language server does not support hover");
             return;
         }
@@ -1202,7 +1202,7 @@ pub fn hover(cx: &mut Context) {
 }
 
 pub fn rename_symbol(cx: &mut Context) {
-    let (view, doc) = current_ref!(cx.editor);
+    let (view, doc) = current_ref!(cx.ui_tree);
     let text = doc.text().slice(..);
     let primary_selection = doc.selection(view.id).primary();
     let prefill = if primary_selection.len() > 1 {
@@ -1248,8 +1248,8 @@ pub fn rename_symbol(cx: &mut Context) {
 }
 
 pub fn select_references_to_symbol_under_cursor(cx: &mut Context) {
-    let (view, doc) = current!(cx.editor);
-    let language_server = language_server!(cx.editor, doc);
+    let (view, doc) = current!(cx.ui_tree);
+    let language_server = language_server!(cx.ui_tree, doc);
     let offset_encoding = language_server.offset_encoding();
 
     let pos = doc.position(view.id, offset_encoding);
@@ -1258,7 +1258,7 @@ pub fn select_references_to_symbol_under_cursor(cx: &mut Context) {
     {
         Some(future) => future,
         None => {
-            cx.editor
+            cx.ui_tree
                 .set_error("Language server does not support document highlight");
             return;
         }

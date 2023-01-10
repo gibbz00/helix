@@ -1,3 +1,7 @@
+mod command_multiplier;
+
+use self::command_multiplier::CommandMultiplier;
+
 use crate::{
     event_handler::EventHandler,
     lists,
@@ -74,6 +78,11 @@ pub struct UITree {
     /// Current editing mode.
     pub mode: Mode,
     pub tree: Tree,
+    pub keymap: Keymap,
+    // New vec is created when traversing to a sticky keytrie
+    // Each Vec in Vec is in other words a sticky level.
+    pub pending_keys: Vec<Vec<KeyEvent>>,
+    pub command_multiplier: CommandMultiplier,
     pub event_handler: EventHandler,
     pub next_document_id: DocumentId,
     pub documents: BTreeMap<DocumentId, Document>,
@@ -85,7 +94,6 @@ pub struct UITree {
     pub save_queue: SelectAll<Flatten<UnboundedReceiverStream<Once<DocumentSavedEventFuture>>>>,
     pub write_count: usize,
 
-    pub count: Option<std::num::NonZeroUsize>,
     pub selected_register: Option<char>,
     pub registers: Registers,
     pub macro_recording: Option<(char, Vec<KeyEvent>)>,
@@ -192,13 +200,15 @@ impl UITree {
         Self {
             mode: Mode::Normal,
             tree: Tree::new(area),
-            event_handler: EventHandler::new(config.keymap),
+            event_handler: EventHandler::start(&self),
+            keymap: config.keys,
+            pending_keys: vec![Vec::new()],
+            command_multiplier: CommandMultiplier::new(),
             next_document_id: DocumentId::default(),
             documents: BTreeMap::new(),
             saves: HashMap::new(),
             save_queue: SelectAll::new(),
             write_count: 0,
-            count: None,
             selected_register: None,
             macro_recording: None,
             macro_replaying: Vec::new(),

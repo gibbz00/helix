@@ -1,10 +1,10 @@
 mod command_list;
 mod mappable_command;
-mod client;
+mod command_functions;
 
 pub use command_list::COMMAND_LIST as COMMAND_LIST;
 pub use command_list::COMMAND_MAP as COMMAND_MAP;
-use crate::lists::List;
+use crate::{lists::List, ui_tree::UITree};
 
 #[derive(Clone, Debug)]
 pub struct Command {
@@ -12,7 +12,7 @@ pub struct Command {
     aliases: &'static [&'static str],
     description: &'static str,
     args: &'static [&'static CommandArgument],
-    function: fn(&self)
+    function: fn(&self, &'static UITree)
 }
 
 #[derive(FromStr)]

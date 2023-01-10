@@ -58,7 +58,7 @@ fn thread_picker(
     cx: &mut Context,
     callback_fn: impl Fn(&mut ui_tree, &dap::Thread) + Send + 'static,
 ) {
-    let debugger = debugger!(cx.editor);
+    let debugger = debugger!(cx.ui_tree);
 
     let future = debugger.threads();
     dap_callback(
@@ -249,12 +249,12 @@ pub fn dap_start_impl(
 }
 
 pub fn dap_launch(cx: &mut Context) {
-    if cx.editor.debugger.is_some() {
-        cx.editor.set_error("Debugger is already running");
+    if cx.ui_tree.debugger.is_some() {
+        cx.ui_tree.set_error("Debugger is already running");
         return;
     }
 
-    let doc = doc!(cx.editor);
+    let doc = doc!(cx.ui_tree);
 
     let config = match doc
         .language_config()
@@ -262,7 +262,7 @@ pub fn dap_launch(cx: &mut Context) {
     {
         Some(c) => c,
         None => {
-            cx.editor
+            cx.ui_tree
                 .set_error("No debug adapter available for language");
             return;
         }
@@ -357,11 +357,11 @@ fn debug_parameter_prompt(
 }
 
 pub fn dap_toggle_breakpoint(cx: &mut Context) {
-    let (view, doc) = current!(cx.editor);
+    let (view, doc) = current!(cx.ui_tree);
     let path = match doc.path() {
         Some(path) => path.clone(),
         None => {
-            cx.editor
+            cx.ui_tree
                 .set_error("Can't set breakpoint: document has no path");
             return;
         }
@@ -375,7 +375,7 @@ pub fn dap_toggle_breakpoint_impl(cx: &mut Context, path: PathBuf, line: usize) 
     // TODO: need to map breakpoints over edits and update them?
     // we shouldn't really allow editing while debug is running though
 
-    let breakpoints = cx.editor.breakpoints.entry(path.clone()).or_default();
+    let breakpoints = cx.ui_tree.breakpoints.entry(path.clone()).or_default();
     // TODO: always keep breakpoints sorted and use binary search to determine insertion point
     if let Some(pos) = breakpoints
         .iter()
@@ -389,16 +389,16 @@ pub fn dap_toggle_breakpoint_impl(cx: &mut Context, path: PathBuf, line: usize) 
         });
     }
 
-    let debugger = debugger!(cx.editor);
+    let debugger = debugger!(cx.ui_tree);
 
     if let Err(e) = breakpoints_changed(debugger, path, breakpoints) {
-        cx.editor
+        cx.ui_tree
             .set_error(format!("Failed to set breakpoints: {}", e));
     }
 }
 
 pub fn dap_continue(cx: &mut Context) {
-    let debugger = debugger!(cx.editor);
+    let debugger = debugger!(cx.ui_tree);
 
     if let Some(thread_id) = debugger.thread_id {
         let request = debugger.continue_thread(thread_id);
@@ -411,7 +411,7 @@ pub fn dap_continue(cx: &mut Context) {
             },
         );
     } else {
-        cx.editor
+        cx.ui_tree
             .set_error("Currently active thread is not stopped. Switch the thread.");
     }
 }
@@ -428,7 +428,7 @@ pub fn dap_pause(cx: &mut Context) {
 }
 
 pub fn dap_step_in(cx: &mut Context) {
-    let debugger = debugger!(cx.editor);
+    let debugger = debugger!(cx.ui_tree);
 
     if let Some(thread_id) = debugger.thread_id {
         let request = debugger.step_in(thread_id);
@@ -437,13 +437,13 @@ pub fn dap_step_in(cx: &mut Context) {
             debugger!(editor).resume_application();
         });
     } else {
-        cx.editor
+        cx.ui_tree
             .set_error("Currently active thread is not stopped. Switch the thread.");
     }
 }
 
 pub fn dap_step_out(cx: &mut Context) {
-    let debugger = debugger!(cx.editor);
+    let debugger = debugger!(cx.ui_tree);
 
     if let Some(thread_id) = debugger.thread_id {
         let request = debugger.step_out(thread_id);
@@ -451,13 +451,13 @@ pub fn dap_step_out(cx: &mut Context) {
             debugger!(editor).resume_application();
         });
     } else {
-        cx.editor
+        cx.ui_tree
             .set_error("Currently active thread is not stopped. Switch the thread.");
     }
 }
 
 pub fn dap_next(cx: &mut Context) {
-    let debugger = debugger!(cx.editor);
+    let debugger = debugger!(cx.ui_tree);
 
     if let Some(thread_id) = debugger.thread_id {
         let request = debugger.next(thread_id);
@@ -465,23 +465,23 @@ pub fn dap_next(cx: &mut Context) {
             debugger!(editor).resume_application();
         });
     } else {
-        cx.editor
+        cx.ui_tree
             .set_error("Currently active thread is not stopped. Switch the thread.");
     }
 }
 
 pub fn dap_variables(cx: &mut Context) {
-    let debugger = debugger!(cx.editor);
+    let debugger = debugger!(cx.ui_tree);
 
     if debugger.thread_id.is_none() {
-        cx.editor
+        cx.ui_tree
             .set_status("Cannot access variables while target is running");
         return;
     }
     let (frame, thread_id) = match (debugger.active_frame, debugger.thread_id) {
         (Some(frame), Some(thread_id)) => (frame, thread_id),
         _ => {
-            cx.editor
+            cx.ui_tree
                 .set_status("Cannot find current stack frame to access variables");
             return;
         }
@@ -491,7 +491,7 @@ pub fn dap_variables(cx: &mut Context) {
     let scopes = match block_on(debugger.scopes(frame_id)) {
         Ok(s) => s,
         Err(e) => {
-            cx.editor.set_error(format!("Failed to get scopes: {}", e));
+            cx.ui_tree.set_error(format!("Failed to get scopes: {}", e));
             return;
         }
     };
@@ -499,7 +499,7 @@ pub fn dap_variables(cx: &mut Context) {
     // TODO: allow expanding variables into sub-fields
     let mut variables = Vec::new();
 
-    let theme = &cx.editor.theme;
+    let theme = &cx.ui_tree.theme;
     let scope_style = theme.get("ui.linenr.selected");
     let type_style = theme.get("ui.text");
     let text_style = theme.get("ui.text.focus");
@@ -537,7 +537,7 @@ pub fn dap_variables(cx: &mut Context) {
 }
 
 pub fn dap_terminate(cx: &mut Context) {
-    let debugger = debugger!(cx.editor);
+    let debugger = debugger!(cx.ui_tree);
 
     let request = debugger.disconnect();
     dap_callback(cx.jobs, request, |editor, _compositor, _response: ()| {
@@ -547,7 +547,7 @@ pub fn dap_terminate(cx: &mut Context) {
 }
 
 pub fn dap_enable_exceptions(cx: &mut Context) {
-    let debugger = debugger!(cx.editor);
+    let debugger = debugger!(cx.ui_tree);
 
     let filters = match &debugger.capabilities().exception_breakpoint_filters {
         Some(filters) => filters.iter().map(|f| f.filter.clone()).collect(),
@@ -566,7 +566,7 @@ pub fn dap_enable_exceptions(cx: &mut Context) {
 }
 
 pub fn dap_disable_exceptions(cx: &mut Context) {
-    let debugger = debugger!(cx.editor);
+    let debugger = debugger!(cx.ui_tree);
 
     let request = debugger.set_exception_breakpoints(Vec::new());
 
@@ -581,8 +581,8 @@ pub fn dap_disable_exceptions(cx: &mut Context) {
 
 // TODO: both edit condition and edit log need to be stable: we might get new breakpoints from the debugger which can change offsets
 pub fn dap_edit_condition(cx: &mut Context) {
-    if let Some((pos, breakpoint)) = get_breakpoint_at_current_line(cx.editor) {
-        let path = match doc!(cx.editor).path() {
+    if let Some((pos, breakpoint)) = get_breakpoint_at_current_line(cx.ui_tree) {
+        let path = match doc!(cx.ui_tree).path() {
             Some(path) => path.clone(),
             None => return,
         };
@@ -623,8 +623,8 @@ pub fn dap_edit_condition(cx: &mut Context) {
 }
 
 pub fn dap_edit_log(cx: &mut Context) {
-    if let Some((pos, breakpoint)) = get_breakpoint_at_current_line(cx.editor) {
-        let path = match doc!(cx.editor).path() {
+    if let Some((pos, breakpoint)) = get_breakpoint_at_current_line(cx.ui_tree) {
+        let path = match doc!(cx.ui_tree).path() {
             Some(path) => path.clone(),
             None => return,
         };
@@ -669,12 +669,12 @@ pub fn dap_switch_thread(cx: &mut Context) {
     })
 }
 pub fn dap_switch_stack_frame(cx: &mut Context) {
-    let debugger = debugger!(cx.editor);
+    let debugger = debugger!(cx.ui_tree);
 
     let thread_id = match debugger.thread_id {
         Some(thread_id) => thread_id,
         None => {
-            cx.editor.set_error("No thread is currently active");
+            cx.ui_tree.set_error("No thread is currently active");
             return;
         }
     };

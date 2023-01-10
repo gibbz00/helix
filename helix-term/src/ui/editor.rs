@@ -69,11 +69,11 @@ impl EditorView {
     ) -> Option<KeymapResult> {
         let mut last_mode = mode;
         let key_result = self.keymap.get(mode, event);
-        cxt.editor.autoinfo = self.keymap.sticky_keytrie().map(|node| Infobox::new(node.infobox_contents());
+        cxt.ui_tree.autoinfo = self.keymap.sticky_keytrie().map(|node| Infobox::new(node.infobox_contents());
 
         let mut execute_command = |command: &commands::MappableCommand| {
             command.execute(cxt);
-            let current_mode = cxt.editor.mode();
+            let current_mode = cxt.ui_tree.mode();
             match (last_mode, current_mode) {
                 (Mode::Normal, Mode::Insert) => {
                     // HAXX: if we just entered insert mode from normal, clear key buf
@@ -108,7 +108,7 @@ impl EditorView {
             KeymapResult::Matched(command) => {
                 execute_command(command);
             }
-            KeymapResult::Pending(node) => cxt.editor.autoinfo = Some(node.infobox()),
+            KeymapResult::Pending(node) => cxt.ui_tree.autoinfo = Some(node.infobox()),
             KeymapResult::MatchedCommandSequence(commands) => {
                 for command in commands {
                     execute_command(command);
@@ -147,16 +147,16 @@ impl EditorView {
     }   
 
     fn command_mode(&mut self, mode: Mode, cxt: &mut commands::Context, event: KeyEvent) {
-        match (event, cxt.editor.count) {
+        match (event, cxt.ui_tree.command_multiplier.get()) {
             // count handling
             (key!(i @ '0'), Some(_)) | (key!(i @ '1'..='9'), _) => {
                 let i = i.to_digit(10).unwrap() as usize;
-                cxt.editor.count =
-                    std::num::NonZeroUsize::new(cxt.editor.count.map_or(i, |c| c.get() * 10 + i));
+                cxt.ui_tree.command_multiplier
+                    .set(std::num::NonZeroU32::new(cxt.ui_tree.command_multiplier.map_or(i, |c| c.get() * 10 + i)));
             }
             // special handling for repeat operator
             (key!('.'), _) if self.keymap.pending_keys().is_empty() => {
-                for _ in 0..cxt.editor.count.map_or(1, NonZeroUsize::into) {
+                for _ in 0..cxt.ui_tree.command_multiplier.unwrap_or_one().get() {
                     // first execute whatever put us into insert mode
                     self.last_insert.0.execute(cxt);
                     // then replay the inputs
@@ -164,7 +164,7 @@ impl EditorView {
                         match key {
                             InsertEvent::Key(key) => self.insert_mode(cxt, key),
                             InsertEvent::CompletionApply(compl) => {
-                                let (view, doc) = current!(cxt.editor);
+                                let (view, doc) = current!(cxt.ui_tree);
 
                                 doc.restore(view);
 
@@ -183,27 +183,21 @@ impl EditorView {
                                 apply_transaction(&tx, doc, view);
                             }
                             InsertEvent::TriggerCompletion => {
-                                let (_, doc) = current!(cxt.editor);
+                                let (_, doc) = current!(cxt.ui_tree);
                                 doc.savepoint();
                             }
                         }
                     }
                 }
-                cxt.editor.count = None;
+                cxt.ui_tree.command_multiplier.clear();
             }
             _ => {
-                // set the count
-                cxt.count = cxt.editor.count;
-                // TODO: edge case: 0j -> reset to 1
-                // if this fails, count was Some(0)
-                // debug_assert!(cxt.count != 0);
-
                 // set the register
-                cxt.register = cxt.editor.selected_register.take();
+                cxt.register = cxt.ui_tree.selected_register.take();
 
                 self.handle_keymap_event(mode, cxt, event);
                 if self.keymap.pending_keys().is_empty() {
-                    cxt.editor.count = None
+                    cxt.ui_tree.command_multiplier.clear();
                 }
             }
         }
@@ -1105,7 +1099,7 @@ impl EditorView {
             };
         }
 
-        if cx.editor.mode != Mode::Insert || !cx.editor.config().auto_completion {
+        if cx.ui_tree.mode != Mode::Insert || !cx.ui_tree.config().auto_completion {
             return EventResult::Ignored(None);
         }
 
@@ -1121,7 +1115,7 @@ impl EditorView {
         event: &MouseEvent,
         cxt: &mut commands::Context,
     ) -> EventResult {
-        let config = cxt.editor.config();
+        let config = cxt.ui_tree.config();
         let MouseEvent {
             kind,
             row,
@@ -1146,7 +1140,7 @@ impl EditorView {
 
         match kind {
             MouseEventKind::Down(MouseButton::Left) => {
-                let editor = &mut cxt.editor;
+                let editor = &mut cxt.ui_tree;
 
                 if let Some((pos, view_id)) = pos_and_view(editor, row, column) {
                     let doc = doc_mut!(editor, &view!(editor, view_id).doc);
@@ -1166,7 +1160,7 @@ impl EditorView {
                 if let Some((coords, view_id)) = gutter_coords_and_view(editor, row, column) {
                     editor.focus(view_id);
 
-                    let (view, doc) = current!(cxt.editor);
+                    let (view, doc) = current!(cxt.ui_tree);
 
                     let path = match doc.path() {
                         Some(path) => path.clone(),
@@ -1184,7 +1178,7 @@ impl EditorView {
             }
 
             MouseEventKind::Drag(MouseButton::Left) => {
-                let (view, doc) = current!(cxt.editor);
+                let (view, doc) = current!(cxt.ui_tree);
 
                 let pos = match view.pos_at_screen_coords(doc, row, column) {
                     Some(pos) => pos,
@@ -1200,7 +1194,7 @@ impl EditorView {
             }
 
             MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
-                let current_view = cxt.editor.tree.focus;
+                let current_view = cxt.ui_tree.tree.focus;
 
                 let direction = match event.kind {
                     MouseEventKind::ScrollUp => Direction::Backward,
@@ -1208,15 +1202,15 @@ impl EditorView {
                     _ => unreachable!(),
                 };
 
-                match pos_and_view(cxt.editor, row, column) {
-                    Some((_, view_id)) => cxt.editor.tree.focus = view_id,
+                match pos_and_view(cxt.ui_tree, row, column) {
+                    Some((_, view_id)) => cxt.ui_tree.tree.focus = view_id,
                     None => return EventResult::Ignored(None),
                 }
 
                 let offset = config.scroll_lines.unsigned_abs();
                 commands::scroll(cxt, offset, direction);
 
-                cxt.editor.tree.focus = current_view;
+                cxt.ui_tree.tree.focus = current_view;
 
                 EventResult::Consumed(None)
             }
@@ -1226,7 +1220,7 @@ impl EditorView {
                     return EventResult::Ignored(None);
                 }
 
-                let (view, doc) = current!(cxt.editor);
+                let (view, doc) = current!(cxt.ui_tree);
 
                 if doc
                     .selection(view.id)
@@ -1244,10 +1238,10 @@ impl EditorView {
             }
 
             MouseEventKind::Up(MouseButton::Right) => {
-                if let Some((coords, view_id)) = gutter_coords_and_view(cxt.editor, row, column) {
-                    cxt.editor.focus(view_id);
+                if let Some((coords, view_id)) = gutter_coords_and_view(cxt.ui_tree, row, column) {
+                    cxt.ui_tree.focus(view_id);
 
-                    let (view, doc) = current!(cxt.editor);
+                    let (view, doc) = current!(cxt.ui_tree);
                     let line = coords.row + view.offset.row;
                     if let Ok(pos) = doc.text().try_line_to_char(line) {
                         doc.set_selection(view_id, Selection::point(pos));
@@ -1265,7 +1259,7 @@ impl EditorView {
             }
 
             MouseEventKind::Up(MouseButton::Middle) => {
-                let editor = &mut cxt.editor;
+                let editor = &mut cxt.ui_tree;
                 if !config.middle_click_paste {
                     return EventResult::Ignored(None);
                 }
@@ -1280,7 +1274,7 @@ impl EditorView {
                 if let Some((pos, view_id)) = pos_and_view(editor, row, column) {
                     let doc = doc_mut!(editor, &view!(editor, view_id).doc);
                     doc.set_selection(view_id, Selection::point(pos));
-                    cxt.editor.focus(view_id);
+                    cxt.ui_tree.focus(view_id);
                     commands::MappableCommand::paste_primary_clipboard_before.execute(cxt);
 
                     return EventResult::Consumed(None);
@@ -1301,8 +1295,7 @@ impl Component for EditorView {
         context: &mut crate::compositor::Context,
     ) -> EventResult {
         let mut cx = commands::Context {
-            editor: context.editor,
-            count: None,
+            ui_tree: context.ui_tree,
             register: None,
             callback: None,
             on_next_key_callback: None,
@@ -1311,13 +1304,13 @@ impl Component for EditorView {
 
         match event {
             Event::Paste(contents) => {
-                cx.count = cx.editor.count;
+                cx.count = cx.ui_tree.count;
                 commands::paste_bracketed_value(&mut cx, contents.clone());
-                cx.editor.count = None;
+                cx.ui_tree.count = None;
 
-                let config = cx.editor.config();
-                let mode = cx.editor.mode();
-                let (view, doc) = current!(cx.editor);
+                let config = cx.ui_tree.config();
+                let mode = cx.ui_tree.mode();
+                let (view, doc) = current!(cx.ui_tree);
                 view.ensure_cursor_in_view(doc, config.scrolloff);
 
                 // Store a history state if not in insert mode. Otherwise wait till we exit insert
@@ -1334,14 +1327,14 @@ impl Component for EditorView {
                 EventResult::Consumed(None)
             }
             Event::Key(mut key) => {
-                cx.editor.reset_idle_timer();
+                cx.ui_tree.reset_idle_timer();
                 canonicalize_key(&mut key);
 
                 // clear status
-                cx.editor.status_msg = None;
+                cx.ui_tree.status_msg = None;
 
-                let mode = cx.editor.mode();
-                let (view, _) = current!(cx.editor);
+                let mode = cx.ui_tree.mode();
+                let (view, _) = current!(cx.ui_tree);
                 let focus = view.id;
 
                 if let Some(on_next_key) = self.on_next_key.take() {
@@ -1355,7 +1348,7 @@ impl Component for EditorView {
                             if let Some(completion) = &mut self.completion {
                                 // use a fake context here
                                 let mut cx = Context {
-                                    editor: cx.editor,
+                                    editor: cx.ui_tree,
                                     jobs: cx.jobs,
                                     scroll: None,
                                 };
@@ -1373,7 +1366,7 @@ impl Component for EditorView {
 
                             // if completion didn't take the event, we pass it onto commands
                             if !consumed {
-                                if let Some(compl) = cx.editor.last_completion.take() {
+                                if let Some(compl) = cx.ui_tree.last_completion.take() {
                                     self.last_insert.1.push(InsertEvent::CompletionApply(compl));
                                 }
 
@@ -1386,7 +1379,7 @@ impl Component for EditorView {
                                 if let Some(completion) = &mut self.completion {
                                     completion.update(&mut cx);
                                     if completion.is_empty() {
-                                        self.clear_completion(cx.editor);
+                                        self.clear_completion(cx.ui_tree);
                                     }
                                 }
                             }
@@ -1406,16 +1399,16 @@ impl Component for EditorView {
 
                 // if the command consumed the last view, skip the render.
                 // on the next loop cycle the Application will then terminate.
-                if cx.editor.should_close() {
+                if cx.ui_tree.should_close() {
                     return EventResult::Ignored(None);
                 }
 
                 // if the focused view still exists and wasn't closed
-                if cx.editor.tree.contains(focus) {
-                    let config = cx.editor.config();
-                    let mode = cx.editor.mode();
-                    let view = view_mut!(cx.editor, focus);
-                    let doc = doc_mut!(cx.editor, &view.doc);
+                if cx.ui_tree.tree.contains(focus) {
+                    let config = cx.ui_tree.config();
+                    let mode = cx.ui_tree.mode();
+                    let view = view_mut!(cx.ui_tree, focus);
+                    let doc = doc_mut!(cx.ui_tree, &view.doc);
 
                     view.ensure_cursor_in_view(doc, config.scrolloff);
 

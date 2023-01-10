@@ -40,7 +40,7 @@ pub fn prompt(
 ) {
     let mut prompt = Prompt::new(prompt, history_register, completion_fn, callback_fn);
     // Calculate the initial completion
-    prompt.recalculate_completion(cx.editor);
+    prompt.recalculate_completion(cx.ui_tree);
     cx.push_layer(Box::new(prompt));
 }
 
@@ -53,7 +53,7 @@ pub fn prompt_with_input(
     callback_fn: impl FnMut(&mut crate::compositor::Context, &str, PromptEvent) + 'static,
 ) {
     let prompt = Prompt::new(prompt, history_register, completion_fn, callback_fn)
-        .with_line(input, cx.editor);
+        .with_line(input, cx.ui_tree);
     cx.push_layer(Box::new(prompt));
 }
 
@@ -64,11 +64,11 @@ pub fn regex_prompt(
     completion_fn: impl FnMut(&ui_tree, &str) -> Vec<prompt::Completion> + 'static,
     fun: impl Fn(&mut ui_tree, Regex, PromptEvent) + 'static,
 ) {
-    let (view, doc) = current!(cx.editor);
+    let (view, doc) = current!(cx.ui_tree);
     let doc_id = view.doc;
     let snapshot = doc.selection(view.id).clone();
     let offset_snapshot = view.offset;
-    let config = cx.editor.config();
+    let config = cx.ui_tree.config();
 
     let mut prompt = Prompt::new(
         prompt,
@@ -151,7 +151,7 @@ pub fn regex_prompt(
         },
     );
     // Calculate initial completion
-    prompt.recalculate_completion(cx.editor);
+    prompt.recalculate_completion(cx.ui_tree);
     // prompt
     cx.push_layer(Box::new(prompt));
 }

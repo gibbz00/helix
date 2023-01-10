@@ -1,33 +1,45 @@
-use crate::{input::KeyEvent, keyboard::KeyCode, document::Mode, keymap::{KeyTrie, KeyTrieNode, Keymap}, command::MappableCommands};
+use crate::{input::KeyEvent, keyboard::KeyCode, document::Mode, keymap::{KeyTrie, KeyTrieNode}, command::MappableCommands, ui_tree::UITree};
 
 pub struct EventHandler {
-    pub keymap: Keymap,
-    // New vec is created when traversing to a sticky keytrie
-    // Each Vec in Vec is in other words a sticky level.
-    pending_keys: Vec<Vec<KeyEvent>>,
+    ui_tree: UITree,
 }
 
 impl EventHandler {
-    pub fn start(keymap: Keymap) -> Self {
+    pub fn start(ui_tree: &UITree) -> Self {
         Self {
-            keymap,
-            pending_keys: vec![Vec::new()]
+            ui_tree, 
         }
     }
-    // TODO: UI tree subscribes to pending key
-    pub fn pending_keys(&self) -> &[KeyEvent] {
-        &self.pending_keys
+
+    pub fn handle_key_event(&self, mode: Mode, key_event: KeyEvent) {
+        if Some(mappable_commands) = get_keymapped_command(self, mode, keyevent) {
+            for mappable_command in mappable_commands {
+                    await mappable_command.execute();
+            }    
+            ui_tree.command_multiplier.clear()
+        }
     }
 
-    pub fn handle_key_event(&mut self, mode: Mode, key_event: KeyEvent) -> Option<MappableCommands> {
+    pub fn get_keymapped_command(&mut self, mode: Mode, key_event: KeyEvent) -> Option<MappableCommands> {
         let mut key_trie_path = self.pending_keys.into_flattened();
         key_trie_path.push(key_event.clone());
-        let found_key_trie = self.get_keytrie(mode).traverse(key_trie_path);
+
+        // Allows keybindings to digits whilst also allowing the typing of 
+        // multiple digits for commands that make use of prefixed numbers.
+        let found_key_trie = match ui_tree.command_multiplier.get() {
+            None => ui_tree.keymap.get_keytrie(mode).traverse(key_trie_path),
+            Some(command_multiplier) => None
+        };
         
         match found_key_trie { 
             None => { 
                 if key_event == KeyEvent::Esc {
                     self.pending_keys.pop();
+                    self.pending_keys.pop();
+                } else if let Some(digit) = key_event.char().and_then(|char| char.to_digit(10)) {
+                    if !(digit == 0 && ui_tree.command_multiplier.get().is_none()) {
+                        ui_tree.command_multiplier.push_digit(digit);
+                    }
                 } else {
                     *self.pending_keys.last_mut() = Vec::new();
                 }
@@ -42,6 +54,7 @@ impl EventHandler {
                 if keytrie.is_sticky() {
                     self.pending_keys.push(Vec::new());
                 }
+                return None
             }
         }
     }

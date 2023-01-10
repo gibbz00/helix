@@ -1901,6 +1901,6 @@ pub(super) fn command_mode(cx: &mut Context) {
     });
 
     // Calculate initial completion
-    prompt.recalculate_completion(cx.editor);
+    prompt.recalculate_completion(cx.ui_tree);
     cx.push_layer(Box::new(prompt));
 }

@@ -301,7 +301,7 @@ impl Completion {
     }
 
     pub fn update(&mut self, cx: &mut commands::Context) {
-        self.recompute_filter(cx.editor)
+        self.recompute_filter(cx.ui_tree)
     }
 
     pub fn is_empty(&self) -> bool {
@@ -328,7 +328,7 @@ impl Completion {
             _ => return false,
         };
 
-        let language_server = match doc!(cx.editor).language_server() {
+        let language_server = match doc!(cx.ui_tree).language_server() {
             Some(language_server) => language_server,
             None => return false,
         };

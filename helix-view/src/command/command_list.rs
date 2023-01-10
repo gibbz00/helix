@@ -1,4 +1,4 @@
-use super::{Command, CommandArgument, client::*};
+use super::{Command, CommandArgument, command_functions::*};
 
 /// Access elements in COMMAND_LIST by aliases too.
 pub static COMMAND_MAP: Lazy<HashMap<&'static str, &'static Command>> =
@@ -48,13 +48,13 @@ pub const COMMAND_LIST: &'static[Command] = &[
         args: &[],
         function: show_clipboard_provider
     },
-    Command {
-        name: "no_op",
-        aliases: &[],
-        description: "Do nothing.",
-        args: &[],
-        function: no_op
-    },
+    // Command {
+    //     name: "no_op",
+    //     aliases: &[],
+    //     description: "Do nothing.",
+    //     args: &[],
+    //     function: no_op
+    // },
     // Selection movement
     Command {
         name: "repeat_last_motion",
