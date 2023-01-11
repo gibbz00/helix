@@ -196,7 +196,7 @@ impl Completion {
 
                     let transaction = item_to_transaction(
                         doc,
-                        view.id,
+                        view.view_id,
                         item,
                         offset_encoding,
                         start_offset,

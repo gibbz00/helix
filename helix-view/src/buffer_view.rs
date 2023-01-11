@@ -11,10 +11,11 @@ use std::{
 
 #[derive(Clone)]
 pub struct BufferView {
-    pub id: BufferViewID,
+    pub view_id: BufferViewID,
+    pub buffer_id: BufferID,
     pub offset: Position,
     pub area: Rect,
-    pub buffer_id: BufferID,
+
     pub jumps: JumpList,
     // Buffers accessed from this view from the oldest one to last viewed one
     pub buffer_access_history: Vec<BufferID>,
@@ -37,7 +38,7 @@ pub struct BufferView {
 impl fmt::Debug for BufferView {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("BufferView")
-            .field("view_id", &self.id)
+            .field("view_id", &self.view_id)
             .field("area", &self.area)
             .field("buffer", &self.buffer_id)
             .finish()
@@ -47,7 +48,7 @@ impl fmt::Debug for BufferView {
 impl BufferView {
     pub fn new(buffer_id: BufferID, gutter_types: Vec<GutterComponents>) -> Self {
         Self {
-            id: BufferViewID::default(),
+            view_id: BufferViewID::default(),
             buffer_id,
             offset: Position::new(0, 0),
             area: Rect::default(), // will get calculated upon inserting into tree
@@ -102,7 +103,7 @@ impl BufferView {
         centering: bool,
     ) -> Option<(usize, usize)> {
         let cursor = buffer
-            .selection(self.id)
+            .selection(self.view_id)
             .primary()
             .cursor(buffer.text().slice(..));
 
@@ -302,7 +303,7 @@ impl BufferView {
 
         log::debug!(
             "Syncing buffer_view {:?} between {} and {}",
-            self.id,
+            self.view_id,
             current_revision,
             latest_revision
         );

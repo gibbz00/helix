@@ -404,7 +404,7 @@ impl UITree {
         view.offset = Position::default();
 
         let doc = buffer_mut!(self, &doc_id);
-        doc.ensure_view_init(view.id);
+        doc.ensure_view_init(view.view_id);
         view.sync_changes(doc);
 
         align_view(doc, view, Align::Center);
@@ -435,10 +435,10 @@ impl UITree {
                     && !self
                         .tree
                         .traverse()
-                        .any(|(_, v)| v.buffer_id == doc.id && v.id != view.id);
+                        .any(|(_, v)| v.buffer_id == doc.id && v.view_id != view.view_id);
 
                 let (view, buffer) = current!(self);
-                let view_id = view.id;
+                let view_id = view.view_id;
 
                 // Append any outstanding changes to history in the old document.
                 buffer.append_changes_to_history(view);
@@ -454,7 +454,7 @@ impl UITree {
                         view.remove_buffer(&id);
                     }
                 } else {
-                    let jump = (view.buffer_id, buffer.selection(view.id).clone());
+                    let jump = (view.buffer_id, buffer.selection(view.view_id).clone());
                     view.jumps.push(jump);
                     // Set last accessed doc if it is a different document
                     if buffer.id != id {
@@ -473,7 +473,7 @@ impl UITree {
                 return;
             }
             Action::Load => {
-                let view_id = buffer_view!(self).id;
+                let view_id = buffer_view!(self).view_id;
                 let doc = buffer_mut!(self, &id);
                 doc.ensure_view_init(view_id);
                 return;
@@ -597,10 +597,10 @@ impl UITree {
                 if view.buffer_id == doc_id {
                     // something was previously open in the view, switch to previous doc
                     if let Some(prev_doc) = view.buffer_access_history.pop() {
-                        Some(Action::ReplaceDoc(view.id, prev_doc))
+                        Some(Action::ReplaceDoc(view.view_id, prev_doc))
                     } else {
                         // only the document that is being closed was in the view, close it
-                        Some(Action::Close(view.id))
+                        Some(Action::Close(view.view_id))
                     }
                 } else {
                     None
@@ -755,7 +755,7 @@ impl UITree {
         let config = self.config();
         let (view, doc) = current_ref!(self);
         let cursor = doc
-            .selection(view.id)
+            .selection(view.view_id)
             .primary()
             .cursor(doc.text().slice(..));
         if let Some(mut pos) = view.screen_coords_at_pos(doc, doc.text().slice(..), cursor) {
@@ -862,14 +862,14 @@ impl UITree {
         // if leaving append mode, move cursor back by 1
         if doc.restore_cursor {
             let text = doc.text().slice(..);
-            let selection = doc.selection(view.id).clone().transform(|range| {
+            let selection = doc.selection(view.view_id).clone().transform(|range| {
                 Range::new(
                     range.from(),
                     graphemes::prev_grapheme_boundary(text, range.to()),
                 )
             });
 
-            doc.set_selection(view.id, selection);
+            doc.set_selection(view.view_id, selection);
             doc.restore_cursor = false;
         }
     }
@@ -895,14 +895,14 @@ fn try_restore_indent(doc: &mut Buffer, view: &mut BufferView) {
 
     let doc_changes = doc.changes().changes();
     let text = doc.text().slice(..);
-    let range = doc.selection(view.id).primary();
+    let range = doc.selection(view.view_id).primary();
     let pos = range.cursor(text);
     let line_end_pos = line_end_char_index(&text, range.cursor_line(text));
 
     if inserted_a_new_blank_line(doc_changes, pos, line_end_pos) {
         // Removes tailing whitespaces.
         let transaction =
-            Transaction::change_by_selection(doc.text(), doc.selection(view.id), |range| {
+            Transaction::change_by_selection(doc.text(), doc.selection(view.view_id), |range| {
                 let line_start_pos = text.line_to_char(range.cursor_line(text));
                 (line_start_pos, pos, None)
             });

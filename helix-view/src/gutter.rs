@@ -194,7 +194,7 @@ pub fn line_numbers<'doc>(
 
     let current_line = doc
         .text()
-        .char_to_line(doc.selection(view.id).primary().cursor(text));
+        .char_to_line(doc.selection(view.view_id).primary().cursor(text));
 
     let line_number = editor.config().line_number;
     let mode = editor.mode;

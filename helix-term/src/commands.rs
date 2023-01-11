@@ -122,10 +122,10 @@ where
     let text = buffer.text().slice(..);
 
     let selection = buffer
-        .selection(buffer_view.id)
+        .selection(buffer_view.view_id)
         .clone()
         .transform(|range| move_fn(text, range, dir, command_multiplier, behaviour, buffer.tab_width()));
-    buffer.set_selection(buffer_view.id, selection);
+    buffer.set_selection(buffer_view.view_id, selection);
 }
 
 use helix_core::movement::{move_horizontally, move_vertically};
@@ -165,7 +165,7 @@ fn extend_line_down(cx: &mut Context) {
 fn goto_line_end_impl(buffer_view: &mut BufferView, buffer: &mut Buffer, movement: Movement) {
     let text = buffer.text().slice(..);
 
-    let selection = buffer.selection(buffer_view.id).clone().transform(|range| {
+    let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
         let line = range.cursor_line(text);
         let line_start = text.line_to_char(line);
 
@@ -174,7 +174,7 @@ fn goto_line_end_impl(buffer_view: &mut BufferView, buffer: &mut Buffer, movemen
 
         range.put_cursor(text, pos, movement == Movement::Extend)
     });
-    buffer.set_selection(buffer_view.id, selection);
+    buffer.set_selection(buffer_view.view_id, selection);
 }
 
 fn goto_line_end(cx: &mut Context) {
@@ -198,13 +198,13 @@ fn extend_to_line_end(cx: &mut Context) {
 fn goto_line_end_newline_impl(buffer_view: &mut BufferView, buffer: &mut Buffer, movement: Movement) {
     let text = buffer.text().slice(..);
 
-    let selection = buffer.selection(buffer_view.id).clone().transform(|range| {
+    let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
         let line = range.cursor_line(text);
         let pos = line_end_char_index(&text, line);
 
         range.put_cursor(text, pos, movement == Movement::Extend)
     });
-    buffer.set_selection(buffer_view.id, selection);
+    buffer.set_selection(buffer_view.view_id, selection);
 }
 
 fn goto_line_end_newline(cx: &mut Context) {
@@ -262,7 +262,7 @@ fn kill_to_line_start(cx: &mut Context) {
     let (buffer_view, buffer) = current!(cx.ui_tree);
     let text = buffer.text().slice(..);
 
-    let selection = buffer.selection(buffer_view.id).clone().transform(|range| {
+    let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
         let line = range.cursor_line(text);
         let first_char = text.line_to_char(line);
         let anchor = range.cursor(text);
@@ -292,7 +292,7 @@ fn kill_to_line_end(cx: &mut Context) {
     let (buffer_view, buffer) = current!(cx.ui_tree);
     let text = buffer.text().slice(..);
 
-    let selection = buffer.selection(buffer_view.id).clone().transform(|range| {
+    let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
         let line = range.cursor_line(text);
         let line_end_pos = line_end_char_index(&text, line);
         let pos = range.cursor(text);
@@ -313,7 +313,7 @@ fn goto_first_nonwhitespace(cx: &mut Context) {
     let (buffer_view, buffer) = current!(cx.ui_tree);
     let text = buffer.text().slice(..);
 
-    let selection = buffer.selection(buffer_view.id).clone().transform(|range| {
+    let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
         let line = range.cursor_line(text);
 
         if let Some(pos) = find_first_non_whitespace_char(text.line(line)) {
@@ -323,7 +323,7 @@ fn goto_first_nonwhitespace(cx: &mut Context) {
             range
         }
     });
-    buffer.set_selection(buffer_view.id, selection);
+    buffer.set_selection(buffer_view.view_id, selection);
 }
 
 fn trim_selections(cx: &mut Context) {
@@ -331,7 +331,7 @@ fn trim_selections(cx: &mut Context) {
     let text = buffer.text().slice(..);
 
     let ranges: SmallVec<[Range; 1]> = buffer
-        .selection(buffer_view.id)
+        .selection(buffer_view.view_id)
         .iter()
         .filter_map(|range| {
             if range.is_empty() || range.slice(text).chars().all(|ch| ch.is_whitespace()) {
@@ -346,12 +346,12 @@ fn trim_selections(cx: &mut Context) {
         .collect();
 
     if !ranges.is_empty() {
-        let primary = buffer.selection(buffer_view.id).primary();
+        let primary = buffer.selection(buffer_view.view_id).primary();
         let idx = ranges
             .iter()
             .position(|range| range.overlaps(&primary))
             .unwrap_or(ranges.len() - 1);
-        buffer.set_selection(buffer_view.id, Selection::new(ranges, idx));
+        buffer.set_selection(buffer_view.view_id, Selection::new(ranges, idx));
     } else {
         collapse_selection(cx);
         keep_primary_selection(cx);
@@ -362,7 +362,7 @@ fn trim_selections(cx: &mut Context) {
 fn align_selections(cx: &mut Context) {
     let (buffer_view, buffer) = current!(cx.ui_tree);
     let text = buffer.text().slice(..);
-    let selection = buffer.selection(buffer_view.id);
+    let selection = buffer.selection(buffer_view.view_id);
 
     let tab_width = buffer.tab_width();
     let mut column_widths: Vec<Vec<_>> = Vec::new();
@@ -449,10 +449,10 @@ fn goto_window(cx: &mut Context, align: Align) {
     let pos = buffer.text().line_to_char(line);
     let text = buffer.text().slice(..);
     let selection = buffer
-        .selection(buffer_view.id)
+        .selection(buffer_view.view_id)
         .clone()
         .transform(|range| range.put_cursor(text, pos, cx.ui_tree.mode == Mode::Select));
-    buffer.set_selection(buffer_view.id, selection);
+    buffer.set_selection(buffer_view.view_id, selection);
 }
 
 fn goto_window_top(cx: &mut Context) {
@@ -476,10 +476,10 @@ where
     let text = buffer.text().slice(..);
 
     let selection = buffer
-        .selection(buffer_view.id)
+        .selection(buffer_view.view_id)
         .clone()
         .transform(|range| move_fn(text, range, count));
-    buffer.set_selection(buffer_view.id, selection);
+    buffer.set_selection(buffer_view.view_id, selection);
 }
 
 fn move_next_word_start(cx: &mut Context) {
@@ -525,10 +525,10 @@ where
         };
 
         let selection = buffer
-            .selection(buffer_view.id)
+            .selection(buffer_view.view_id)
             .clone()
             .transform(|range| move_fn(text, range, count, behavior));
-        buffer.set_selection(buffer_view.id, selection);
+        buffer.set_selection(buffer_view.view_id, selection);
     };
     motion(cx.ui_tree);
     cx.ui_tree.last_motion = Some(Motion(Box::new(motion)));
@@ -549,11 +549,11 @@ fn goto_file_start(cx: &mut Context) {
         let (buffer_view, buffer) = current!(cx.ui_tree);
         let text = buffer.text().slice(..);
         let selection = buffer
-            .selection(buffer_view.id)
+            .selection(buffer_view.view_id)
             .clone()
             .transform(|range| range.put_cursor(text, 0, cx.ui_tree.mode == Mode::Select));
         push_jump(buffer_view, buffer);
-        buffer.set_selection(buffer_view.id, selection);
+        buffer.set_selection(buffer_view.view_id, selection);
     }
 }
 
@@ -562,11 +562,11 @@ fn goto_file_end(cx: &mut Context) {
     let text = buffer.text().slice(..);
     let pos = buffer.text().len_chars();
     let selection = buffer
-        .selection(buffer_view.id)
+        .selection(buffer_view.view_id)
         .clone()
         .transform(|range| range.put_cursor(text, pos, cx.ui_tree.mode == Mode::Select));
     push_jump(buffer_view, buffer);
-    buffer.set_selection(buffer_view.id, selection);
+    buffer.set_selection(buffer_view.view_id, selection);
 }
 
 fn goto_file(cx: &mut Context) {
@@ -585,7 +585,7 @@ fn goto_file_vsplit(cx: &mut Context) {
 fn goto_file_impl(cx: &mut Context, action: Action) {
     let (buffer_view, buffer) = current_ref!(cx.ui_tree);
     let text = buffer.text();
-    let selections = buffer.selection(buffer_view.id);
+    let selections = buffer.selection(buffer_view.view_id);
     let mut paths: Vec<_> = selections
         .iter()
         .map(|r| text.slice(r.from()..r.to()).to_string())
@@ -631,12 +631,12 @@ where
     let (buffer_view, buffer) = current!(cx.ui_tree);
     let text = buffer.text().slice(..);
 
-    let selection = buffer.selection(buffer_view.id).clone().transform(|range| {
+    let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
         let word = extend_fn(text, range, count);
         let pos = word.cursor(text);
         range.put_cursor(text, pos, true)
     });
-    buffer.set_selection(buffer_view.id, selection);
+    buffer.set_selection(buffer_view.view_id, selection);
 }
 
 fn extend_next_word_start(cx: &mut Context) {
@@ -726,7 +726,7 @@ fn find_char_impl<F, M: CharMatcher + Clone + Copy>(
     let (buffer_view, buffer) = current!(ui_tree);
     let text = buffer.text().slice(..);
 
-    let selection = buffer.selection(buffer_view.id).clone().transform(|range| {
+    let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
         // TODO: use `Range::cursor()` here instead.  However, that works in terms of
         // graphemes, whereas this function doesn't yet.  So we're doing the same logic
         // here, but just in terms of chars instead.
@@ -744,7 +744,7 @@ fn find_char_impl<F, M: CharMatcher + Clone + Copy>(
             }
         })
     });
-    buffer.set_selection(buffer_view.id, selection);
+    buffer.set_selection(buffer_view.view_id, selection);
 }
 
 fn find_next_char_impl(
@@ -848,7 +848,7 @@ fn replace(cx: &mut Context) {
             _ => None,
         };
 
-        let selection = buffer.selection(buffer_view.id);
+        let selection = buffer.selection(buffer_view.view_id);
 
         if let Some(ch) = ch {
             let transaction = Transaction::change_by_selection(buffer.text(), selection, |range| {
@@ -883,7 +883,7 @@ where
     F: Fn(RopeSlice) -> Tendril,
 {
     let (buffer_view, buffer) = current!(cx.ui_tree);
-    let selection = buffer.selection(buffer_view.id);
+    let selection = buffer.selection(buffer_view.view_id);
     let transaction = Transaction::change_by_selection(buffer.text(), selection, |range| {
         let text: Tendril = change_fn(range.slice(buffer.text().slice(..)));
 
@@ -927,7 +927,7 @@ pub fn scroll(cx: &mut Context, offset: usize, direction: Direction) {
     let config = cx.ui_tree.config();
     let (buffer_view, buffer) = current!(cx.ui_tree);
 
-    let range = buffer.selection(buffer_view.id).primary();
+    let range = buffer.selection(buffer_view.view_id).primary();
     let text = buffer.text().slice(..);
 
     let cursor = visual_coords_at_pos(text, range.cursor(text), buffer.tab_width());
@@ -972,10 +972,10 @@ pub fn scroll(cx: &mut Context, offset: usize, direction: Direction) {
 
         // replace primary selection with an empty selection at cursor pos
         let prim_sel = Range::new(anchor, head);
-        let mut sel = buffer.selection(buffer_view.id).clone();
+        let mut sel = buffer.selection(buffer_view.view_id).clone();
         let idx = sel.primary_index();
         sel = sel.replace(idx, prim_sel);
-        buffer.set_selection(buffer_view.id, sel);
+        buffer.set_selection(buffer_view.view_id, sel);
     }
 }
 
@@ -1007,7 +1007,7 @@ fn copy_selection_on_line(cx: &mut Context, direction: Direction) {
     let count = ui_tree.command_multiplier.unwrap_or_one().get();
     let (buffer_view, buffer) = current!(cx.ui_tree);
     let text = buffer.text().slice(..);
-    let selection = buffer.selection(buffer_view.id);
+    let selection = buffer.selection(buffer_view.view_id);
     let mut ranges = SmallVec::with_capacity(selection.ranges().len() * (count + 1));
     ranges.extend_from_slice(selection.ranges());
     let mut primary_index = 0;
@@ -1075,7 +1075,7 @@ fn copy_selection_on_line(cx: &mut Context, direction: Direction) {
     }
 
     let selection = Selection::new(ranges, primary_index);
-    buffer.set_selection(buffer_view.id, selection);
+    buffer.set_selection(buffer_view.view_id, selection);
 }
 
 fn copy_selection_on_prev_line(cx: &mut Context) {
@@ -1090,7 +1090,7 @@ fn select_all(cx: &mut Context) {
     let (buffer_view, buffer) = current!(cx.ui_tree);
 
     let end = buffer.text().len_chars();
-    buffer.set_selection(buffer_view.id, Selection::single(0, end))
+    buffer.set_selection(buffer_view.view_id, Selection::single(0, end))
 }
 
 fn select_regex(cx: &mut Context) {
@@ -1107,9 +1107,9 @@ fn select_regex(cx: &mut Context) {
             }
             let text = buffer.text().slice(..);
             if let Some(selection) =
-                selection::select_on_matches(text, buffer.selection(buffer_view.id), &regex)
+                selection::select_on_matches(text, buffer.selection(buffer_view.view_id), &regex)
             {
-                buffer.set_selection(buffer_view.id, selection);
+                buffer.set_selection(buffer_view.view_id, selection);
             }
         },
     );
@@ -1128,8 +1128,8 @@ fn split_selection(cx: &mut Context) {
                 return;
             }
             let text = buffer.text().slice(..);
-            let selection = selection::split_on_matches(text, buffer.selection(buffer_view.id), &regex);
-            buffer.set_selection(buffer_view.id, selection);
+            let selection = selection::split_on_matches(text, buffer.selection(buffer_view.view_id), &regex);
+            buffer.set_selection(buffer_view.view_id, selection);
         },
     );
 }
@@ -1141,8 +1141,8 @@ fn split_selection_on_newline(cx: &mut Context) {
     #[allow(clippy::trivial_regex)]
     static REGEX: Lazy<Regex> =
         Lazy::new(|| Regex::new(r"\r\n|[\n\r\u{000B}\u{000C}\u{0085}\u{2028}\u{2029}]").unwrap());
-    let selection = selection::split_on_matches(text, buffer.selection(buffer_view.id), &REGEX);
-    buffer.set_selection(buffer_view.id, selection);
+    let selection = selection::split_on_matches(text, buffer.selection(buffer_view.view_id), &REGEX);
+    buffer.set_selection(buffer_view.view_id, selection);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1158,7 +1158,7 @@ fn search_impl(
 ) {
     let (buffer_view, buffer) = current!(ui_tree);
     let text = buffer.text().slice(..);
-    let selection = buffer.selection(buffer_view.id);
+    let selection = buffer.selection(buffer_view.view_id);
 
     // Get the right side of the primary block cursor for forward search, or the
     // grapheme before the start of the selection for reverse search.
@@ -1207,7 +1207,7 @@ fn search_impl(
 
     let (buffer_view, buffer) = current!(ui_tree);
     let text = buffer.text().slice(..);
-    let selection = buffer.selection(buffer_view.id);
+    let selection = buffer.selection(buffer_view.view_id);
 
     if let Some(mat) = mat {
         let start = text.byte_to_char(mat.start() + offset);
@@ -1227,7 +1227,7 @@ fn search_impl(
             Movement::Move => selection.clone().replace(selection.primary_index(), range),
         };
 
-        buffer.set_selection(buffer_view.id, selection);
+        buffer.set_selection(buffer_view.view_id, selection);
         buffer_view.ensure_cursor_in_view_center(buffer, scrolloff);
     };
 }
@@ -1352,7 +1352,7 @@ fn search_selection(cx: &mut Context) {
     let contents = buffer.text().slice(..);
 
     let regex = buffer
-        .selection(buffer_view.id)
+        .selection(buffer_view.view_id)
         .iter()
         .map(|selection| regex::escape(&selection.fragment(contents)))
         .collect::<HashSet<_>>() // Collect into hashset to deduplicate identical regexes
@@ -1557,7 +1557,7 @@ fn global_search(cx: &mut Context) {
                         let start = text.line_to_char(line_num);
                         let end = text.line_to_char((line_num + 1).min(text.len_lines()));
 
-                        buffer.set_selection(buffer_view.id, Selection::single(start, end));
+                        buffer.set_selection(buffer_view.view_id, Selection::single(start, end));
                         align_view(buffer, buffer_view, Align::Center);
                     },
                     |_ui_tree, FileResult { path, line_num }| {
@@ -1579,7 +1579,7 @@ enum Extend {
 
 fn extend_line(cx: &mut Context) {
     let (buffer_view, buffer) = current_ref!(cx.ui_tree);
-    let extend = match buffer.selection(buffer_view.id).primary().direction() {
+    let extend = match buffer.selection(buffer_view.view_id).primary().direction() {
         Direction::Forward => Extend::Below,
         Direction::Backward => Extend::Above,
     };
@@ -1599,7 +1599,7 @@ fn extend_line_impl(cx: &mut Context, extend: Extend) {
     let (buffer_view, buffer) = current!(cx.ui_tree);
 
     let text = buffer.text();
-    let selection = buffer.selection(buffer_view.id).clone().transform(|range| {
+    let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
         let (start_line, end_line) = range.line_range(text.slice(..));
 
         let start = text.line_to_char(match extend {
@@ -1633,15 +1633,15 @@ fn extend_line_impl(cx: &mut Context, extend: Extend) {
         Range::new(anchor, head)
     });
 
-    buffer.set_selection(buffer_view.id, selection);
+    buffer.set_selection(buffer_view.view_id, selection);
 }
 
 fn extend_to_line_bounds(cx: &mut Context) {
     let (buffer_view, buffer) = current!(cx.ui_tree);
 
     buffer.set_selection(
-        buffer_view.id,
-        buffer.selection(buffer_view.id).clone().transform(|range| {
+        buffer_view.view_id,
+        buffer.selection(buffer_view.view_id).clone().transform(|range| {
             let text = buffer.text();
 
             let (start_line, end_line) = range.line_range(text.slice(..));
@@ -1657,8 +1657,8 @@ fn shrink_to_line_bounds(cx: &mut Context) {
     let (buffer_view, buffer) = current!(cx.ui_tree);
 
     buffer.set_selection(
-        buffer_view.id,
-        buffer.selection(buffer_view.id).clone().transform(|range| {
+        buffer_view.view_id,
+        buffer.selection(buffer_view.view_id).clone().transform(|range| {
             let text = buffer.text();
 
             let (start_line, end_line) = range.line_range(text.slice(..));
@@ -1698,7 +1698,7 @@ enum Operation {
 fn delete_selection_impl(cx: &mut Context, op: Operation) {
     let (buffer_view, buffer) = current!(cx.ui_tree);
 
-    let selection = buffer.selection(buffer_view.id);
+    let selection = buffer.selection(buffer_view.view_id);
 
     if cx.ui_tree.register != Some('_') {
         // first yank the selection
@@ -1755,32 +1755,32 @@ fn collapse_selection(cx: &mut Context) {
     let (buffer_view, buffer) = current!(cx.ui_tree);
     let text = buffer.text().slice(..);
 
-    let selection = buffer.selection(buffer_view.id).clone().transform(|range| {
+    let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
         let pos = range.cursor(text);
         Range::new(pos, pos)
     });
-    buffer.set_selection(buffer_view.id, selection);
+    buffer.set_selection(buffer_view.view_id, selection);
 }
 
 fn flip_selections(cx: &mut Context) {
     let (buffer_view, buffer) = current!(cx.ui_tree);
 
     let selection = buffer
-        .selection(buffer_view.id)
+        .selection(buffer_view.view_id)
         .clone()
         .transform(|range| range.flip());
-    buffer.set_selection(buffer_view.id, selection);
+    buffer.set_selection(buffer_view.view_id, selection);
 }
 
 fn ensure_selections_forward(cx: &mut Context) {
     let (buffer_view, buffer) = current!(cx.ui_tree);
 
     let selection = buffer
-        .selection(buffer_view.id)
+        .selection(buffer_view.view_id)
         .clone()
         .transform(|r| r.with_direction(Direction::Forward));
 
-    buffer.set_selection(buffer_view.id, selection);
+    buffer.set_selection(buffer_view.view_id, selection);
 }
 
 fn enter_insert_mode(cx: &mut Context) {
@@ -1794,16 +1794,16 @@ fn insert_mode(cx: &mut Context) {
 
     log::trace!(
         "entering insert mode with sel: {:?}, text: {:?}",
-        buffer.selection(buffer_view.id),
+        buffer.selection(buffer_view.view_id),
         buffer.text().to_string()
     );
 
     let selection = buffer
-        .selection(buffer_view.id)
+        .selection(buffer_view.view_id)
         .clone()
         .transform(|range| Range::new(range.to(), range.from()));
 
-    buffer.set_selection(buffer_view.id, selection);
+    buffer.set_selection(buffer_view.view_id, selection);
 }
 
 // inserts at the end of each selection
@@ -1817,7 +1817,7 @@ fn append_mode(cx: &mut Context) {
     // selection butts up against it.
     let end = text.len_chars();
     let last_range = buffer
-        .selection(buffer_view.id)
+        .selection(buffer_view.view_id)
         .iter()
         .last()
         .expect("selection should always have at least one range");
@@ -1829,13 +1829,13 @@ fn append_mode(cx: &mut Context) {
         apply_transaction(&transaction, buffer, buffer_view);
     }
 
-    let selection = buffer.selection(buffer_view.id).clone().transform(|range| {
+    let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
         Range::new(
             range.from(),
             graphemes::next_grapheme_boundary(buffer.text().slice(..), range.to()),
         )
     });
-    buffer.set_selection(buffer_view.id, selection);
+    buffer.set_selection(buffer_view.view_id, selection);
 }
 
 fn file_picker(cx: &mut Context) {
@@ -1992,7 +1992,7 @@ fn jumplist_picker(cx: &mut Context) {
             cx.ui_tree.switch(meta.id, action);
             let config = cx.ui_tree.config();
             let (buffer_view, buffer) = current!(cx.ui_tree);
-            buffer.set_selection(buffer_view.id, meta.selection.clone());
+            buffer.set_selection(buffer_view.view_id, meta.selection.clone());
             buffer_view.ensure_cursor_in_view_center(buffer), config.scrolloff);
         },
         |ui_tree, meta| {
@@ -2074,13 +2074,13 @@ fn insert_at_line_end(cx: &mut Context) {
     enter_insert_mode(cx);
     let (buffer_view, buffer) = current!(cx.ui_tree);
 
-    let selection = buffer.selection(buffer_view.id).clone().transform(|range| {
+    let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
         let text = buffer.text().slice(..);
         let line = range.cursor_line(text);
         let pos = line_end_char_index(&text, line);
         Range::new(pos, pos)
     });
-    buffer.set_selection(buffer_view.id, selection);
+    buffer.set_selection(buffer_view.view_id, selection);
 }
 
 // Creates an LspCallback that waits for formatting changes to be computed. When they're done,
@@ -2141,7 +2141,7 @@ fn open(cx: &mut Context, open: Open) {
 
     let text = buffer.text().slice(..);
     let contents = buffer.text();
-    let selection = buffer.selection(buffer_view.id);
+    let selection = buffer.selection(buffer_view.view_id);
 
     let mut ranges = SmallVec::with_capacity(selection.len());
     let mut offs = 0;
@@ -2220,7 +2220,7 @@ fn normal_mode(cx: &mut Context) {
 
 // Store a jump on the jumplist.
 fn push_jump(buffer_view: &mut BufferView, buffer: &Buffer) {
-    let jump = (buffer.id(), buffer.selection(buffer_view.id).clone());
+    let jump = (buffer.id(), buffer.selection(buffer_view.view_id).clone());
     buffer_view.jumps.push(jump);
 }
 
@@ -2241,12 +2241,12 @@ fn goto_line_impl(ui_tree: &mut UITree) {
         let line_idx = std::cmp::min(command_multiplier.get() - 1, max_line);
         let pos = text.line_to_char(line_idx);
         let selection = buffer
-            .selection(buffer_view.id)
+            .selection(buffer_view.view_id)
             .clone()
             .transform(|range| range.put_cursor(text, pos, ui_tree.mode == Mode::Select));
 
         push_jump(buffer_view, buffer);
-        buffer.set_selection(buffer_view.id, selection);
+        buffer.set_selection(buffer_view.view_id, selection);
     }
 }
 
@@ -2261,12 +2261,12 @@ fn goto_last_line(cx: &mut Context) {
     };
     let pos = text.line_to_char(line_idx);
     let selection = buffer
-        .selection(buffer_view.id)
+        .selection(buffer_view.view_id)
         .clone()
         .transform(|range| range.put_cursor(text, pos, cx.ui_tree.mode == Mode::Select));
 
     push_jump(buffer_view, buffer);
-    buffer.set_selection(buffer_view.id, selection);
+    buffer.set_selection(buffer_view.view_id, selection);
 }
 
 fn goto_last_accessed_file(cx: &mut Context) {
@@ -2284,10 +2284,10 @@ fn goto_last_modification(cx: &mut Context) {
     let text = buffer.text().slice(..);
     if let Some(pos) = pos {
         let selection = buffer
-            .selection(buffer_view.id)
+            .selection(buffer_view.view_id)
             .clone()
             .transform(|range| range.put_cursor(text, pos, cx.ui_tree.mode == Mode::Select));
-        buffer.set_selection(buffer_view.id, selection);
+        buffer.set_selection(buffer_view.view_id, selection);
     }
 }
 
@@ -2311,7 +2311,7 @@ fn select_mode(cx: &mut Context) {
 
     // Make sure end-of-document selections are also 1-width.
     // (With the exception of being in an empty document, of course.)
-    let selection = buffer.selection(buffer_view.id).clone().transform(|range| {
+    let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
         if range.is_empty() && range.head == text.len_chars() {
             Range::new(
                 graphemes::prev_grapheme_boundary(text, range.anchor),
@@ -2321,7 +2321,7 @@ fn select_mode(cx: &mut Context) {
             range
         }
     });
-    buffer.set_selection(buffer_view.id, selection);
+    buffer.set_selection(buffer_view.view_id, selection);
 
     cx.ui_tree.mode = Mode::Select;
 }
@@ -2336,7 +2336,7 @@ fn goto_pos(ui_tree: &mut UITree, pos: usize) {
     let (buffer_view, buffer) = current!(ui_tree);
 
     push_jump(buffer_view, doc);
-    buffer.set_selection(buffer_view.id, Selection::point(pos));
+    buffer.set_selection(buffer_view.view_id, Selection::point(pos));
     align_view(buffer, buffer_view, Align::Center);
 }
 
@@ -2346,7 +2346,7 @@ fn goto_first_diag(cx: &mut Context) {
         Some(diag) => Selection::single(diag.range.start, diag.range.end),
         None => return,
     };
-    buffer.set_selection(buffer_view.id, selection);
+    buffer.set_selection(buffer_view.view_id, selection);
     align_view(buffer, buffer_view, Align::Center);
 }
 
@@ -2356,7 +2356,7 @@ fn goto_last_diag(cx: &mut Context) {
         Some(diag) => Selection::single(diag.range.start, diag.range.end),
         None => return,
     };
-    buffer.set_selection(buffer_view.id, selection);
+    buffer.set_selection(buffer_view.view_id, selection);
     align_view(buffer, buffer_view, Align::Center);
 }
 
@@ -2364,7 +2364,7 @@ fn goto_next_diag(cx: &mut Context) {
     let (buffer_view, buffer) = current!(cx.ui_tree);
 
     let cursor_pos = buffer
-        .selection(buffer_view.id)
+        .selection(buffer_view.view_id)
         .primary()
         .cursor(buffer.text().slice(..));
 
@@ -2378,7 +2378,7 @@ fn goto_next_diag(cx: &mut Context) {
         Some(diag) => Selection::single(diag.range.start, diag.range.end),
         None => return,
     };
-    buffer.set_selection(buffer_view.id, selection);
+    buffer.set_selection(buffer_view.view_id, selection);
     align_view(buffer, buffer_view, Align::Center);
 }
 
@@ -2386,7 +2386,7 @@ fn goto_prev_diag(cx: &mut Context) {
     let (buffer_view, buffer) = current!(cx.ui_tree);
 
     let cursor_pos = buffer
-        .selection(buffer_view.id)
+        .selection(buffer_view.view_id)
         .primary()
         .cursor(buffer.text().slice(..));
 
@@ -2403,7 +2403,7 @@ fn goto_prev_diag(cx: &mut Context) {
         Some(diag) => Selection::single(diag.range.end, diag.range.start),
         None => return,
     };
-    buffer.set_selection(buffer_view.id, selection);
+    buffer.set_selection(buffer_view.view_id, selection);
     align_view(buffer, buffer_view, Align::Center);
 }
 
@@ -2455,7 +2455,7 @@ fn goto_next_change_impl(cx: &mut Context, direction: Direction) {
             return;
         };
 
-        let selection = buffer.selection(buffer_view.id).clone().transform(|range| {
+        let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
             let cursor_line = range.cursor_line(buffer_text) as u32;
 
             let hunks = diff_handle.hunks();
@@ -2495,7 +2495,7 @@ fn goto_next_change_impl(cx: &mut Context, direction: Direction) {
             }
         });
 
-        buffer.set_selection(buffer_view.id, selection)
+        buffer.set_selection(buffer_view.view_id, selection)
     };
     motion(cx.ui_tree);
     cx.ui_tree.last_motion = Some(Motion(Box::new(motion)));
@@ -2524,7 +2524,7 @@ pub mod insert {
         let config = cx.ui_tree.config();
         let (buffer_view, buffer) = current!(cx.ui_tree);
         let text = buffer.text().slice(..);
-        let cursor = buffer.selection(buffer_view.id).primary().cursor(text);
+        let cursor = buffer.selection(buffer_view.view_id).primary().cursor(text);
 
         use helix_core::chars::char_is_word;
         let mut iter = text.chars_at(cursor);
@@ -2619,7 +2619,7 @@ pub mod insert {
     pub fn insert_char(cx: &mut Context, c: char) {
         let (buffer_view, buffer) = current_ref!(cx.ui_tree);
         let text = buffer.text();
-        let selection = buffer.selection(buffer_view.id);
+        let selection = buffer.selection(buffer_view.view_id);
         let auto_pairs = buffer.auto_pairs(cx.ui_tree);
 
         let transaction = auto_pairs
@@ -2648,7 +2648,7 @@ pub mod insert {
         let indent = Tendril::from(buffer.indent_style.as_str());
         let transaction = Transaction::insert(
             buffer.text(),
-            &buffer.selection(buffer_view.id).clone().cursors(buffer.text().slice(..)),
+            &buffer.selection(buffer_view.view_id).clone().cursors(buffer.text().slice(..)),
             indent,
         );
         apply_transaction(&transaction, buffer, buffer_view);
@@ -2659,7 +2659,7 @@ pub mod insert {
         let text = buffer.text().slice(..);
 
         let contents = buffer.text();
-        let selection = buffer.selection(buffer_view.id).clone();
+        let selection = buffer.selection(buffer_view.view_id).clone();
         let mut ranges = SmallVec::with_capacity(selection.len());
 
         // TODO: this is annoying, but we need to do it to properly calculate pos after edits
@@ -2769,7 +2769,7 @@ pub mod insert {
         let auto_pairs = buffer.auto_pairs(cx.ui_tree);
 
         let transaction =
-            Transaction::change_by_selection(buffer.text(), buffer.selection(buffer_view.id), |range| {
+            Transaction::change_by_selection(buffer.text(), buffer.selection(buffer_view.view_id), |range| {
                 let pos = range.cursor(text);
                 if pos == 0 {
                     return (pos, pos, None);
@@ -2862,7 +2862,7 @@ pub mod insert {
         let (buffer_view, buffer) = current!(cx.ui_tree);
         let text = buffer.text().slice(..);
         let transaction =
-            Transaction::change_by_selection(buffer.text(), buffer.selection(buffer_view.id), |range| {
+            Transaction::change_by_selection(buffer.text(), buffer.selection(buffer_view.view_id), |range| {
                 let pos = range.cursor(text);
                 (
                     pos,
@@ -2880,7 +2880,7 @@ pub mod insert {
         let (buffer_view, buffer) = current!(cx.ui_tree);
         let text = buffer.text().slice(..);
 
-        let selection = buffer.selection(buffer_view.id).clone().transform(|range| {
+        let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
             let anchor = movement::move_prev_word_start(text, range, count).from();
             let next = Range::new(anchor, range.cursor(text));
             exclude_cursor(text, next, range)
@@ -2895,7 +2895,7 @@ pub mod insert {
         let (buffer_view, buffer) = current!(cx.ui_tree);
         let text = buffer.text().slice(..);
 
-        let selection = buffer.selection(buffer_view.id).clone().transform(|range| {
+        let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
             let head = movement::move_next_word_end(text, range, count).to();
             Range::new(range.cursor(text), head)
         });
@@ -2966,7 +2966,7 @@ fn yank(cx: &mut Context) {
     let text = buffer.text().slice(..);
 
     let values: Vec<String> = buffer
-        .selection(buffer_view.id)
+        .selection(buffer_view.view_id)
         .fragments(text)
         .map(Cow::into_owned)
         .collect();
@@ -2994,7 +2994,7 @@ fn yank_joined_to_clipboard_impl(
     let text = buffer.text().slice(..);
 
     let values: Vec<String> = buffer
-        .selection(buffer_view.id)
+        .selection(buffer_view.view_id)
         .fragments(text)
         .map(Cow::into_owned)
         .collect();
@@ -3041,7 +3041,7 @@ fn yank_main_selection_to_clipboard_impl(
         ClipboardType::Selection => "yanked main selection to primary clipboard",
     };
 
-    let value = buffer.selection(buffer_view.id).primary().fragment(text);
+    let value = buffer.selection(buffer_view.view_id).primary().fragment(text);
 
     if let Err(e) = ui_tree
         .clipboard_provider
@@ -3110,7 +3110,7 @@ fn paste_impl(
         .chain(repeat);
 
     let text = buffer.text();
-    let selection = buffer.selection(buffer_view.id);
+    let selection = buffer.selection(buffer_view.view_id);
 
     let mut offset = 0;
     let mut ranges = SmallVec::with_capacity(selection.len());
@@ -3234,7 +3234,7 @@ fn replace_with_yanked(cx: &mut Context) {
                 .iter()
                 .map(|value| Tendril::from(&value.repeat(count)))
                 .chain(repeat);
-            let selection = buffer.selection(buffer_view.id);
+            let selection = buffer.selection(buffer_view.view_id);
             let transaction = Transaction::change_by_selection(buffer.text(), selection, |range| {
                 if !range.is_empty() {
                     (range.from(), range.to(), Some(values.next().unwrap()))
@@ -3258,7 +3258,7 @@ fn replace_selections_with_clipboard_impl(
 
     match cx.ui_tree.clipboard_provider.get_contents(clipboard_type) {
         Ok(contents) => {
-            let selection = buffer.selection(buffer_view.id);
+            let selection = buffer.selection(buffer_view.view_id);
             let transaction = Transaction::change_by_selection(buffer.text(), selection, |range| {
                 (
                     range.from(),
@@ -3323,7 +3323,7 @@ fn get_lines(doc: &Buffer, buffer_view_id: BufferViewID) -> Vec<usize> {
 fn indent(cx: &mut Context) {
     let count = ui_tree.command_multiplier.unwrap_or_one().get();
     let (buffer_view, buffer) = current!(cx.ui_tree);
-    let lines = get_lines(buffer, buffer_view.id);
+    let lines = get_lines(buffer, buffer_view.view_id);
 
     // Indent by one level
     let indent = Tendril::from(buffer.indent_style.as_str().repeat(count));
@@ -3345,7 +3345,7 @@ fn indent(cx: &mut Context) {
 fn unindent(cx: &mut Context) {
     let count = ui_tree.command_multiplier.unwrap_or_one().get();
     let (buffer_view, buffer) = current!(cx.ui_tree);
-    let lines = get_lines(buffer, buffer_view.id);
+    let lines = get_lines(buffer, buffer_view.view_id);
     let mut changes = Vec::with_capacity(lines.len());
     let tab_width = buffer.tab_width();
     let indent_width = count * tab_width;
@@ -3395,7 +3395,7 @@ fn format_selections(cx: &mut Context) {
     };
 
     let ranges: Vec<lsp::Range> = buffer
-        .selection(buffer_view.id)
+        .selection(buffer_view.view_id)
         .iter()
         .map(|range| range_to_lsp_range(buffer.text(), *range, language_server.offset_encoding()))
         .collect();
@@ -3445,7 +3445,7 @@ fn join_selections_impl(cx: &mut Context, select_space: bool) {
     let mut changes = Vec::new();
     let fragment = Tendril::from(" ");
 
-    for selection in buffer.selection(buffer_view.id) {
+    for selection in buffer.selection(buffer_view.view_id) {
         let (start, mut end) = selection.line_range(slice);
         if start == end {
             end = (end + 1).min(text.len_lines() - 1);
@@ -3506,9 +3506,9 @@ fn keep_or_remove_selections_impl(cx: &mut Context, remove: bool) {
             let text = buffer.text().slice(..);
 
             if let Some(selection) =
-                selection::keep_or_remove_matches(text, buffer.selection(buffer_view.id), &regex, remove)
+                selection::keep_or_remove_matches(text, buffer.selection(buffer_view.view_id), &regex, remove)
             {
-                buffer.set_selection(buffer_view.id, selection);
+                buffer.set_selection(buffer_view.view_id, selection);
             }
         },
     )
@@ -3534,15 +3534,15 @@ fn keep_primary_selection(cx: &mut Context) {
     let (buffer_view, buffer) = current!(cx.ui_tree);
     // TODO: handle count
 
-    let range = buffer.selection(buffer_view.id).primary();
-    buffer.set_selection(buffer_view.id, Selection::single(range.anchor, range.head));
+    let range = buffer.selection(buffer_view.view_id).primary();
+    buffer.set_selection(buffer_view.view_id, Selection::single(range.anchor, range.head));
 }
 
 fn remove_primary_selection(cx: &mut Context) {
     let (buffer_view, buffer) = current!(cx.ui_tree);
     // TODO: handle count
 
-    let selection = buffer.selection(buffer_view.id);
+    let selection = buffer.selection(buffer_view.view_id);
     if selection.len() == 1 {
         cx.ui_tree.set_error("no selections remaining");
         return;
@@ -3550,7 +3550,7 @@ fn remove_primary_selection(cx: &mut Context) {
     let index = selection.primary_index();
     let selection = selection.clone().remove(index);
 
-    buffer.set_selection(buffer_view.id, selection);
+    buffer.set_selection(buffer_view.view_id, selection);
 }
 
 pub fn completion(cx: &mut Context) {
@@ -3565,7 +3565,7 @@ pub fn completion(cx: &mut Context) {
 
     let offset_encoding = language_server.offset_encoding();
     let text = buffer.text().slice(..);
-    let cursor = buffer.selection(buffer_view.id).primary().cursor(text);
+    let cursor = buffer.selection(buffer_view.view_id).primary().cursor(text);
 
     let pos = pos_to_lsp_pos(buffer.text(), cursor, offset_encoding);
 
@@ -3628,7 +3628,7 @@ fn toggle_comments(cx: &mut Context) {
         .language_config()
         .and_then(|lc| lc.comment_token.as_ref())
         .map(|tc| tc.as_ref());
-    let transaction = comment::toggle_line_comments(buffer.text(), buffer.selection(buffer_view.id), token);
+    let transaction = comment::toggle_line_comments(buffer.text(), buffer.selection(buffer_view.view_id), token);
 
     apply_transaction(&transaction, buffer, buffer_view);
     exit_select_mode(cx);
@@ -3637,14 +3637,14 @@ fn toggle_comments(cx: &mut Context) {
 fn rotate_selections(cx: &mut Context, direction: Direction) {
     let count = ui_tree.command_multiplier.unwrap_or_one().get();
     let (buffer_view, buffer) = current!(cx.ui_tree);
-    let mut selection = buffer.selection(buffer_view.id).clone();
+    let mut selection = buffer.selection(buffer_view.view_id).clone();
     let index = selection.primary_index();
     let len = selection.len();
     selection.set_primary_index(match direction {
         Direction::Forward => (index + count) % len,
         Direction::Backward => (index + (len.saturating_sub(count) % len)) % len,
     });
-    buffer.set_selection(buffer_view.id, selection);
+    buffer.set_selection(buffer_view.view_id, selection);
 }
 fn rotate_selections_forward(cx: &mut Context) {
     rotate_selections(cx, Direction::Forward)
@@ -3658,7 +3658,7 @@ fn rotate_selection_contents(cx: &mut Context, direction: Direction) {
     let (buffer_view, buffer) = current!(cx.ui_tree);
     let text = buffer.text().slice(..);
 
-    let selection = buffer.selection(buffer_view.id);
+    let selection = buffer.selection(buffer_view.view_id);
     let mut fragments: Vec<_> = selection
         .slices(text)
         .map(|fragment| fragment.chunks().collect())
@@ -3705,7 +3705,7 @@ fn expand_selection(cx: &mut Context) {
         if let Some(syntax) = buffer.syntax() {
             let text = buffer.text().slice(..);
 
-            let current_selection = buffer.selection(buffer_view.id);
+            let current_selection = buffer.selection(buffer_view.view_id);
             let selection = object::expand_selection(syntax, text, current_selection.clone());
 
             // check if selection is different from the last one
@@ -3713,7 +3713,7 @@ fn expand_selection(cx: &mut Context) {
                 // save current selection so it can be restored using shrink_selection
                 buffer_view.object_selections.push(current_selection.clone());
 
-                buffer.set_selection(buffer_view.id, selection);
+                buffer.set_selection(buffer_view.view_id, selection);
             }
         }
     };
@@ -3724,12 +3724,12 @@ fn expand_selection(cx: &mut Context) {
 fn shrink_selection(cx: &mut Context) {
     let motion = |ui_tree: &mut UITree| {
         let (buffer_view, buffer) = current!(ui_tree);
-        let current_selection = buffer.selection(buffer_view.id);
+        let current_selection = buffer.selection(buffer_view.view_id);
         // try to restore previous selection
         if let Some(prev_selection) = buffer_view.object_selections.pop() {
             if current_selection.contains(&prev_selection) {
                 // allow shrinking the selection only if current selection contains the previous object selection
-                buffer.set_selection(buffer_view.id, prev_selection);
+                buffer.set_selection(buffer_view.view_id, prev_selection);
                 return;
             } else {
                 // clear existing selection as they can't be shrunk to anyway
@@ -3740,7 +3740,7 @@ fn shrink_selection(cx: &mut Context) {
         if let Some(syntax) = buffer.syntax() {
             let text = buffer.text().slice(..);
             let selection = object::shrink_selection(syntax, text, current_selection.clone());
-            buffer.set_selection(buffer_view.id, selection);
+            buffer.set_selection(buffer_view.view_id, selection);
         }
     };
     motion(cx.ui_tree);
@@ -3756,10 +3756,10 @@ where
 
         if let Some(syntax) = buffer.syntax() {
             let text = buffer.text().slice(..);
-            let current_selection = buffer.selection(buffer_view.id);
+            let current_selection = buffer.selection(buffer_view.view_id);
             let selection =
                 object::select_sibling(syntax, text, current_selection.clone(), sibling_fn);
-            buffer.set_selection(buffer_view.id, selection);
+            buffer.set_selection(buffer_view.view_id, selection);
         }
     };
     motion(cx.ui_tree);
@@ -3779,7 +3779,7 @@ fn match_brackets(cx: &mut Context) {
 
     if let Some(syntax) = buffer.syntax() {
         let text = buffer.text().slice(..);
-        let selection = buffer.selection(buffer_view.id).clone().transform(|range| {
+        let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
             if let Some(pos) =
                 match_brackets::find_matching_bracket_fuzzy(syntax, buffer.text(), range.cursor(text))
             {
@@ -3788,7 +3788,7 @@ fn match_brackets(cx: &mut Context) {
                 range
             }
         });
-        buffer.set_selection(buffer_view.id, selection);
+        buffer.set_selection(buffer_view.view_id, selection);
     }
 }
 
@@ -3809,7 +3809,7 @@ fn jump_forward(cx: &mut Context) {
             buffer_view.add_to_history(buffer_id);
         }
 
-        buffer.set_selection(buffer_view.id, selection);
+        buffer.set_selection(buffer_view.view_id, selection);
         buffer_view.ensure_cursor_in_view_center(buffer, config.scrolloff);
     };
 }
@@ -3820,7 +3820,7 @@ fn jump_backward(cx: &mut Context) {
     let (buffer_view, buffer) = current!(cx.ui_tree);
     let buffer_id = buffer.id();
 
-    if let Some((id, selection)) = buffer_view.jumps.backward(buffer_view.id, buffer, command_multiplier) {
+    if let Some((id, selection)) = buffer_view.jumps.backward(buffer_view.view_id, buffer, command_multiplier) {
         buffer_view.buffer_id = *id;
         let selection = selection.clone();
         let (buffer_view, buffer) = current!(cx.ui_tree); // refetch buffer
@@ -3829,7 +3829,7 @@ fn jump_backward(cx: &mut Context) {
             buffer_view.add_to_history(buffer_id);
         }
 
-        buffer.set_selection(buffer_view.id, selection);
+        buffer.set_selection(buffer_view.view_id, selection);
         buffer_view.ensure_cursor_in_view_center(buffer, config.scrolloff);
     };
 }
@@ -3884,14 +3884,14 @@ fn transpose_view(cx: &mut Context) {
 fn split(cx: &mut Context, action: Action) {
     let (buffer_view, buffer) = current!(cx.ui_tree);
     let id = buffer.id();
-    let selection = buffer.selection(buffer_view.id).clone();
+    let selection = buffer.selection(buffer_view.view_id).clone();
     let offset = buffer_view.offset;
 
     cx.ui_tree.switch(id, action);
 
     // match the selection in the previous buffer_view
     let (buffer_view, buffer) = current!(cx.ui_tree);
-    buffer.set_selection(buffer_view.id, selection);
+    buffer.set_selection(buffer_view.view_id, selection);
     // match the buffer_view scroll offset (switch doesn't handle this fully
     // since the selection is only matched after the split)
     buffer_view.offset = offset;
@@ -3978,7 +3978,7 @@ fn align_view_bottom(cx: &mut Context) {
 fn align_view_middle(cx: &mut Context) {
     let (buffer_view, buffer) = current!(cx.ui_tree);
     let text = buffer.text().slice(..);
-    let pos = buffer.selection(buffer_view.id).primary().cursor(text);
+    let pos = buffer.selection(buffer_view.view_id).primary().cursor(text);
     let pos = coords_at_pos(text, pos);
 
     buffer_view.offset.col = pos
@@ -4002,7 +4002,7 @@ fn goto_ts_object_impl(cx: &mut Context, object: &'static str, direction: Direct
             let text = buffer.text().slice(..);
             let root = syntax.tree().root_node();
 
-            let selection = buffer.selection(buffer_view.id).clone().transform(|range| {
+            let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
                 let new_range = movement::goto_treesitter_object(
                     text,
                     range,
@@ -4026,7 +4026,7 @@ fn goto_ts_object_impl(cx: &mut Context, object: &'static str, direction: Direct
                 }
             });
 
-            buffer.set_selection(buffer_view.id, selection);
+            buffer.set_selection(buffer_view.view_id, selection);
         } else {
             ui_tree.set_status("Syntax-tree is not available in current buffer");
         }
@@ -4130,7 +4130,7 @@ fn select_textobject(cx: &mut Context, objtype: textobject::TextObject) {
                     Range::new(start, end).with_direction(range.direction())
                 };
 
-                let selection = buffer.selection(buffer_view.id).clone().transform(|range| {
+                let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
                     match ch {
                         'w' => textobject::textobject_word(text, range, objtype, command_multiplier, false),
                         'W' => textobject::textobject_word(text, range, objtype, command_multiplier, true),
@@ -4151,7 +4151,7 @@ fn select_textobject(cx: &mut Context, objtype: textobject::TextObject) {
                         _ => range,
                     }
                 });
-                buffer.set_selection(buffer_view.id, selection);
+                buffer.set_selection(buffer_view.view_id, selection);
             };
             textobject(cx.ui_tree);
             cx.ui_tree.last_motion = Some(Motion(Box::new(textobject)));
@@ -4186,7 +4186,7 @@ fn surround_add(cx: &mut Context) {
             None => return,
         };
         let (buffer_view, buffer) = current!(cx.ui_tree);
-        let selection = buffer.selection(buffer_view.id);
+        let selection = buffer.selection(buffer_view.view_id);
         let (open, close) = surround::get_pair(ch);
         // The number of chars in get_pair
         let surround_len = 2;
@@ -4230,7 +4230,7 @@ fn surround_replace(cx: &mut Context) {
         };
         let (buffer_view, buffer) = current!(cx.ui_tree);
         let text = buffer.text().slice(..);
-        let selection = buffer.selection(buffer_view.id);
+        let selection = buffer.selection(buffer_view.view_id);
 
         let change_pos = match surround::get_surround_pos(text, selection, surround_ch, command_multiplier) {
             Ok(c) => c,
@@ -4271,7 +4271,7 @@ fn surround_delete(cx: &mut Context) {
         };
         let (buffer_view, buffer) = current!(cx.ui_tree);
         let text = buffer.text().slice(..);
-        let selection = buffer.selection(buffer_view.id);
+        let selection = buffer.selection(buffer_view.view_id);
 
         let change_pos = match surround::get_surround_pos(text, selection, surround_ch, command_multiplier) {
             Ok(c) => c,
@@ -4327,7 +4327,7 @@ fn shell_keep_pipe(cx: &mut Context) {
                 return;
             }
             let (buffer_view, buffer) = current!(cx.ui_tree);
-            let selection = buffer.selection(buffer_view.id);
+            let selection = buffer.selection(buffer_view.view_id);
 
             let mut ranges = SmallVec::with_capacity(selection.len());
             let old_index = selection.primary_index();
@@ -4359,7 +4359,7 @@ fn shell_keep_pipe(cx: &mut Context) {
             }
 
             let index = index.unwrap_or_else(|| ranges.len() - 1);
-            buffer.set_selection(buffer_view.id, Selection::new(ranges, index));
+            buffer.set_selection(buffer_view.view_id, Selection::new(ranges, index));
         },
     );
 }
@@ -4443,7 +4443,7 @@ fn shell(cx: &mut compositor::Context, cmd: &str, behavior: &ShellBehavior) {
     let config = cx.ui_tree.config();
     let shell = &config.shell;
     let (buffer_view, buffer) = current!(cx.ui_tree);
-    let selection = buffer.selection(buffer_view.id);
+    let selection = buffer.selection(buffer_view.view_id);
 
     let mut changes = Vec::with_capacity(selection.len());
     let mut ranges = SmallVec::with_capacity(selection.len());
@@ -4542,7 +4542,7 @@ fn add_newline_below(cx: &mut Context) {
 fn add_newline_impl(cx: &mut Context, open: Open) {
     let command_multiplier = ui_tree.command_multiplier.unwrap_or_one().get();
     let (buffer_view, buffer) = current!(cx.ui_tree);
-    let selection = buffer.selection(buffer_view.id);
+    let selection = buffer.selection(buffer_view.view_id);
     let text = buffer.text();
     let slice = text.slice(..);
 
@@ -4623,7 +4623,7 @@ fn increment_impl(cx: &mut Context, increment_direction: IncrementDirection) {
     let increase_by = if cx.ui_tree.register == Some('#') { sign } else { 0 };
 
     let (buffer_view, buffer) = current!(cx.ui_tree);
-    let selection = buffer.selection(buffer_view.id);
+    let selection = buffer.selection(buffer_view.view_id);
     let text = buffer.text().slice(..);
 
     let changes: Vec<_> = selection

@@ -296,7 +296,7 @@ fn render_selections<F>(context: &mut RenderContext, write: F)
 where
     F: Fn(&mut RenderContext, String, Option<Style>) + Copy,
 {
-    let count = context.doc.selection(context.view.id).len();
+    let count = context.doc.selection(context.view.view_id).len();
     write(
         context,
         format!(" {} sel{} ", count, if count == 1 { "" } else { "s" }),
@@ -308,7 +308,7 @@ fn render_primary_selection_length<F>(context: &mut RenderContext, write: F)
 where
     F: Fn(&mut RenderContext, String, Option<Style>) + Copy,
 {
-    let tot_sel = context.doc.selection(context.view.id).primary().len();
+    let tot_sel = context.doc.selection(context.view.view_id).primary().len();
     write(
         context,
         format!(" {} char{} ", tot_sel, if tot_sel == 1 { "" } else { "s" }),
@@ -321,7 +321,7 @@ fn get_position(context: &RenderContext) -> Position {
         context.doc.text().slice(..),
         context
             .doc
-            .selection(context.view.id)
+            .selection(context.view.view_id)
             .primary()
             .cursor(context.doc.text().slice(..)),
     )

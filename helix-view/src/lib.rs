@@ -60,7 +60,7 @@ pub enum Align {
 
 pub fn align_view(buffer: &Buffer, buffer_view: &mut BufferView, align: Align) {
     let pos = buffer
-        .selection(buffer_view.id)
+        .selection(buffer_view.view_id)
         .primary()
         .cursor(buffer.text().slice(..));
     let line = buffer.text().char_to_line(pos);
@@ -84,6 +84,6 @@ pub fn apply_transaction(
     buffer_view: &BufferView,
 ) -> bool {
     // TODO remove this helper function. Just call Buffer::apply everywhere directly.
-    buffer.apply(transaction, buffer_view.id)
+    buffer.apply(transaction, buffer_view.view_id)
 }
 

@@ -880,7 +880,7 @@ impl Buffer {
         let mut history = self.history.take();
         let txn = if undo { history.undo() } else { history.redo() };
         let success = if let Some(txn) = txn {
-            self.apply_impl(txn, view.id)
+            self.apply_impl(txn, view.view_id)
         } else {
             false
         };
@@ -923,7 +923,7 @@ impl Buffer {
         };
         let mut success = false;
         for txn in txns {
-            if self.apply_impl(&txn, view.id) {
+            if self.apply_impl(&txn, view.view_id) {
                 success = true;
             }
         }
@@ -957,7 +957,7 @@ impl Buffer {
         // Instead of doing this messy merge we could always commit, and based on transaction
         // annotations either add a new layer or compose into the previous one.
         let transaction =
-            Transaction::from(changes).with_selection(self.selection(view.id).clone());
+            Transaction::from(changes).with_selection(self.selection(view.view_id).clone());
 
         // HAXX: we need to reconstruct the state as it was before the changes..
         let old_state = self.old_state.take().expect("no old_state available");

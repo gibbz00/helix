@@ -469,7 +469,7 @@ impl EditorView {
         cursor_shape_config: &CursorShapeConfig,
     ) -> Vec<(usize, std::ops::Range<usize>)> {
         let text = doc.text().slice(..);
-        let selection = doc.selection(view.id);
+        let selection = doc.selection(view.view_id);
         let primary_idx = selection.primary_index();
 
         let cursorkind = cursor_shape_config.from_mode(mode);
@@ -766,7 +766,7 @@ impl EditorView {
         if let Some(syntax) = doc.syntax() {
             let text = doc.text().slice(..);
             use helix_core::match_brackets;
-            let pos = doc.selection(view.id).primary().cursor(text);
+            let pos = doc.selection(view.view_id).primary().cursor(text);
 
             let pos = match_brackets::find_matching_bracket(syntax, doc.text(), pos)
                 .and_then(|pos| view.screen_coords_at_pos(doc, text, pos));
@@ -858,7 +858,7 @@ impl EditorView {
         // https://github.com/rust-lang/rust-clippy/issues/6164
         #[allow(clippy::needless_collect)]
         let cursors: Vec<_> = doc
-            .selection(view.id)
+            .selection(view.view_id)
             .iter()
             .map(|range| range.cursor_line(text))
             .collect();
@@ -921,7 +921,7 @@ impl EditorView {
         };
 
         let cursor = doc
-            .selection(view.id)
+            .selection(view.view_id)
             .primary()
             .cursor(doc.text().slice(..));
 
@@ -965,7 +965,7 @@ impl EditorView {
         let text = doc.text().slice(..);
         let last_line = view.last_line(doc);
 
-        let primary_line = doc.selection(view.id).primary().cursor_line(text);
+        let primary_line = doc.selection(view.view_id).primary().cursor_line(text);
 
         // The secondary_lines do contain the primary_line, it doesn't matter
         // as the else-if clause in the loop later won't test for the
@@ -974,7 +974,7 @@ impl EditorView {
         // https://github.com/rust-lang/rust-clippy/issues/6164
         #[allow(clippy::needless_collect)]
         let secondary_lines: Vec<_> = doc
-            .selection(view.id)
+            .selection(view.view_id)
             .iter()
             .map(|range| range.cursor_line(text))
             .collect();
@@ -1020,7 +1020,7 @@ impl EditorView {
         let inner_area = view.inner_area(doc);
         let offset = view.offset.col;
 
-        let selection = doc.selection(view.id);
+        let selection = doc.selection(view.view_id);
         let primary = selection.primary();
         for range in selection.iter() {
             let is_primary = primary == *range;

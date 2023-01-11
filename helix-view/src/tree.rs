@@ -106,7 +106,7 @@ impl Tree {
         let mut node = Node::view(view);
         node.parent = parent;
         let node = self.nodes.insert(node);
-        self.get_mut(node).id = node;
+        self.get_mut(node).view_id = node;
 
         let container = match &mut self.nodes[parent] {
             Node {
@@ -144,7 +144,7 @@ impl Tree {
 
         let node = Node::view(view);
         let node = self.nodes.insert(node);
-        self.get_mut(node).id = node;
+        self.get_mut(node).view_id = node;
 
         let container = match &mut self.nodes[parent] {
             Node {
@@ -584,14 +584,14 @@ impl Tree {
                     Content::BufferView(focus_view),
                     Content::BufferView(target_view),
                 ) => {
-                    let focus_pos = parent.children.iter().position(|id| focus_view.id == *id)?;
+                    let focus_pos = parent.children.iter().position(|id| focus_view.view_id == *id)?;
                     let target_pos = parent
                         .children
                         .iter()
-                        .position(|id| target_view.id == *id)?;
+                        .position(|id| target_view.view_id == *id)?;
                     // swap node positions so that traversal order is kept
-                    parent.children[focus_pos] = target_view.id;
-                    parent.children[target_pos] = focus_view.id;
+                    parent.children[focus_pos] = target_view.view_id;
+                    parent.children[target_pos] = focus_view.view_id;
                     // swap area so that views rendered at the correct location
                     std::mem::swap(&mut focus_view.area, &mut target_view.area);
 
@@ -618,11 +618,11 @@ impl Tree {
                     let focus_pos = focus_parent
                         .children
                         .iter()
-                        .position(|id| focus_view.id == *id)?;
+                        .position(|id| focus_view.view_id == *id)?;
                     let target_pos = target_parent
                         .children
                         .iter()
-                        .position(|id| target_view.id == *id)?;
+                        .position(|id| target_view.view_id == *id)?;
                     // re-parent target and focus nodes
                     std::mem::swap(
                         &mut focus_parent.children[focus_pos],
