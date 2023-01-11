@@ -2,7 +2,7 @@
 pub mod macros;
 
 pub mod clipboard;
-pub mod buffer;
+pub mod buffer_mirror;
 pub mod ui_tree;
 pub mod env;
 pub mod graphics;
@@ -20,12 +20,13 @@ pub mod tree;
 pub mod buffer_view;
 pub mod config;
 pub mod event_handler;
+pub mod mode;
 mod keymap;
 mod command;
 mod lists;
 mod jump;
 
-pub use buffer::Buffer;
+pub use buffer_mirror::BufferMirror;
 pub use ui_tree::UITree;
 pub use theme::Theme;
 pub use buffer_view::BufferView;
@@ -58,7 +59,7 @@ pub enum Align {
     Bottom,
 }
 
-pub fn align_view(buffer: &Buffer, buffer_view: &mut BufferView, align: Align) {
+pub fn align_view(buffer: &BufferMirror, buffer_view: &mut BufferView, align: Align) {
     let pos = buffer
         .selection(buffer_view.view_id)
         .primary()
@@ -80,7 +81,7 @@ pub fn align_view(buffer: &Buffer, buffer_view: &mut BufferView, align: Align) {
 /// and [`BufferView`].
 pub fn apply_transaction(
     transaction: &helix_core::Transaction,
-    buffer: &mut Buffer,
+    buffer: &mut BufferMirror,
     buffer_view: &BufferView,
 ) -> bool {
     // TODO remove this helper function. Just call Buffer::apply everywhere directly.

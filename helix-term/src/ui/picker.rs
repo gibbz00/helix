@@ -23,7 +23,7 @@ use helix_view::{
     editor::Action,
     graphics::{CursorKind, Margin, Modifier, Rect},
     theme::Style,
-    Buffer, BufferID, ui_tree,
+    BufferMirror, BufferID, ui_tree,
 };
 
 use super::{menu::Item, overlay::Overlay};
@@ -74,7 +74,7 @@ pub struct FilePicker<T: Item> {
 }
 
 pub enum CachedPreview {
-    Document(Box<Buffer>),
+    Document(Box<BufferMirror>),
     Binary,
     LargeFile,
     NotFound,
@@ -84,11 +84,11 @@ pub enum CachedPreview {
 // from borrowing a document already opened in the editor.
 pub enum Preview<'picker, 'editor> {
     Cached(&'picker CachedPreview),
-    EditorDocument(&'editor Buffer),
+    EditorDocument(&'editor BufferMirror),
 }
 
 impl Preview<'_, '_> {
-    fn document(&self) -> Option<&Buffer> {
+    fn document(&self) -> Option<&BufferMirror> {
         match self {
             Preview::EditorDocument(doc) => Some(doc),
             Preview::Cached(CachedPreview::Document(doc)) => Some(doc),
@@ -178,7 +178,7 @@ impl<T: Item> FilePicker<T> {
                             }
                             _ => {
                                 // TODO: enable syntax highlighting; blocked by async rendering
-                                Buffer::open(path, None, None)
+                                BufferMirror::open(path, None, None)
                                     .map(|doc| CachedPreview::Document(Box::new(doc)))
                                     .unwrap_or(CachedPreview::NotFound)
                             }

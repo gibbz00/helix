@@ -1,4 +1,5 @@
-use crate::{UITree, buffer::SCRATCH_BUFFER_NAME};
+use crate::UITree;
+use helix_server::beffer::SCRATCH_BUFFER_NAME;
 
 trait List {
     pub fn get<T>(ui_tree: &UITree) -> Vec<T>;

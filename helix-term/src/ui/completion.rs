@@ -8,7 +8,7 @@ use helix_core::{Change, Transaction};
 use helix_view::{
     graphics::Rect,
     input::{KeyCode, KeyEvent},
-    Buffer, ui_tree,
+    BufferMirror, ui_tree,
 };
 
 use crate::commands;
@@ -101,7 +101,7 @@ impl Completion {
         // Then create the menu
         let menu = Menu::new(items, (), move |editor: &mut ui_tree, item, event| {
             fn item_to_transaction(
-                doc: &Buffer,
+                doc: &BufferMirror,
                 view_id: BufferViewID,
                 item: &CompletionItem,
                 offset_encoding: helix_lsp::OffsetEncoding,
@@ -253,7 +253,7 @@ impl Completion {
     }
 
     fn resolve_completion_item(
-        doc: &Buffer,
+        doc: &BufferMirror,
         completion_item: lsp::CompletionItem,
     ) -> Option<CompletionItem> {
         let language_server = doc.language_server()?;

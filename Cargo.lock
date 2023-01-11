@@ -1196,6 +1196,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "helix-server"
+version = "0.6.0"
+dependencies = [
+ "helix-core",
+]
+
+[[package]]
 name = "helix-term"
 version = "0.6.0"
 dependencies = [
@@ -1289,6 +1296,7 @@ dependencies = [
  "helix-dap",
  "helix-loader",
  "helix-lsp",
+ "helix-server",
  "helix-treesitter",
  "helix-tui",
  "helix-vcs",

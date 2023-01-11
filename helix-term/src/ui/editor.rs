@@ -18,14 +18,15 @@ use helix_core::{
     unicode::width::UnicodeWidthStr,
     visual_coords_at_pos, LineEnding, Position, Range, Selection, Transaction,
 };
+use helix_server::buffer::SCRATH_BUFFER_NAME;
 use helix_view::{
     apply_transaction,
-    buffer::{Mode, SCRATCH_BUFFER_NAME},
+    mode::Mode,
     editor::{CompleteAction, CursorShapeConfig},
     graphics::{Color, CursorKind, Modifier, Rect, Style},
     input::{KeyEvent, MouseButton, MouseEvent, MouseEventKind},
     keyboard::{KeyCode, KeyModifiers},
-    Buffer, ui_tree, Theme, BufferView,
+    BufferMirror, ui_tree, Theme, BufferView,
 };
 use std::{borrow::Cow, cmp::min, num::NonZeroUsize, path::PathBuf};
 
@@ -209,7 +210,7 @@ impl EditorView {
     pub fn render_view(
         &self,
         editor: &ui_tree,
-        doc: &Buffer,
+        doc: &BufferMirror,
         view: &BufferView,
         viewport: Rect,
         surface: &mut Surface,
@@ -320,7 +321,7 @@ impl EditorView {
 
     pub fn render_rulers(
         editor: &ui_tree,
-        doc: &Buffer,
+        doc: &BufferMirror,
         view: &BufferView,
         viewport: Rect,
         surface: &mut Surface,
@@ -350,7 +351,7 @@ impl EditorView {
     /// and column (`offset`) and the last line. This is done instead of using a view
     /// directly to enable rendering syntax highlighted docs anywhere (eg. picker preview)
     pub fn doc_syntax_highlights<'doc>(
-        doc: &'doc Buffer,
+        doc: &'doc BufferMirror,
         offset: Position,
         height: u16,
         _theme: &Theme,
@@ -403,7 +404,7 @@ impl EditorView {
 
     /// Get highlight spans for document diagnostics
     pub fn doc_diagnostics_highlights(
-        doc: &Buffer,
+        doc: &BufferMirror,
         theme: &Theme,
     ) -> [Vec<(usize, std::ops::Range<usize>)>; 5] {
         use helix_core::diagnostic::Severity;
@@ -463,7 +464,7 @@ impl EditorView {
     /// Get highlight spans for selections in a document view.
     pub fn doc_selection_highlights(
         mode: Mode,
-        doc: &Buffer,
+        doc: &BufferMirror,
         view: &BufferView,
         theme: &Theme,
         cursor_shape_config: &CursorShapeConfig,
@@ -546,7 +547,7 @@ impl EditorView {
     }
 
     pub fn render_text_highlights<H: Iterator<Item = HighlightEvent>>(
-        doc: &Buffer,
+        doc: &BufferMirror,
         offset: Position,
         viewport: Rect,
         surface: &mut Surface,
@@ -757,7 +758,7 @@ impl EditorView {
     /// Render brace match, etc (meant for the focused view only)
     pub fn render_focused_view_elements(
         view: &BufferView,
-        doc: &Buffer,
+        doc: &BufferMirror,
         viewport: Rect,
         theme: &Theme,
         surface: &mut Surface,
@@ -844,7 +845,7 @@ impl EditorView {
 
     pub fn render_gutter(
         editor: &ui_tree,
-        doc: &Buffer,
+        doc: &BufferMirror,
         view: &BufferView,
         viewport: Rect,
         surface: &mut Surface,
@@ -907,7 +908,7 @@ impl EditorView {
     }
 
     pub fn render_diagnostics(
-        doc: &Buffer,
+        doc: &BufferMirror,
         view: &BufferView,
         viewport: Rect,
         surface: &mut Surface,
@@ -961,7 +962,7 @@ impl EditorView {
     }
 
     /// Apply the highlighting on the lines where a cursor is active
-    pub fn highlight_cursorline(doc: &Buffer, view: &BufferView, surface: &mut Surface, theme: &Theme) {
+    pub fn highlight_cursorline(doc: &BufferMirror, view: &BufferView, surface: &mut Surface, theme: &Theme) {
         let text = doc.text().slice(..);
         let last_line = view.last_line(doc);
 
@@ -999,7 +1000,7 @@ impl EditorView {
 
     /// Apply the highlighting on the columns where a cursor is active
     pub fn highlight_cursorcolumn(
-        doc: &Buffer,
+        doc: &BufferMirror,
         view: &BufferView,
         surface: &mut Surface,
         theme: &Theme,

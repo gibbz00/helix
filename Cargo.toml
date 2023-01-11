@@ -1,14 +1,15 @@
 [workspace]
 members = [
   "helix-core",
-  "helix-view",
-  "helix-term",
-  "helix-tui",
-  "helix-treesitter",
-  "helix-lsp",
   "helix-dap",
   "helix-loader",
+  "helix-lsp",
+  "helix-server",
+  "helix-term",
+  "helix-treesitter",
+  "helix-tui",
   "helix-vcs",
+  "helix-view",
   "xtask",
 ]
 

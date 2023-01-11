@@ -6,7 +6,7 @@ use helix_core::{
 use helix_lsp::{lsp, util::lsp_pos_to_pos, LspProgressMap};
 use helix_view::{
     align_view,
-    buffer::DocumentSavedEventResult,
+    buffer_mirror::DocumentSavedEventResult,
     editor::{ConfigEvent, EditorEvent},
     graphics::Rect,
     theme,
@@ -465,11 +465,11 @@ impl Application {
             }
         };
 
-        let doc = match self.editor.document_mut(doc_save_event.doc_id) {
+        let doc = match self.editor.document_mut(doc_save_event.buffer_id) {
             None => {
                 warn!(
                     "received document saved event for non-existent doc id: {}",
-                    doc_save_event.doc_id
+                    doc_save_event.buffer_id
                 );
 
                 return;
@@ -503,7 +503,7 @@ impl Application {
             let loader = self.editor.syn_loader.clone();
 
             // borrowing the same doc again to get around the borrow checker
-            let doc = buffer_mut!(self.editor, &doc_save_event.doc_id);
+            let doc = buffer_mut!(self.editor, &doc_save_event.buffer_id);
             let id = doc.id();
             doc.detect_language(loader);
             let _ = self.editor.refresh_language_server(id);

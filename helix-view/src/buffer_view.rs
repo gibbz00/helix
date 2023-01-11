@@ -1,4 +1,4 @@
-use crate::{align_view, gutter::GutterComponents, graphics::Rect, Align, Buffer, BufferID, BufferViewID, jump::JumpList};
+use crate::{align_view, gutter::GutterComponents, graphics::Rect, Align, BufferMirror, BufferID, BufferViewID, jump::JumpList};
 use helix_core::{
     pos_at_visual_coords, visual_coords_at_pos, Position, RopeSlice, Selection, Transaction,
 };
@@ -68,7 +68,7 @@ impl BufferView {
         self.buffer_access_history.push(id);
     }
 
-    pub fn inner_area(&self, buffer: &Buffer) -> Rect {
+    pub fn inner_area(&self, buffer: &BufferMirror) -> Rect {
         self.area.clip_left(self.gutter_offset(buffer)).clip_bottom(1) // -1 for statusline
     }
 
@@ -80,7 +80,7 @@ impl BufferView {
         &self.gutters
     }
 
-    pub fn gutter_offset(&self, buffer: &Buffer) -> u16 {
+    pub fn gutter_offset(&self, buffer: &BufferMirror) -> u16 {
         self.gutters
             .iter()
             .map(|gutter| gutter.width(self, buffer) as u16)
@@ -90,7 +90,7 @@ impl BufferView {
     //
     pub fn offset_coords_to_in_view(
         &self,
-        buffer: &Buffer,
+        buffer: &BufferMirror,
         scrolloff: usize,
     ) -> Option<(usize, usize)> {
         self.offset_coords_to_in_view_center(buffer, scrolloff, false)
@@ -98,7 +98,7 @@ impl BufferView {
 
     pub fn offset_coords_to_in_view_center(
         &self,
-        buffer: &Buffer,
+        buffer: &BufferMirror,
         scrolloff: usize,
         centering: bool,
     ) -> Option<(usize, usize)> {
@@ -159,14 +159,14 @@ impl BufferView {
         }
     }
 
-    pub fn ensure_cursor_in_view(&mut self, buffer: &Buffer, scrolloff: usize) {
+    pub fn ensure_cursor_in_view(&mut self, buffer: &BufferMirror, scrolloff: usize) {
         if let Some((row, col)) = self.offset_coords_to_in_view_center(buffer, scrolloff, false) {
             self.offset.row = row;
             self.offset.col = col;
         }
     }
 
-    pub fn ensure_cursor_in_view_center(&mut self, buffer: &Buffer, scrolloff: usize) {
+    pub fn ensure_cursor_in_view_center(&mut self, buffer: &BufferMirror, scrolloff: usize) {
         if let Some((row, col)) = self.offset_coords_to_in_view_center(buffer, scrolloff, true) {
             self.offset.row = row;
             self.offset.col = col;
@@ -175,13 +175,13 @@ impl BufferView {
         }
     }
 
-    pub fn is_cursor_in_view(&mut self, buffer: &Buffer, scrolloff: usize) -> bool {
+    pub fn is_cursor_in_view(&mut self, buffer: &BufferMirror, scrolloff: usize) -> bool {
         self.offset_coords_to_in_view(buffer, scrolloff).is_none()
     }
 
     /// Calculates the last visible line on screen
     #[inline]
-    pub fn last_line(&self, buffer: &Buffer) -> usize {
+    pub fn last_line(&self, buffer: &BufferMirror) -> usize {
         std::cmp::min(
             // Saturating subs to make it inclusive zero indexing.
             (self.offset.row + self.inner_height()).saturating_sub(1),
@@ -194,7 +194,7 @@ impl BufferView {
     // TODO: Could return width as well for the character width at cursor.
     pub fn screen_coords_at_pos(
         &self,
-        buffer: &Buffer,
+        buffer: &BufferMirror,
         text: RopeSlice,
         pos: usize,
     ) -> Option<Position> {
@@ -218,7 +218,7 @@ impl BufferView {
 
     pub fn text_pos_at_screen_coords(
         &self,
-        buffer: &Buffer,
+        buffer: &BufferMirror,
         row: u16,
         column: u16,
         tab_width: usize,
@@ -253,7 +253,7 @@ impl BufferView {
 
     /// Translates a screen position to position in the text buffer.
     /// Returns a usize typed position in bounds of the text if found in this bufferview, None if out of bufferview.
-    pub fn pos_at_screen_coords(&self, buffer: &Buffer, row: u16, column: u16) -> Option<usize> {
+    pub fn pos_at_screen_coords(&self, buffer: &BufferMirror, row: u16, column: u16) -> Option<usize> {
         self.text_pos_at_screen_coords(buffer, row, column, buffer.tab_width())
     }
 
@@ -284,13 +284,13 @@ impl BufferView {
     /// Applies a [`Transaction`] to the bufferview.
     /// Instead of calling this function directly, use [crate::apply_transaction]
     /// which applies a transaction to the [`Buffer`] and bufferview together.
-    pub fn apply(&mut self, transaction: &Transaction, buffer: &mut Buffer) {
+    pub fn apply(&mut self, transaction: &Transaction, buffer: &mut BufferMirror) {
         self.jumps.apply(transaction, buffer);
         self.buffer_revisions
             .insert(buffer.id(), buffer.get_current_revision());
     }
 
-    pub fn sync_changes(&mut self, buffer: &mut Buffer) {
+    pub fn sync_changes(&mut self, buffer: &mut BufferMirror) {
         let latest_revision = buffer.get_current_revision();
         let current_revision = *self
             .buffer_revisions
@@ -321,7 +321,7 @@ mod tests {
     const OFFSET: u16 = 3; // 1 diagnostic + 2 linenr (< 100 lines)
     const OFFSET_WITHOUT_LINE_NUMBERS: u16 = 1; // 1 diagnostic
                                                 // const OFFSET: u16 = GUTTERS.iter().map(|(_, width)| *width as u16).sum();
-    use crate::buffer::Buffer;
+    use crate::buffer_mirror::BufferMirror;
     use crate::gutter::GutterComponents;
 
     #[test]
@@ -332,7 +332,7 @@ mod tests {
         );
         buffer_view.area = Rect::new(40, 40, 40, 40);
         let rope = Rope::from_str("abc\n\tdef");
-        let buffer = Buffer::from(rope, None);
+        let buffer = BufferMirror::from(rope, None);
 
         assert_eq!(buffer_view.text_pos_at_screen_coords(&buffer, 40, 2, 4), None);
 
@@ -378,7 +378,7 @@ mod tests {
         let mut buffer_view = BufferView::new(BufferID::default(), vec![GutterComponents::Diagnostics]);
         buffer_view.area = Rect::new(40, 40, 40, 40);
         let rope = Rope::from_str("abc\n\tdef");
-        let buffer = Buffer::from(rope, None);
+        let buffer = BufferMirror::from(rope, None);
         assert_eq!(
             buffer_view.text_pos_at_screen_coords(&buffer, 41, 40 + OFFSET_WITHOUT_LINE_NUMBERS + 1, 4),
             Some(4)
@@ -390,7 +390,7 @@ mod tests {
         let mut buffer_view = BufferView::new(BufferID::default(), vec![]);
         buffer_view.area = Rect::new(40, 40, 40, 40);
         let rope = Rope::from_str("abc\n\tdef");
-        let buffer = Buffer::from(rope, None);
+        let buffer = BufferMirror::from(rope, None);
         assert_eq!(buffer_view.text_pos_at_screen_coords(&buffer, 41, 40 + 1, 4), Some(4));
     }
 
@@ -402,7 +402,7 @@ mod tests {
         );
         buffer_view.area = Rect::new(40, 40, 40, 40);
         let rope = Rope::from_str("Hi! こんにちは皆さん");
-        let buffer = Buffer::from(rope, None);
+        let buffer = BufferMirror::from(rope, None);
 
         assert_eq!(
             buffer_view.text_pos_at_screen_coords(&buffer, 40, 40 + OFFSET, 4),
@@ -442,7 +442,7 @@ mod tests {
         );
         buffer_view.area = Rect::new(40, 40, 40, 40);
         let rope = Rope::from_str("Hèl̀l̀ò world!");
-        let buffer = Buffer::from(rope, None);
+        let buffer = BufferMirror::from(rope, None);
 
         assert_eq!(
             buffer_view.text_pos_at_screen_coords(&buffer, 40, 40 + OFFSET, 4),

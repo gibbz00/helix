@@ -13,7 +13,7 @@ use tui::{
 use super::{align_view, push_jump, Align, Context, ui_tree, Open};
 
 use helix_core::{path, Selection};
-use helix_view::{apply_transaction, buffer::Mode, editor::Action, theme::Style};
+use helix_view::{apply_transaction, mode::Mode, editor::Action, theme::Style};
 
 use crate::{
     compositor::{self, Compositor},

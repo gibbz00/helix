@@ -35,18 +35,20 @@ use helix_core::{
     visual_coords_at_pos, LineEnding, Position, Range, Rope, RopeGraphemes, RopeSlice, Selection,
     SmallVec, Tendril, Transaction,
 };
+use helix_server::buffer::SCRATCH_BUFFER_NAME;
 use helix_view::{
     align_view, Align,
     apply_transaction,
     clipboard::ClipboardType,
-    buffer::{FormatterError, Mode, SCRATCH_BUFFER_NAME},
+    buffer_mirror::{FormatterError, SCRATCH_BUFFER_NAME},
+    mode::Mode,
     ui_tree::{Action, Motion},
     info::Info,
     input::KeyEvent,
     keyboard::KeyCode,
     tree,
     buffer_view::BufferView,
-    Buffer, BufferID, ui_tree, BufferViewID,
+    BufferMirror, BufferID, ui_tree, BufferViewID,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -162,7 +164,7 @@ fn extend_line_down(cx: &mut Context) {
     move_impl(cx, move_vertically, Direction::Forward, Movement::Extend)
 }
 
-fn goto_line_end_impl(buffer_view: &mut BufferView, buffer: &mut Buffer, movement: Movement) {
+fn goto_line_end_impl(buffer_view: &mut BufferView, buffer: &mut BufferMirror, movement: Movement) {
     let text = buffer.text().slice(..);
 
     let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
@@ -195,7 +197,7 @@ fn extend_to_line_end(cx: &mut Context) {
     goto_line_end_impl(buffer_view, buffer, Movement::Extend)
 }
 
-fn goto_line_end_newline_impl(buffer_view: &mut BufferView, buffer: &mut Buffer, movement: Movement) {
+fn goto_line_end_newline_impl(buffer_view: &mut BufferView, buffer: &mut BufferMirror, movement: Movement) {
     let text = buffer.text().slice(..);
 
     let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
@@ -1726,7 +1728,7 @@ fn delete_selection_impl(cx: &mut Context, op: Operation) {
 }
 
 #[inline]
-fn delete_selection_insert_mode(buffer: &mut Buffer, buffer_view: &mut BufferView, selection: &Selection) {
+fn delete_selection_insert_mode(buffer: &mut BufferMirror, buffer_view: &mut BufferView, selection: &Selection) {
     let transaction = Transaction::change_by_selection(buffer.text(), selection, |range| {
         (range.from(), range.to(), None)
     });
@@ -1892,7 +1894,7 @@ fn buffer_picker(cx: &mut Context) {
         }
     }
 
-    let new_meta = |doc: &Buffer| BufferMeta {
+    let new_meta = |doc: &BufferMirror| BufferMeta {
         id: buffer.id(),
         path: buffer.path().cloned(),
         is_modified: buffer.is_modified(),
@@ -2219,7 +2221,7 @@ fn normal_mode(cx: &mut Context) {
 }
 
 // Store a jump on the jumplist.
-fn push_jump(buffer_view: &mut BufferView, buffer: &Buffer) {
+fn push_jump(buffer_view: &mut BufferView, buffer: &BufferMirror) {
     let jump = (buffer.id(), buffer.selection(buffer_view.view_id).clone());
     buffer_view.jumps.push(jump);
 }
@@ -3078,7 +3080,7 @@ enum Paste {
 
 fn paste_impl(
     values: &[String],
-    buffer: &mut Buffer,
+    buffer: &mut BufferMirror,
     buffer_view: &mut BufferView,
     action: Paste,
     count: usize,
@@ -3304,7 +3306,7 @@ fn paste_before(cx: &mut Context) {
     paste(cx, Paste::Before)
 }
 
-fn get_lines(doc: &Buffer, buffer_view_id: BufferViewID) -> Vec<usize> {
+fn get_lines(doc: &BufferMirror, buffer_view_id: BufferViewID) -> Vec<usize> {
     let mut lines = Vec::new();
 
     // Get all line numbers
@@ -4400,7 +4402,7 @@ async fn shell_impl_async(
     let output = if let Some(mut stdin) = process.stdin.take() {
         let input_task = tokio::spawn(async move {
             if let Some(input) = input {
-                helix_view::buffer::to_writer(&mut stdin, encoding::UTF_8, &input).await?;
+                helix_view::buffer_mirror::to_writer(&mut stdin, encoding::UTF_8, &input).await?;
             }
             Ok::<_, anyhow::Error>(())
         });

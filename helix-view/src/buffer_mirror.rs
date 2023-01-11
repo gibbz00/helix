@@ -1,20 +1,10 @@
-use anyhow::{anyhow, bail, Context, Error};
-use futures_util::future::BoxFuture;
-use futures_util::FutureExt;
-use helix_core::auto_pairs::AutoPairs;
-use helix_core::Range;
-use helix_vcs::{DiffHandle, DiffProviderRegistry};
-
-use serde::de::{self, Deserialize, Deserializer};
-use serde::Serialize;
-use std::borrow::Cow;
-use std::cell::Cell;
-use std::collections::HashMap;
-use std::fmt::Display;
-use std::future::Future;
-use std::path::{Path, PathBuf};
-use std::str::FromStr;
-use std::sync::Arc;
+use crate::{editor::RedrawHandle,
+    apply_transaction,
+    BufferID,
+    ui_tree,
+    BufferView,
+    BufferViewID
+};
 
 use helix_core::{
     encoding,
@@ -25,72 +15,31 @@ use helix_core::{
     ChangeSet, Diagnostic, LineEnding, Rope, RopeBuilder, Selection, Syntax, Transaction,
     DEFAULT_LINE_ENDING,
 };
+use anyhow::{anyhow, bail, Context, Error};
+use futures_util::future::BoxFuture;
+use futures_util::FutureExt;
+use helix_core::{auto_pairs::AutoPairs, Range};
+use helix_vcs::{DiffHandle, DiffProviderRegistry};
 
-use crate::editor::RedrawHandle;
-use crate::{apply_transaction, BufferID, ui_tree, BufferView, BufferViewID};
+use serde::de::{self, Deserialize, Deserializer};
+use serde::Serialize;
+use std::{borrow::Cow,
+    cell::Cell,
+    collections::HashMap,
+    fmt::Display,
+    future::Future,
+    path::{Path, PathBuf},
+    str::FromStr,
+    sync::Arc
+};
 
-/// 8kB of buffer space for encoding and decoding `Rope`s.
-const BUF_SIZE: usize = 8192;
-
-const DEFAULT_INDENT: IndentStyle = IndentStyle::Tabs;
-
-pub const SCRATCH_BUFFER_NAME: &str = "[scratch]";
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum Mode {
-    Normal = 0,
-    Select = 1,
-    Insert = 2,
-}
-
-impl Display for Mode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Mode::Normal => f.write_str("normal"),
-            Mode::Select => f.write_str("select"),
-            Mode::Insert => f.write_str("insert"),
-        }
-    }
-}
-
-impl FromStr for Mode {
-    type Err = Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "normal" => Ok(Mode::Normal),
-            "select" => Ok(Mode::Select),
-            "insert" => Ok(Mode::Insert),
-            _ => bail!("Invalid mode '{}'", s),
-        }
-    }
-}
-
-// toml deserializer doesn't seem to recognize string as enum
-impl<'de> Deserialize<'de> for Mode {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        s.parse().map_err(de::Error::custom)
-    }
-}
-
-impl Serialize for Mode {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.collect_str(self)
-    }
-}
+use helix_server::buffer::{BUF_SIZE,  DEFAULT_INDENT, SCRATCH_BUFFER_NAME};
 
 /// A snapshot of the text of a document that we want to write out to disk
 #[derive(Debug, Clone)]
 pub struct DocumentSavedEvent {
     pub revision: usize,
-    pub doc_id: BufferID,
+    pub buffer_id: BufferID,
     pub path: PathBuf,
     pub text: Rope,
 }
@@ -98,7 +47,7 @@ pub struct DocumentSavedEvent {
 pub type DocumentSavedEventResult = Result<DocumentSavedEvent, anyhow::Error>;
 pub type DocumentSavedEventFuture = BoxFuture<'static, DocumentSavedEventResult>;
 
-pub struct Buffer {
+pub struct BufferMirror {
     pub(crate) id: BufferID,
     text: Rope,
     selections: HashMap<BufferViewID, Selection>,
@@ -141,7 +90,7 @@ pub struct Buffer {
 }
 
 use std::{fmt, mem};
-impl fmt::Debug for Buffer {
+impl fmt::Debug for BufferMirror {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Document")
             .field("id", &self.id)
@@ -350,7 +299,7 @@ where
 use helix_lsp::lsp;
 use url::Url;
 
-impl Buffer {
+impl BufferMirror {
     pub fn from(text: Rope, encoding: Option<&'static encoding::Encoding>) -> Self {
         let encoding = encoding.unwrap_or(encoding::UTF_8);
         let changes = ChangeSet::new(&text);
@@ -361,11 +310,9 @@ impl Buffer {
             path: None,
             encoding,
             text,
-            selections: HashMap::default(),
-            indent_style: DEFAULT_INDENT,
-            line_ending: DEFAULT_LINE_ENDING,
-            restore_cursor: false,
-            syntax: None,
+            selections: HashMap::default(, cursor: false,
+            syntax),
+            restore_: None,
             language: None,
             changes,
             old_state,
@@ -582,7 +529,7 @@ impl Buffer {
 
             let event = DocumentSavedEvent {
                 revision: current_rev,
-                doc_id,
+                buffer_id: doc_id,
                 path,
                 text: text.clone(),
             };
@@ -623,10 +570,8 @@ impl Buffer {
     pub fn detect_indent_and_line_ending(&mut self) {
         self.indent_style = auto_detect_indent_style(&self.text).unwrap_or_else(|| {
             self.language_config()
-                .and_then(|config| config.indent.as_ref())
-                .map_or(DEFAULT_INDENT, |config| IndentStyle::from_str(&config.unit))
-        });
-        self.line_ending = auto_detect_line_ending(&self.text).unwrap_or(DEFAULT_LINE_ENDING);
+                .and_then(|config| config.indent.as_ref(, line_ending = auto))
+        self._detect_line_ending(&self.text).unwrap_or(DEFAULT_LINE_ENDING);
     }
 
     /// Reload the document from its path.
@@ -1197,7 +1142,7 @@ impl Buffer {
     }
 }
 
-impl Default for Buffer {
+impl Default for BufferMirror {
     fn default() -> Self {
         let text = Rope::from(DEFAULT_LINE_ENDING.as_str());
         Self::from(text, None)
@@ -1245,7 +1190,7 @@ mod test {
     fn changeset_to_changes_ignore_line_endings() {
         use helix_lsp::{lsp, Client, OffsetEncoding};
         let text = Rope::from("hello\r\nworld");
-        let mut doc = Buffer::from(text, None);
+        let mut doc = BufferMirror::from(text, None);
         let view = BufferViewID::default();
         doc.set_selection(view, Selection::single(0, 0));
 
@@ -1279,7 +1224,7 @@ mod test {
     fn changeset_to_changes() {
         use helix_lsp::{lsp, Client, OffsetEncoding};
         let text = Rope::from("hello");
-        let mut doc = Buffer::from(text, None);
+        let mut doc = BufferMirror::from(text, None);
         let view = BufferViewID::default();
         doc.set_selection(view, Selection::single(5, 5));
 
@@ -1392,7 +1337,7 @@ mod test {
     #[test]
     fn test_line_ending() {
         assert_eq!(
-            Buffer::default().text().to_string(),
+            BufferMirror::default().text().to_string(),
             DEFAULT_LINE_ENDING.as_str()
         );
     }

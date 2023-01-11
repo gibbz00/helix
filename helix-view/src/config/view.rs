@@ -1,6 +1,6 @@
 use serde::{ser::SerializeMap, Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::{config::term_config, buffer::Mode, gutter::{GutterComponents, LineNumberMode}, graphics::CursorKind};
+use crate::{config::term_config, mode::Mode, gutter::{GutterComponents, LineNumberMode}, graphics::CursorKind};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", default, deny_unknown_fields)]

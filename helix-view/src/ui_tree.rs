@@ -7,13 +7,14 @@ use crate::{
     lists,
     align_view,
     clipboard::{get_clipboard_provider, ClipboardProvider},
-    buffer::{DocumentSavedEventFuture, DocumentSavedEventResult, Mode},
+    buffer_mirror::{DocumentSavedEventFuture, DocumentSavedEventResult},
+    mode:Mode,
     graphics::{CursorKind, Rect},
     info::Info,
     input::KeyEvent,
     theme::{self, Theme},
     tree::{self, Tree},
-    Align, Buffer, BufferID, BufferView, BufferViewID, config::Config,
+    Align, BufferMirror, BufferID, BufferView, BufferViewID, config::Config,
 };
 use helix_core::{
     Position,
@@ -85,7 +86,7 @@ pub struct UITree {
     pub command_multiplier: CommandMultiplier,
     pub event_handler: EventHandler,
     pub next_buffer_id: BufferID,
-    pub buffers: BTreeMap<BufferID, Buffer>,
+    pub buffers: BTreeMap<BufferID, BufferMirror>,
     pub lists: Vec<Lists>,
 
     // We Flatten<> to resolve the inner DocumentSavedEventFuture. For that we need a stream of streams, hence the Once<>.
@@ -349,7 +350,7 @@ impl UITree {
     }
 
     /// Launch a language server for a given buffer
-    fn launch_language_server(ls: &mut helix_lsp::Registry, buffer: &mut Buffer) -> Option<()> {
+    fn launch_language_server(ls: &mut helix_lsp::Registry, buffer: &mut BufferMirror) -> Option<()> {
         // if doc doesn't have a URL it's a scratch buffer, ignore it
         let buffer_url = buffer.url()?;
 
@@ -504,7 +505,7 @@ impl UITree {
     }
 
     /// Generate an id for a new document and register it.
-    fn new_document(&mut self, mut doc: Buffer) -> BufferID {
+    fn new_document(&mut self, mut doc: BufferMirror) -> BufferID {
         let id = self.next_buffer_id;
         // Safety: adding 1 from 1 is fine, probably impossible to reach usize max
         self.next_buffer_id =
@@ -521,19 +522,19 @@ impl UITree {
         id
     }
 
-    fn new_file_from_document(&mut self, action: Action, doc: Buffer) -> BufferID {
+    fn new_file_from_document(&mut self, action: Action, doc: BufferMirror) -> BufferID {
         let id = self.new_document(doc);
         self.switch(id, action);
         id
     }
 
     pub fn new_file(&mut self, action: Action) -> BufferID {
-        self.new_file_from_document(action, Buffer::default())
+        self.new_file_from_document(action, BufferMirror::default())
     }
 
     pub fn new_file_from_stdin(&mut self, action: Action) -> Result<BufferID, Error> {
-        let (rope, encoding) = crate::buffer::from_reader(&mut stdin(), None)?;
-        Ok(self.new_file_from_document(action, Buffer::from(rope, Some(encoding))))
+        let (rope, encoding) = crate::buffer_mirror::from_reader(&mut stdin(), None)?;
+        Ok(self.new_file_from_document(action, BufferMirror::from(rope, Some(encoding))))
     }
 
     // ??? possible use for integration tests
@@ -544,7 +545,7 @@ impl UITree {
         let id = if let Some(id) = id {
             id
         } else {
-            let mut doc = Buffer::open(&path, None, Some(self.syn_loader.clone()))?;
+            let mut doc = BufferMirror::open(&path, None, Some(self.syn_loader.clone()))?;
 
             let _ = Self::launch_language_server(&mut self.language_servers, &mut doc);
             if let Some(diff_base) = self.diff_providers.get_diff_base(&path) {
@@ -630,7 +631,7 @@ impl UITree {
                 .iter()
                 .map(|(&doc_id, _)| doc_id)
                 .next()
-                .unwrap_or_else(|| self.new_document(Buffer::default()));
+                .unwrap_or_else(|| self.new_document(BufferMirror::default()));
             let view = BufferView::new(doc_id, self.config().gutters.clone());
             let view_id = self.tree.insert(view);
             let doc = buffer_mut!(self, &doc_id);
@@ -722,31 +723,31 @@ impl UITree {
     }
 
     #[inline]
-    pub fn document(&self, id: BufferID) -> Option<&Buffer> {
+    pub fn document(&self, id: BufferID) -> Option<&BufferMirror> {
         self.buffers.get(&id)
     }
 
     #[inline]
-    pub fn document_mut(&mut self, id: BufferID) -> Option<&mut Buffer> {
+    pub fn document_mut(&mut self, id: BufferID) -> Option<&mut BufferMirror> {
         self.buffers.get_mut(&id)
     }
 
     #[inline]
-    pub fn documents(&self) -> impl Iterator<Item = &Buffer> {
+    pub fn documents(&self) -> impl Iterator<Item = &BufferMirror> {
         self.buffers.values()
     }
 
     #[inline]
-    pub fn documents_mut(&mut self) -> impl Iterator<Item = &mut Buffer> {
+    pub fn documents_mut(&mut self) -> impl Iterator<Item = &mut BufferMirror> {
         self.buffers.values_mut()
     }
 
-    pub fn document_by_path<P: AsRef<Path>>(&self, path: P) -> Option<&Buffer> {
+    pub fn document_by_path<P: AsRef<Path>>(&self, path: P) -> Option<&BufferMirror> {
         self.documents()
             .find(|doc| doc.path().map(|p| p == path.as_ref()).unwrap_or(false))
     }
 
-    pub fn document_by_path_mut<P: AsRef<Path>>(&mut self, path: P) -> Option<&mut Buffer> {
+    pub fn document_by_path_mut<P: AsRef<Path>>(&mut self, path: P) -> Option<&mut BufferMirror> {
         self.documents_mut()
             .find(|doc| doc.path().map(|p| p == path.as_ref()).unwrap_or(false))
     }
@@ -838,7 +839,7 @@ impl UITree {
                     }
                 };
 
-                let doc = buffer_mut!(self, &save_event.doc_id);
+                let doc = buffer_mut!(self, &save_event.buffer_id);
                 doc.set_last_saved_revision(save_event.revision);
             }
         }
@@ -875,7 +876,7 @@ impl UITree {
     }
 }
 
-fn try_restore_indent(doc: &mut Buffer, view: &mut BufferView) {
+fn try_restore_indent(doc: &mut BufferMirror, view: &mut BufferView) {
     use helix_core::{
         chars::char_is_whitespace, line_ending::line_end_char_index, Operation, Transaction,
     };
