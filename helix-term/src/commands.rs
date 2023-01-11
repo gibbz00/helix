@@ -67,7 +67,6 @@ use ignore::{DirEntry, WalkBuilder, WalkState};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
 pub struct Context<'a> {
-    pub register: Option<char>,
     pub ui_tree: &ui_tree,
     pub callback: Option<crate::compositor::Callback>,
     pub on_next_key_callback: Option<Box<dyn FnOnce(&mut Context, KeyEvent)>>,
@@ -1095,7 +1094,7 @@ fn select_all(cx: &mut Context) {
 }
 
 fn select_regex(cx: &mut Context) {
-    let reg = cx.register.unwrap_or('/');
+    let reg = cx.ui_tree.selected_register.unwrap_or('/');
     ui::regex_prompt(
         cx,
         "select:".into(),
@@ -1117,7 +1116,7 @@ fn select_regex(cx: &mut Context) {
 }
 
 fn split_selection(cx: &mut Context) {
-    let reg = cx.register.unwrap_or('/');
+    let reg = cx.ui_tree.selected_register.unwrap_or('/');
     ui::regex_prompt(
         cx,
         "split:".into(),
@@ -1251,7 +1250,7 @@ fn rsearch(cx: &mut Context) {
 }
 
 fn searcher(cx: &mut Context, direction: Direction) {
-    let reg = cx.register.unwrap_or('/');
+    let reg = cx.ui_tree.selected_register.unwrap_or('/');
     let config = cx.ui_tree.config();
     let scrolloff = config.scrolloff;
     let wrap_around = config.search.wrap_around;
@@ -1436,7 +1435,7 @@ fn global_search(cx: &mut Context) {
     let smart_case = config.search.smart_case;
     let global_search_config = config.search.global.clone();
 
-    let reg = cx.register.unwrap_or('/');
+    let reg = cx.ui_tree.selected_register.unwrap_or('/');
 
     let completions = search_completions(cx, Some(reg));
     ui::regex_prompt(
@@ -1701,11 +1700,11 @@ fn delete_selection_impl(cx: &mut Context, op: Operation) {
 
     let selection = buffer.selection(buffer_view.id);
 
-    if cx.register != Some('_') {
+    if cx.ui_tree.register != Some('_') {
         // first yank the selection
         let text = buffer.text().slice(..);
         let values: Vec<String> = selection.fragments(text).map(Cow::into_owned).collect();
-        let reg_name = cx.register.unwrap_or('"');
+        let reg_name = cx.ui_tree.selected_register.unwrap_or('"');
         cx.ui_tree.registers.write(reg_name, values);
     };
 
@@ -1739,7 +1738,7 @@ fn delete_selection(cx: &mut Context) {
 }
 
 fn delete_selection_noyank(cx: &mut Context) {
-    cx.register = Some('_');
+    cx.ui_tree.register = Some('_');
     delete_selection_impl(cx, Operation::Delete);
 }
 
@@ -1748,7 +1747,7 @@ fn change_selection(cx: &mut Context) {
 }
 
 fn change_selection_noyank(cx: &mut Context) {
-    cx.register = Some('_');
+    cx.ui_tree.register = Some('_');
     delete_selection_impl(cx, Operation::Change);
 }
 
@@ -2039,7 +2038,7 @@ pub fn command_palette(cx: &mut Context) {
             let command_list = helix_view::command::COMMAND_LIST.to_vec();
             let picker = Picker::new(command_list, command_list_key_events, move |cx, command, _action| {
                 let mut ctx = Context {
-                    register: None,
+                    ui_tree.register: None,
                     ui_tree: cx.ui_tree
                     callback: None,
                     on_next_key_callback: None,
@@ -2975,12 +2974,12 @@ fn yank(cx: &mut Context) {
     let msg = format!(
         "yanked {} selection(s) to register {}",
         values.len(),
-        cx.register.unwrap_or('"')
+        cx.ui_tree.selected_register.unwrap_or('"')
     );
 
     cx.ui_tree
         .registers
-        .write(cx.register.unwrap_or('"'), values);
+        .write(cx.ui_tree.selected_register.unwrap_or('"'), values);
 
     cx.ui_tree.set_status(msg);
     exit_select_mode(cx);
@@ -3219,7 +3218,7 @@ fn paste_primary_clipboard_before(cx: &mut Context) {
 
 fn replace_with_yanked(cx: &mut Context) {
     let count = ui_tree.command_multiplier.unwrap_or_one().get();
-    let reg_name = cx.register.unwrap_or('"');
+    let reg_name = cx.ui_tree.selected_register.unwrap_or('"');
     let (buffer_view, buffer) = current!(cx.ui_tree);
     let registers = &mut cx.ui_tree.registers;
 
@@ -3288,7 +3287,7 @@ fn replace_selections_with_primary_clipboard(cx: &mut Context) {
 
 fn paste(cx: &mut Context, pos: Paste) {
     let count = ui_tree.command_multiplier.unwrap_or_one().get();
-    let reg_name = cx.register.unwrap_or('"');
+    let reg_name = cx.ui_tree.selected_register.unwrap_or('"');
     let (buffer_view, buffer) = current!(cx.ui_tree);
     let registers = &mut cx.ui_tree.registers;
 
@@ -3493,7 +3492,7 @@ fn join_selections_impl(cx: &mut Context, select_space: bool) {
 
 fn keep_or_remove_selections_impl(cx: &mut Context, remove: bool) {
     // keep or remove selections matching regex
-    let reg = cx.register.unwrap_or('/');
+    let reg = cx.ui_tree.selected_register.unwrap_or('/');
     ui::regex_prompt(
         cx,
         if remove { "remove:" } else { "keep:" }.into(),
@@ -3955,7 +3954,7 @@ fn insert_register(cx: &mut Context) {
     cx.on_next_key(move |cx, event| {
         if let Some(ch) = event.char() {
             cx.ui_tree.autoinfo = None;
-            cx.register = Some(ch);
+            cx.ui_tree.register = Some(ch);
             paste(cx, Paste::Cursor);
         }
     })
@@ -4621,7 +4620,7 @@ fn increment_impl(cx: &mut Context, increment_direction: IncrementDirection) {
     let mut amount = sign * ui_tree.command_multiplier.unwrap_or_one().get() as i64;
 
     // If the register is `#` then increase or decrease the `amount` by 1 per element
-    let increase_by = if cx.register == Some('#') { sign } else { 0 };
+    let increase_by = if cx.ui_tree.register == Some('#') { sign } else { 0 };
 
     let (buffer_view, buffer) = current!(cx.ui_tree);
     let selection = buffer.selection(buffer_view.id);
@@ -4699,7 +4698,7 @@ fn record_macro(cx: &mut Context) {
         cx.ui_tree
             .set_status(format!("Recorded to register [{}]", reg));
     } else {
-        let reg = cx.register.take().unwrap_or('@');
+        let reg = cx.ui_tree.register.take().unwrap_or('@');
         cx.ui_tree.macro_recording = Some((reg, Vec::new()));
         cx.ui_tree
             .set_status(format!("Recording to register [{}]", reg));
@@ -4707,7 +4706,7 @@ fn record_macro(cx: &mut Context) {
 }
 
 fn replay_macro(cx: &mut Context) {
-    let reg = cx.register.unwrap_or('@');
+    let reg = cx.ui_tree.selected_register.unwrap_or('@');
 
     if cx.ui_tree.macro_replaying.contains(&reg) {
         cx.ui_tree.set_error(format!(

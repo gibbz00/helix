@@ -86,7 +86,7 @@ pub struct UITree {
     pub event_handler: EventHandler,
     pub next_buffer_id: BufferID,
     pub buffers: BTreeMap<BufferID, Buffer>,
-    pub lists: Vec<Lists>;
+    pub lists: Vec<Lists>,
 
     // We Flatten<> to resolve the inner DocumentSavedEventFuture. For that we need a stream of streams, hence the Once<>.
     // https://stackoverflow.com/a/66875668

@@ -192,9 +192,6 @@ impl EditorView {
                 cxt.ui_tree.command_multiplier.clear();
             }
             _ => {
-                // set the register
-                cxt.register = cxt.ui_tree.selected_register.take();
-
                 self.handle_keymap_event(mode, cxt, event);
                 if self.keymap.pending_keys().is_empty() {
                     cxt.ui_tree.command_multiplier.clear();
@@ -1296,7 +1293,6 @@ impl Component for EditorView {
     ) -> EventResult {
         let mut cx = commands::Context {
             ui_tree: context.ui_tree,
-            register: None,
             callback: None,
             on_next_key_callback: None,
             jobs: context.jobs,
