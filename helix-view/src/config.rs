@@ -4,7 +4,7 @@ mod view;
 pub use keymap::default as default_keymap;
 
 use {keymap::default, view::ViewConfig};
-use crate::{document::Mode, keymap::Keymap};
+use crate::{buffer::Mode, keymap::Keymap};
 use serde::Deserialize;
 use std::io::Error;
 use toml::de::Error as TomlError;

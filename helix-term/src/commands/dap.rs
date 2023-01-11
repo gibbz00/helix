@@ -135,7 +135,7 @@ pub fn dap_start_impl(
     socket: Option<std::net::SocketAddr>,
     params: Option<Vec<std::borrow::Cow<str>>>,
 ) -> Result<(), anyhow::Error> {
-    let doc = doc!(cx.editor);
+    let doc = buffer!(cx.editor);
 
     let config = doc
         .language_config()
@@ -254,7 +254,7 @@ pub fn dap_launch(cx: &mut Context) {
         return;
     }
 
-    let doc = doc!(cx.ui_tree);
+    let doc = buffer!(cx.ui_tree);
 
     let config = match doc
         .language_config()
@@ -582,7 +582,7 @@ pub fn dap_disable_exceptions(cx: &mut Context) {
 // TODO: both edit condition and edit log need to be stable: we might get new breakpoints from the debugger which can change offsets
 pub fn dap_edit_condition(cx: &mut Context) {
     if let Some((pos, breakpoint)) = get_breakpoint_at_current_line(cx.ui_tree) {
-        let path = match doc!(cx.ui_tree).path() {
+        let path = match buffer!(cx.ui_tree).path() {
             Some(path) => path.clone(),
             None => return,
         };
@@ -624,7 +624,7 @@ pub fn dap_edit_condition(cx: &mut Context) {
 
 pub fn dap_edit_log(cx: &mut Context) {
     if let Some((pos, breakpoint)) = get_breakpoint_at_current_line(cx.ui_tree) {
-        let path = match doc!(cx.ui_tree).path() {
+        let path = match buffer!(cx.ui_tree).path() {
             Some(path) => path.clone(),
             None => return,
         };

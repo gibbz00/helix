@@ -23,7 +23,7 @@ use helix_view::{
     editor::Action,
     graphics::{CursorKind, Margin, Modifier, Rect},
     theme::Style,
-    Document, DocumentId, ui_tree,
+    Buffer, BufferID, ui_tree,
 };
 
 use super::{menu::Item, overlay::Overlay};
@@ -34,7 +34,7 @@ pub const MAX_FILE_SIZE_FOR_PREVIEW: u64 = 10 * 1024 * 1024;
 
 #[derive(PartialEq, Eq, Hash)]
 pub enum PathOrId {
-    Id(DocumentId),
+    Id(BufferID),
     Path(PathBuf),
 }
 
@@ -54,8 +54,8 @@ impl From<PathBuf> for PathOrId {
     }
 }
 
-impl From<DocumentId> for PathOrId {
-    fn from(v: DocumentId) -> Self {
+impl From<BufferID> for PathOrId {
+    fn from(v: BufferID) -> Self {
         Self::Id(v)
     }
 }
@@ -74,7 +74,7 @@ pub struct FilePicker<T: Item> {
 }
 
 pub enum CachedPreview {
-    Document(Box<Document>),
+    Document(Box<Buffer>),
     Binary,
     LargeFile,
     NotFound,
@@ -84,11 +84,11 @@ pub enum CachedPreview {
 // from borrowing a document already opened in the editor.
 pub enum Preview<'picker, 'editor> {
     Cached(&'picker CachedPreview),
-    EditorDocument(&'editor Document),
+    EditorDocument(&'editor Buffer),
 }
 
 impl Preview<'_, '_> {
-    fn document(&self) -> Option<&Document> {
+    fn document(&self) -> Option<&Buffer> {
         match self {
             Preview::EditorDocument(doc) => Some(doc),
             Preview::Cached(CachedPreview::Document(doc)) => Some(doc),
@@ -178,7 +178,7 @@ impl<T: Item> FilePicker<T> {
                             }
                             _ => {
                                 // TODO: enable syntax highlighting; blocked by async rendering
-                                Document::open(path, None, None)
+                                Buffer::open(path, None, None)
                                     .map(|doc| CachedPreview::Document(Box::new(doc)))
                                     .unwrap_or(CachedPreview::NotFound)
                             }
@@ -200,7 +200,7 @@ impl<T: Item> FilePicker<T> {
         let doc = self
             .current_file(cx.editor)
             .and_then(|(path, _range)| match path {
-                PathOrId::Id(doc_id) => Some(doc_mut!(cx.editor, &doc_id)),
+                PathOrId::Id(doc_id) => Some(buffer_mut!(cx.editor, &doc_id)),
                 PathOrId::Path(path) => match self.preview_cache.get_mut(&path) {
                     Some(CachedPreview::Document(doc)) => Some(doc),
                     _ => None,

@@ -20,12 +20,12 @@ use helix_core::{
 };
 use helix_view::{
     apply_transaction,
-    document::{Mode, SCRATCH_BUFFER_NAME},
+    buffer::{Mode, SCRATCH_BUFFER_NAME},
     editor::{CompleteAction, CursorShapeConfig},
     graphics::{Color, CursorKind, Modifier, Rect, Style},
     input::{KeyEvent, MouseButton, MouseEvent, MouseEventKind},
     keyboard::{KeyCode, KeyModifiers},
-    Document, ui_tree, Theme, View,
+    Buffer, ui_tree, Theme, BufferView,
 };
 use std::{borrow::Cow, cmp::min, num::NonZeroUsize, path::PathBuf};
 
@@ -212,8 +212,8 @@ impl EditorView {
     pub fn render_view(
         &self,
         editor: &ui_tree,
-        doc: &Document,
-        view: &View,
+        doc: &Buffer,
+        view: &BufferView,
         viewport: Rect,
         surface: &mut Surface,
         is_focused: bool,
@@ -323,8 +323,8 @@ impl EditorView {
 
     pub fn render_rulers(
         editor: &ui_tree,
-        doc: &Document,
-        view: &View,
+        doc: &Buffer,
+        view: &BufferView,
         viewport: Rect,
         surface: &mut Surface,
         theme: &Theme,
@@ -353,7 +353,7 @@ impl EditorView {
     /// and column (`offset`) and the last line. This is done instead of using a view
     /// directly to enable rendering syntax highlighted docs anywhere (eg. picker preview)
     pub fn doc_syntax_highlights<'doc>(
-        doc: &'doc Document,
+        doc: &'doc Buffer,
         offset: Position,
         height: u16,
         _theme: &Theme,
@@ -406,7 +406,7 @@ impl EditorView {
 
     /// Get highlight spans for document diagnostics
     pub fn doc_diagnostics_highlights(
-        doc: &Document,
+        doc: &Buffer,
         theme: &Theme,
     ) -> [Vec<(usize, std::ops::Range<usize>)>; 5] {
         use helix_core::diagnostic::Severity;
@@ -466,8 +466,8 @@ impl EditorView {
     /// Get highlight spans for selections in a document view.
     pub fn doc_selection_highlights(
         mode: Mode,
-        doc: &Document,
-        view: &View,
+        doc: &Buffer,
+        view: &BufferView,
         theme: &Theme,
         cursor_shape_config: &CursorShapeConfig,
     ) -> Vec<(usize, std::ops::Range<usize>)> {
@@ -549,7 +549,7 @@ impl EditorView {
     }
 
     pub fn render_text_highlights<H: Iterator<Item = HighlightEvent>>(
-        doc: &Document,
+        doc: &Buffer,
         offset: Position,
         viewport: Rect,
         surface: &mut Surface,
@@ -759,8 +759,8 @@ impl EditorView {
 
     /// Render brace match, etc (meant for the focused view only)
     pub fn render_focused_view_elements(
-        view: &View,
-        doc: &Document,
+        view: &BufferView,
+        doc: &Buffer,
         viewport: Rect,
         theme: &Theme,
         surface: &mut Surface,
@@ -814,7 +814,7 @@ impl EditorView {
             .unwrap_or_else(|| editor.theme.get("ui.statusline.inactive"));
 
         let mut x = viewport.x;
-        let current_doc = view!(editor).doc;
+        let current_doc = buffer_view!(editor).doc;
 
         for doc in editor.documents() {
             let fname = doc
@@ -847,8 +847,8 @@ impl EditorView {
 
     pub fn render_gutter(
         editor: &ui_tree,
-        doc: &Document,
-        view: &View,
+        doc: &Buffer,
+        view: &BufferView,
         viewport: Rect,
         surface: &mut Surface,
         theme: &Theme,
@@ -910,8 +910,8 @@ impl EditorView {
     }
 
     pub fn render_diagnostics(
-        doc: &Document,
-        view: &View,
+        doc: &Buffer,
+        view: &BufferView,
         viewport: Rect,
         surface: &mut Surface,
         theme: &Theme,
@@ -964,7 +964,7 @@ impl EditorView {
     }
 
     /// Apply the highlighting on the lines where a cursor is active
-    pub fn highlight_cursorline(doc: &Document, view: &View, surface: &mut Surface, theme: &Theme) {
+    pub fn highlight_cursorline(doc: &Buffer, view: &BufferView, surface: &mut Surface, theme: &Theme) {
         let text = doc.text().slice(..);
         let last_line = view.last_line(doc);
 
@@ -1002,8 +1002,8 @@ impl EditorView {
 
     /// Apply the highlighting on the columns where a cursor is active
     pub fn highlight_cursorcolumn(
-        doc: &Document,
-        view: &View,
+        doc: &Buffer,
+        view: &BufferView,
         surface: &mut Surface,
         theme: &Theme,
     ) {
@@ -1071,7 +1071,7 @@ impl EditorView {
         }
 
         // Immediately initialize a savepoint
-        doc_mut!(editor).savepoint();
+        buffer_mut!(editor).savepoint();
 
         editor.last_completion = None;
         self.last_insert.1.push(InsertEvent::TriggerCompletion);
@@ -1085,7 +1085,7 @@ impl EditorView {
         self.completion = None;
 
         // Clear any savepoints
-        let doc = doc_mut!(editor);
+        let doc = buffer_mut!(editor);
         doc.savepoint = None;
         editor.clear_idle_timer(); // don't retrigger
     }
@@ -1143,7 +1143,7 @@ impl EditorView {
                 let editor = &mut cxt.ui_tree;
 
                 if let Some((pos, view_id)) = pos_and_view(editor, row, column) {
-                    let doc = doc_mut!(editor, &view!(editor, view_id).doc);
+                    let doc = buffer_mut!(editor, &buffer_view!(editor, view_id).doc);
 
                     if modifiers == KeyModifiers::ALT {
                         let selection = doc.selection(view_id).clone();
@@ -1272,7 +1272,7 @@ impl EditorView {
                 }
 
                 if let Some((pos, view_id)) = pos_and_view(editor, row, column) {
-                    let doc = doc_mut!(editor, &view!(editor, view_id).doc);
+                    let doc = buffer_mut!(editor, &buffer_view!(editor, view_id).doc);
                     doc.set_selection(view_id, Selection::point(pos));
                     cxt.ui_tree.focus(view_id);
                     commands::MappableCommand::paste_primary_clipboard_before.execute(cxt);
@@ -1407,8 +1407,8 @@ impl Component for EditorView {
                 if cx.ui_tree.tree.contains(focus) {
                     let config = cx.ui_tree.config();
                     let mode = cx.ui_tree.mode();
-                    let view = view_mut!(cx.ui_tree, focus);
-                    let doc = doc_mut!(cx.ui_tree, &view.doc);
+                    let view = buffer_view_mut!(cx.ui_tree, focus);
+                    let doc = buffer_mut!(cx.ui_tree, &view.doc);
 
                     view.ensure_cursor_in_view(doc, config.scrolloff);
 

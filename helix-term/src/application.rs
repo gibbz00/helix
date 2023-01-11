@@ -6,7 +6,7 @@ use helix_core::{
 use helix_lsp::{lsp, util::lsp_pos_to_pos, LspProgressMap};
 use helix_view::{
     align_view,
-    document::DocumentSavedEventResult,
+    buffer::DocumentSavedEventResult,
     editor::{ConfigEvent, EditorEvent},
     graphics::Rect,
     theme,
@@ -175,7 +175,7 @@ impl Application {
             let path = helix_loader::runtime_dir().join("tutor");
             editor.open(&path, Action::VerticalSplit)?;
             // Unset path to prevent accidentally saving to the original tutor file.
-            doc_mut!(editor).set_path(None)?;
+            buffer_mut!(editor).set_path(None)?;
         } else if !args.files.is_empty() {
             let first = &args.files[0].0; // we know it's not empty
             if first.is_dir() {
@@ -210,7 +210,7 @@ impl Application {
                         // `--vsplit` or `--hsplit` are used, the file which is
                         // opened last is focused on.
                         let view_id = editor.tree.focus;
-                        let doc = doc_mut!(editor, &doc_id);
+                        let doc = buffer_mut!(editor, &doc_id);
                         let pos = Selection::point(pos_at_coords(doc.text().slice(..), pos, true));
                         doc.set_selection(view_id, pos);
                     }
@@ -503,7 +503,7 @@ impl Application {
             let loader = self.editor.syn_loader.clone();
 
             // borrowing the same doc again to get around the borrow checker
-            let doc = doc_mut!(self.editor, &doc_save_event.doc_id);
+            let doc = buffer_mut!(self.editor, &doc_save_event.doc_id);
             let id = doc.id();
             doc.detect_language(loader);
             let _ = self.editor.refresh_language_server(id);

@@ -3,7 +3,7 @@
 mod tests {
     use helix_core::hashmap;
     use crate::{
-        document::Mode, input::KeyEvent,
+        buffer::Mode, input::KeyEvent,
         config::{
             keymap::macros::*,
             keymap::Keymap,

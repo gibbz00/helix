@@ -239,7 +239,7 @@ pub mod completers {
     use crate::ui::prompt::Completion;
     use fuzzy_matcher::skim::SkimMatcherV2 as Matcher;
     use fuzzy_matcher::FuzzyMatcher;
-    use helix_view::document::SCRATCH_BUFFER_NAME;
+    use helix_view::buffer::SCRATCH_BUFFER_NAME;
     use helix_view::theme;
     use helix_view::{editor::Config, ui_tree};
     use once_cell::sync::Lazy;

@@ -13,7 +13,7 @@ use tui::{
 use super::{align_view, push_jump, Align, Context, ui_tree, Open};
 
 use helix_core::{path, Selection};
-use helix_view::{apply_transaction, document::Mode, editor::Action, theme::Style};
+use helix_view::{apply_transaction, buffer::Mode, editor::Action, theme::Style};
 
 use crate::{
     compositor::{self, Compositor},
@@ -333,7 +333,7 @@ pub fn symbol_picker(cx: &mut Context) {
             nested_to_flat(list, file, child);
         }
     }
-    let doc = doc!(cx.ui_tree);
+    let doc = buffer!(cx.ui_tree);
 
     let language_server = language_server!(cx.ui_tree, doc);
     let current_url = doc.url();
@@ -357,7 +357,7 @@ pub fn symbol_picker(cx: &mut Context) {
                 let symbols = match symbols {
                     lsp::DocumentSymbolResponse::Flat(symbols) => symbols,
                     lsp::DocumentSymbolResponse::Nested(symbols) => {
-                        let doc = doc!(editor);
+                        let doc = buffer!(editor);
                         let mut flat_symbols = Vec::new();
                         for symbol in symbols {
                             nested_to_flat(&mut flat_symbols, &doc.identifier(), symbol)
@@ -374,7 +374,7 @@ pub fn symbol_picker(cx: &mut Context) {
 }
 
 pub fn workspace_symbol_picker(cx: &mut Context) {
-    let doc = doc!(cx.ui_tree);
+    let doc = buffer!(cx.ui_tree);
     let current_url = doc.url();
     let language_server = language_server!(cx.ui_tree, doc);
     let offset_encoding = language_server.offset_encoding();
@@ -393,7 +393,7 @@ pub fn workspace_symbol_picker(cx: &mut Context) {
             let symbols = response.unwrap_or_default();
             let picker = sym_picker(symbols, current_url, offset_encoding);
             let get_symbols = |query: String, editor: &mut ui_tree| {
-                let doc = doc!(editor);
+                let doc = buffer!(editor);
                 let language_server = match doc.language_server() {
                     Some(s) => s,
                     None => {
@@ -432,7 +432,7 @@ pub fn workspace_symbol_picker(cx: &mut Context) {
 }
 
 pub fn diagnostics_picker(cx: &mut Context) {
-    let doc = doc!(cx.ui_tree);
+    let doc = buffer!(cx.ui_tree);
     let language_server = language_server!(cx.ui_tree, doc);
     if let Some(current_url) = doc.url() {
         let offset_encoding = language_server.offset_encoding();
@@ -454,7 +454,7 @@ pub fn diagnostics_picker(cx: &mut Context) {
 }
 
 pub fn workspace_diagnostics_picker(cx: &mut Context) {
-    let doc = doc!(cx.ui_tree);
+    let doc = buffer!(cx.ui_tree);
     let language_server = language_server!(cx.ui_tree, doc);
     let current_url = doc.url();
     let offset_encoding = language_server.offset_encoding();
@@ -672,7 +672,7 @@ impl ui::menu::Item for lsp::Command {
 }
 
 pub fn execute_lsp_command(editor: &mut ui_tree, cmd: lsp::Command) {
-    let doc = doc!(editor);
+    let doc = buffer!(editor);
     let language_server = language_server!(editor, doc);
 
     // the command is executed on the server and communicated back
@@ -767,7 +767,7 @@ pub fn apply_workspace_edit(
             }
         };
 
-        let current_view_id = view!(editor).id;
+        let current_view_id = buffer_view!(editor).id;
         let doc_id = match editor.open(&path, Action::Load) {
             Ok(doc_id) => doc_id,
             Err(err) => {
@@ -778,7 +778,7 @@ pub fn apply_workspace_edit(
             }
         };
 
-        let doc = doc_mut!(editor, &doc_id);
+        let doc = buffer_mut!(editor, &doc_id);
 
         // Need to determine a view for apply/append_changes_to_history
         let selections = doc.selections();
@@ -799,7 +799,7 @@ pub fn apply_workspace_edit(
             text_edits,
             offset_encoding,
         );
-        let view = view_mut!(editor, view_id);
+        let view = buffer_view_mut!(editor, view_id);
         apply_transaction(&transaction, doc, view);
         doc.append_changes_to_history(view);
     };
@@ -1084,7 +1084,7 @@ pub fn signature_help_impl(cx: &mut Context, invoked: SignatureHelpInvoked) {
                     return;
                 }
             };
-            let doc = doc!(editor);
+            let doc = buffer!(editor);
             let language = doc.language_name().unwrap_or("");
 
             let signature = match response

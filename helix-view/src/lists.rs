@@ -1,4 +1,4 @@
-use crate::{UITree, document::SCRATCH_BUFFER_NAME};
+use crate::{UITree, buffer::SCRATCH_BUFFER_NAME};
 
 trait List {
     pub fn get<T>(ui_tree: &UITree) -> Vec<T>;

@@ -2,7 +2,7 @@
 pub mod macros;
 
 pub mod clipboard;
-pub mod document;
+pub mod buffer;
 pub mod ui_tree;
 pub mod env;
 pub mod graphics;
@@ -17,38 +17,39 @@ pub mod input;
 pub mod keyboard;
 pub mod theme;
 pub mod tree;
-pub mod view;
+pub mod buffer_view;
 pub mod config;
 pub mod event_handler;
 mod keymap;
 mod command;
 mod lists;
+mod jump;
 
-pub use document::Document;
+pub use buffer::Buffer;
 pub use ui_tree::UITree;
 pub use theme::Theme;
-pub use view::View;
+pub use buffer_view::BufferView;
 use std::num::NonZeroUsize;
 
-// uses NonZeroUsize so Option<DocumentId> use a byte rather than two
+// uses NonZeroUsize so Option<BufferID> use a byte rather than two
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub struct DocumentId(NonZeroUsize);
+pub struct BufferID(NonZeroUsize);
 
-impl Default for DocumentId {
-    fn default() -> DocumentId {
+impl Default for BufferID {
+    fn default() -> BufferID {
         // Safety: 1 is non-zero
-        DocumentId(unsafe { NonZeroUsize::new_unchecked(1) })
+        BufferID(unsafe { NonZeroUsize::new_unchecked(1) })
     }
 }
 
-impl std::fmt::Display for DocumentId {
+impl std::fmt::Display for BufferID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{}", self.0))
     }
 }
 
 slotmap::new_key_type! {
-    pub struct ViewId;
+    pub struct BufferViewID;
 }
 
 pub enum Align {
@@ -57,14 +58,14 @@ pub enum Align {
     Bottom,
 }
 
-pub fn align_view(doc: &Document, view: &mut View, align: Align) {
-    let pos = doc
-        .selection(view.id)
+pub fn align_view(buffer: &Buffer, buffer_view: &mut BufferView, align: Align) {
+    let pos = buffer
+        .selection(buffer_view.id)
         .primary()
-        .cursor(doc.text().slice(..));
-    let line = doc.text().char_to_line(pos);
+        .cursor(buffer.text().slice(..));
+    let line = buffer.text().char_to_line(pos);
 
-    let last_line_height = view.inner_height().saturating_sub(1);
+    let last_line_height = buffer_view.inner_height().saturating_sub(1);
 
     let relative = match align {
         Align::Center => last_line_height / 2,
@@ -72,17 +73,17 @@ pub fn align_view(doc: &Document, view: &mut View, align: Align) {
         Align::Bottom => last_line_height,
     };
 
-    view.offset.row = line.saturating_sub(relative);
+    buffer_view.offset.row = line.saturating_sub(relative);
 }
 
-/// Applies a [`helix_core::Transaction`] to the given [`Document`]
-/// and [`View`].
+/// Applies a [`helix_core::Transaction`] to the given [`Buffer`]
+/// and [`BufferView`].
 pub fn apply_transaction(
     transaction: &helix_core::Transaction,
-    doc: &mut Document,
-    view: &View,
+    buffer: &mut Buffer,
+    buffer_view: &BufferView,
 ) -> bool {
-    // TODO remove this helper function. Just call Document::apply everywhere directly.
-    doc.apply(transaction, view.id)
+    // TODO remove this helper function. Just call Buffer::apply everywhere directly.
+    buffer.apply(transaction, buffer_view.id)
 }
 

@@ -27,7 +27,7 @@ use helix_core::{
 };
 
 use crate::editor::RedrawHandle;
-use crate::{apply_transaction, DocumentId, ui_tree, View, ViewId};
+use crate::{apply_transaction, BufferID, ui_tree, BufferView, BufferViewID};
 
 /// 8kB of buffer space for encoding and decoding `Rope`s.
 const BUF_SIZE: usize = 8192;
@@ -90,7 +90,7 @@ impl Serialize for Mode {
 #[derive(Debug, Clone)]
 pub struct DocumentSavedEvent {
     pub revision: usize,
-    pub doc_id: DocumentId,
+    pub doc_id: BufferID,
     pub path: PathBuf,
     pub text: Rope,
 }
@@ -98,10 +98,10 @@ pub struct DocumentSavedEvent {
 pub type DocumentSavedEventResult = Result<DocumentSavedEvent, anyhow::Error>;
 pub type DocumentSavedEventFuture = BoxFuture<'static, DocumentSavedEventResult>;
 
-pub struct Document {
-    pub(crate) id: DocumentId,
+pub struct Buffer {
+    pub(crate) id: BufferID,
     text: Rope,
-    selections: HashMap<ViewId, Selection>,
+    selections: HashMap<BufferViewID, Selection>,
 
     path: Option<PathBuf>,
     encoding: &'static encoding::Encoding,
@@ -141,7 +141,7 @@ pub struct Document {
 }
 
 use std::{fmt, mem};
-impl fmt::Debug for Document {
+impl fmt::Debug for Buffer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Document")
             .field("id", &self.id)
@@ -350,14 +350,14 @@ where
 use helix_lsp::lsp;
 use url::Url;
 
-impl Document {
+impl Buffer {
     pub fn from(text: Rope, encoding: Option<&'static encoding::Encoding>) -> Self {
         let encoding = encoding.unwrap_or(encoding::UTF_8);
         let changes = ChangeSet::new(&text);
         let old_state = None;
 
         Self {
-            id: DocumentId::default(),
+            id: BufferID::default(),
             path: None,
             encoding,
             text,
@@ -632,7 +632,7 @@ impl Document {
     /// Reload the document from its path.
     pub fn reload(
         &mut self,
-        view: &mut View,
+        view: &mut BufferView,
         provider_registry: &DiffProviderRegistry,
         redraw_handle: RedrawHandle,
     ) -> Result<(), Error> {
@@ -736,7 +736,7 @@ impl Document {
     }
 
     /// Select text within the [`Document`].
-    pub fn set_selection(&mut self, view_id: ViewId, selection: Selection) {
+    pub fn set_selection(&mut self, view_id: BufferViewID, selection: Selection) {
         // TODO: use a transaction?
         self.selections
             .insert(view_id, selection.ensure_invariants(self.text().slice(..)));
@@ -755,26 +755,26 @@ impl Document {
 
     /// Reset the view's selection on this document to the
     /// [origin](Document::origin) cursor.
-    pub fn reset_selection(&mut self, view_id: ViewId) {
+    pub fn reset_selection(&mut self, view_id: BufferViewID) {
         let origin = self.origin();
         self.set_selection(view_id, Selection::single(origin.anchor, origin.head));
     }
 
     /// Initializes a new selection for the given view if it does not
     /// already have one.
-    pub fn ensure_view_init(&mut self, view_id: ViewId) {
+    pub fn ensure_view_init(&mut self, view_id: BufferViewID) {
         if self.selections.get(&view_id).is_none() {
             self.reset_selection(view_id);
         }
     }
 
     /// Remove a view's selection from this document.
-    pub fn remove_view(&mut self, view_id: ViewId) {
+    pub fn remove_view(&mut self, view_id: BufferViewID) {
         self.selections.remove(&view_id);
     }
 
     /// Apply a [`Transaction`] to the [`Document`] to change its text.
-    fn apply_impl(&mut self, transaction: &Transaction, view_id: ViewId) -> bool {
+    fn apply_impl(&mut self, transaction: &Transaction, view_id: BufferViewID) -> bool {
         let old_doc = self.text().clone();
 
         let success = transaction.changes().apply(&mut self.text);
@@ -855,7 +855,7 @@ impl Document {
     /// Instead of calling this function directly, use [crate::apply_transaction]
     /// to ensure that the transaction is applied to the appropriate [`View`] as
     /// well.
-    pub fn apply(&mut self, transaction: &Transaction, view_id: ViewId) -> bool {
+    pub fn apply(&mut self, transaction: &Transaction, view_id: BufferViewID) -> bool {
         // store the state just before any changes are made. This allows us to undo to the
         // state just before a transaction was applied.
         if self.changes.is_empty() && !transaction.changes().is_empty() {
@@ -876,7 +876,7 @@ impl Document {
         success
     }
 
-    fn undo_redo_impl(&mut self, view: &mut View, undo: bool) -> bool {
+    fn undo_redo_impl(&mut self, view: &mut BufferView, undo: bool) -> bool {
         let mut history = self.history.take();
         let txn = if undo { history.undo() } else { history.redo() };
         let success = if let Some(txn) = txn {
@@ -896,12 +896,12 @@ impl Document {
     }
 
     /// Undo the last modification to the [`Document`]. Returns whether the undo was successful.
-    pub fn undo(&mut self, view: &mut View) -> bool {
+    pub fn undo(&mut self, view: &mut BufferView) -> bool {
         self.undo_redo_impl(view, true)
     }
 
     /// Redo the last modification to the [`Document`]. Returns whether the redo was successful.
-    pub fn redo(&mut self, view: &mut View) -> bool {
+    pub fn redo(&mut self, view: &mut BufferView) -> bool {
         self.undo_redo_impl(view, false)
     }
 
@@ -909,13 +909,13 @@ impl Document {
         self.savepoint = Some(Transaction::new(self.text()));
     }
 
-    pub fn restore(&mut self, view: &mut View) {
+    pub fn restore(&mut self, view: &mut BufferView) {
         if let Some(revert) = self.savepoint.take() {
             apply_transaction(&revert, self, view);
         }
     }
 
-    fn earlier_later_impl(&mut self, view: &mut View, uk: UndoKind, earlier: bool) -> bool {
+    fn earlier_later_impl(&mut self, view: &mut BufferView, uk: UndoKind, earlier: bool) -> bool {
         let txns = if earlier {
             self.history.get_mut().earlier(uk)
         } else {
@@ -937,17 +937,17 @@ impl Document {
     }
 
     /// Undo modifications to the [`Document`] according to `uk`.
-    pub fn earlier(&mut self, view: &mut View, uk: UndoKind) -> bool {
+    pub fn earlier(&mut self, view: &mut BufferView, uk: UndoKind) -> bool {
         self.earlier_later_impl(view, uk, true)
     }
 
     /// Redo modifications to the [`Document`] according to `uk`.
-    pub fn later(&mut self, view: &mut View, uk: UndoKind) -> bool {
+    pub fn later(&mut self, view: &mut BufferView, uk: UndoKind) -> bool {
         self.earlier_later_impl(view, uk, false)
     }
 
     /// Commit pending changes to history
-    pub fn append_changes_to_history(&mut self, view: &mut View) {
+    pub fn append_changes_to_history(&mut self, view: &mut BufferView) {
         if self.changes.is_empty() {
             return;
         }
@@ -970,7 +970,7 @@ impl Document {
         view.apply(&transaction, self);
     }
 
-    pub fn id(&self) -> DocumentId {
+    pub fn id(&self) -> BufferID {
         self.id
     }
 
@@ -1116,11 +1116,11 @@ impl Document {
     }
 
     #[inline]
-    pub fn selection(&self, view_id: ViewId) -> &Selection {
+    pub fn selection(&self, view_id: BufferViewID) -> &Selection {
         &self.selections[&view_id]
     }
 
-    pub fn selections(&self) -> &HashMap<ViewId, Selection> {
+    pub fn selections(&self) -> &HashMap<BufferViewID, Selection> {
         &self.selections
     }
 
@@ -1151,7 +1151,7 @@ impl Document {
 
     pub fn position(
         &self,
-        view_id: ViewId,
+        view_id: BufferViewID,
         offset_encoding: helix_lsp::OffsetEncoding,
     ) -> lsp::Position {
         let text = self.text();
@@ -1197,7 +1197,7 @@ impl Document {
     }
 }
 
-impl Default for Document {
+impl Default for Buffer {
     fn default() -> Self {
         let text = Rope::from(DEFAULT_LINE_ENDING.as_str());
         Self::from(text, None)
@@ -1245,8 +1245,8 @@ mod test {
     fn changeset_to_changes_ignore_line_endings() {
         use helix_lsp::{lsp, Client, OffsetEncoding};
         let text = Rope::from("hello\r\nworld");
-        let mut doc = Document::from(text, None);
-        let view = ViewId::default();
+        let mut doc = Buffer::from(text, None);
+        let view = BufferViewID::default();
         doc.set_selection(view, Selection::single(0, 0));
 
         let transaction =
@@ -1279,8 +1279,8 @@ mod test {
     fn changeset_to_changes() {
         use helix_lsp::{lsp, Client, OffsetEncoding};
         let text = Rope::from("hello");
-        let mut doc = Document::from(text, None);
-        let view = ViewId::default();
+        let mut doc = Buffer::from(text, None);
+        let view = BufferViewID::default();
         doc.set_selection(view, Selection::single(5, 5));
 
         // insert
@@ -1392,7 +1392,7 @@ mod test {
     #[test]
     fn test_line_ending() {
         assert_eq!(
-            Document::default().text().to_string(),
+            Buffer::default().text().to_string(),
             DEFAULT_LINE_ENDING.as_str()
         );
     }

@@ -7,7 +7,7 @@ mod tests;
 
 pub use {keytrie::KeyTrie, keytrienode::KeyTrieNode};
 
-use crate::{document::Mode, command::Command};
+use crate::{buffer::Mode, command::Command};
 use std::{sync::Arc, collections::HashMap};
 use arc_swap::{access::{DynAccess, DynGuard}, ArcSwap};
 

@@ -25,7 +25,7 @@ fn quit(cx: &mut compositor::Context, args: &[Cow<str>], event: PromptEvent) -> 
     }
 
     cx.block_try_flush_writes()?;
-    cx.editor.close(view!(cx.editor).id);
+    cx.editor.close(buffer_view!(cx.editor).id);
 
     Ok(())
 }
@@ -42,7 +42,7 @@ fn force_quit(
     ensure!(args.is_empty(), ":quit! takes no arguments");
 
     cx.block_try_flush_writes()?;
-    cx.editor.close(view!(cx.editor).id);
+    cx.editor.close(buffer_view!(cx.editor).id);
 
     Ok(())
 }
@@ -67,7 +67,7 @@ fn open(cx: &mut compositor::Context, args: &[Cow<str>], event: PromptEvent) -> 
 
 fn buffer_close_by_ids_impl(
     cx: &mut compositor::Context,
-    doc_ids: &[DocumentId],
+    doc_ids: &[BufferID],
     force: bool,
 ) -> anyhow::Result<()> {
     cx.block_try_flush_writes()?;
@@ -84,7 +84,7 @@ fn buffer_close_by_ids_impl(
         .unzip();
 
     if let Some(first) = modified_ids.first() {
-        let current = doc!(cx.editor);
+        let current = buffer!(cx.editor);
         // If the current document is unmodified, and there are modified
         // documents, switch focus to the first modified doc.
         if !modified_ids.contains(&current.id()) {
@@ -100,10 +100,10 @@ fn buffer_close_by_ids_impl(
     Ok(())
 }
 
-fn buffer_gather_paths_impl(editor: &mut ui_tree, args: &[Cow<str>]) -> Vec<DocumentId> {
+fn buffer_gather_paths_impl(editor: &mut ui_tree, args: &[Cow<str>]) -> Vec<BufferID> {
     // No arguments implies current document
     if args.is_empty() {
-        let doc_id = view!(editor).doc;
+        let doc_id = buffer_view!(editor).doc;
         return vec![doc_id];
     }
 
@@ -163,8 +163,8 @@ fn force_buffer_close(
     buffer_close_by_ids_impl(cx, &document_ids, true)
 }
 
-fn buffer_gather_others_impl(editor: &mut ui_tree) -> Vec<DocumentId> {
-    let current_document = &doc!(editor).id();
+fn buffer_gather_others_impl(editor: &mut ui_tree) -> Vec<BufferID> {
+    let current_document = &buffer!(editor).id();
     editor
         .documents()
         .map(|doc| doc.id())
@@ -198,7 +198,7 @@ fn force_buffer_close_others(
     buffer_close_by_ids_impl(cx, &document_ids, true)
 }
 
-fn buffer_gather_all_impl(editor: &mut ui_tree) -> Vec<DocumentId> {
+fn buffer_gather_all_impl(editor: &mut ui_tree) -> Vec<BufferID> {
     editor.documents().map(|doc| doc.id()).collect()
 }
 
@@ -356,7 +356,7 @@ fn set_indent_style(
 
     // If no argument, report current indent style.
     if args.is_empty() {
-        let style = doc!(cx.editor).indent_style;
+        let style = buffer!(cx.editor).indent_style;
         cx.editor.set_status(match style {
             Tabs => "tabs".to_owned(),
             Spaces(1) => "1 space".to_owned(),
@@ -379,7 +379,7 @@ fn set_indent_style(
     };
 
     let style = style.context("invalid indent style")?;
-    let doc = doc_mut!(cx.editor);
+    let doc = buffer_mut!(cx.editor);
     doc.indent_style = style;
 
     Ok(())
@@ -399,7 +399,7 @@ fn set_line_ending(
 
     // If no argument, report current line ending setting.
     if args.is_empty() {
-        let line_ending = doc!(cx.editor).line_ending;
+        let line_ending = buffer!(cx.editor).line_ending;
         cx.editor.set_status(match line_ending {
             Crlf => "crlf",
             LF => "line feed",
@@ -536,7 +536,7 @@ pub(super) fn buffers_remaining_impl(editor: &mut ui_tree) -> anyhow::Result<()>
         .map(|doc| (doc.id(), doc.display_name()))
         .unzip();
     if let Some(first) = modified_ids.first() {
-        let current = doc!(editor);
+        let current = buffer!(editor);
         // If the current document is unmodified, and there are modified
         // documents, switch focus to the first modified doc.
         if !modified_ids.contains(&current.id()) {
@@ -559,7 +559,7 @@ pub fn write_all_impl(
     let mut errors: Vec<&'static str> = Vec::new();
     let auto_format = cx.editor.config().auto_format;
     let jobs = &mut cx.jobs;
-    let current_view = view!(cx.editor);
+    let current_view = buffer_view!(cx.editor);
 
     // save all documents
     let saves: Vec<_> = cx
@@ -804,7 +804,7 @@ fn yank_joined_to_clipboard(
         return Ok(());
     }
 
-    let doc = doc!(cx.editor);
+    let doc = buffer!(cx.editor);
     let default_sep = Cow::Borrowed(doc.line_ending.as_str());
     let separator = args.first().unwrap_or(&default_sep);
     yank_joined_to_clipboard_impl(cx.editor, separator, ClipboardType::Clipboard)
@@ -831,7 +831,7 @@ fn yank_joined_to_primary_clipboard(
         return Ok(());
     }
 
-    let doc = doc!(cx.editor);
+    let doc = buffer!(cx.editor);
     let default_sep = Cow::Borrowed(doc.line_ending.as_str());
     let separator = args.first().unwrap_or(&default_sep);
     yank_joined_to_clipboard_impl(cx.editor, separator, ClipboardType::Selection)
@@ -997,7 +997,7 @@ fn set_encoding(
         return Ok(());
     }
 
-    let doc = doc_mut!(cx.editor);
+    let doc = buffer_mut!(cx.editor);
     if let Some(label) = args.first() {
         doc.set_encoding(label)
     } else {
@@ -1036,9 +1036,9 @@ fn reload_all(
     }
 
     let scrolloff = cx.editor.config().scrolloff;
-    let view_id = view!(cx.editor).id;
+    let view_id = buffer_view!(cx.editor).id;
 
-    let docs_view_ids: Vec<(DocumentId, Vec<ViewId>)> = cx
+    let docs_view_ids: Vec<(BufferID, Vec<BufferViewID>)> = cx
         .editor
         .documents_mut()
         .map(|doc| {
@@ -1054,10 +1054,10 @@ fn reload_all(
         .collect();
 
     for (doc_id, view_ids) in docs_view_ids {
-        let doc = doc_mut!(cx.editor, &doc_id);
+        let doc = buffer_mut!(cx.editor, &doc_id);
 
         // Every doc is guaranteed to have at least 1 view at this point.
-        let view = view_mut!(cx.editor, view_ids[0]);
+        let view = buffer_view_mut!(cx.editor, view_ids[0]);
 
         // Ensure that the view is synced with the document's history.
         view.sync_changes(doc);
@@ -1066,7 +1066,7 @@ fn reload_all(
         doc.reload(view, &cx.editor.diff_providers, redraw_handle)?;
 
         for view_id in view_ids {
-            let view = view_mut!(cx.editor, view_id);
+            let view = buffer_view_mut!(cx.editor, view_id);
             if view.doc.eq(&doc_id) {
                 view.ensure_cursor_in_view(doc, scrolloff);
             }
@@ -1183,7 +1183,7 @@ fn lsp_restart(
     cx.editor.language_servers.restart(config, doc.path())?;
 
     // This collect is needed because refresh_language_server would need to re-borrow editor.
-    let document_ids_to_refresh: Vec<DocumentId> = cx
+    let document_ids_to_refresh: Vec<BufferID> = cx
         .editor
         .documents()
         .filter_map(|doc| match doc.language_config() {
@@ -1241,7 +1241,7 @@ fn vsplit(
         return Ok(());
     }
 
-    let id = view!(cx.editor).doc;
+    let id = buffer_view!(cx.editor).doc;
 
     if args.is_empty() {
         cx.editor.switch(id, Action::VerticalSplit);
@@ -1264,7 +1264,7 @@ fn hsplit(
         return Ok(());
     }
 
-    let id = view!(cx.editor).doc;
+    let id = buffer_view!(cx.editor).doc;
 
     if args.is_empty() {
         cx.editor.switch(id, Action::HorizontalSplit);
@@ -1382,7 +1382,7 @@ fn tutor(
     let path = helix_loader::runtime_dir().join("tutor");
     cx.editor.open(&path, Action::Replace)?;
     // Unset path to prevent accidentally saving to the original tutor file.
-    doc_mut!(cx.editor).set_path(None)?;
+    buffer_mut!(cx.editor).set_path(None)?;
     Ok(())
 }
 
@@ -1507,7 +1507,7 @@ fn language(
         anyhow::bail!("Bad arguments. Usage: `:set-language language`");
     }
 
-    let doc = doc_mut!(cx.editor);
+    let doc = buffer_mut!(cx.editor);
 
     if args[0] == "text" {
         doc.set_language(None, None)

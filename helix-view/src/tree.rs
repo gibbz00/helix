@@ -1,46 +1,44 @@
-use crate::{graphics::Rect, View, ViewId};
+use crate::{graphics::Rect, BufferView, BufferViewID};
 use slotmap::HopSlotMap;
 
 // the dimensions are recomputed on window resize/tree change.
 //
 #[derive(Debug)]
 pub struct Tree {
-    root: ViewId,
+    root: BufferViewID,
     // (container, index inside the container)
-    pub focus: ViewId,
-    // fullscreen: bool,
+    pub focus: BufferViewID,
     area: Rect,
 
-    nodes: HopSlotMap<ViewId, Node>,
+    nodes: HopSlotMap<BufferViewID, Node>,
 
     // used for traversals
-    stack: Vec<(ViewId, Rect)>,
-}
-
-#[derive(Debug)]
-pub struct Node {
-    parent: ViewId,
-    content: Content,
+    stack: Vec<(BufferViewID, Rect)>,
 }
 
 #[derive(Debug)]
 pub enum Content {
-    View(Box<View>),
+    BufferView(Box<BufferView>),
     Container(Box<Container>),
 }
 
+#[derive(Debug)]
+pub struct Node {
+    parent: BufferViewID,
+    content: Content,
+}
 impl Node {
     pub fn container(layout: Layout) -> Self {
         Self {
-            parent: ViewId::default(),
+            parent: BufferViewID::default(),
             content: Content::Container(Box::new(Container::new(layout))),
         }
     }
 
-    pub fn view(view: View) -> Self {
+    pub fn view(view: BufferView) -> Self {
         Self {
-            parent: ViewId::default(),
-            content: Content::View(Box::new(view)),
+            parent: BufferViewID::default(),
+            content: Content::BufferView(Box::new(view)),
         }
     }
 }
@@ -63,7 +61,7 @@ pub enum Direction {
 #[derive(Debug)]
 pub struct Container {
     layout: Layout,
-    children: Vec<ViewId>,
+    children: Vec<BufferViewID>,
     area: Rect,
 }
 
@@ -96,14 +94,13 @@ impl Tree {
         Self {
             root,
             focus: root,
-            // fullscreen: false,
             area,
             nodes,
             stack: Vec::new(),
         }
     }
 
-    pub fn insert(&mut self, view: View) -> ViewId {
+    pub fn insert(&mut self, view: BufferView) -> BufferViewID {
         let focus = self.focus;
         let parent = self.nodes[focus].parent;
         let mut node = Node::view(view);
@@ -141,7 +138,7 @@ impl Tree {
         node
     }
 
-    pub fn split(&mut self, view: View, layout: Layout) -> ViewId {
+    pub fn split(&mut self, view: BufferView, layout: Layout) -> BufferViewID {
         let focus = self.focus;
         let parent = self.nodes[focus].parent;
 
@@ -214,7 +211,7 @@ impl Tree {
         node
     }
 
-    pub fn remove(&mut self, index: ViewId) {
+    pub fn remove(&mut self, index: BufferViewID) {
         let mut stack = Vec::new();
 
         if self.focus == index {
@@ -246,24 +243,24 @@ impl Tree {
         self.recalculate()
     }
 
-    pub fn views(&self) -> impl Iterator<Item = (&View, bool)> {
+    pub fn views(&self) -> impl Iterator<Item = (&BufferView, bool)> {
         let focus = self.focus;
         self.nodes.iter().filter_map(move |(key, node)| match node {
             Node {
-                content: Content::View(view),
+                content: Content::BufferView(view),
                 ..
             } => Some((view.as_ref(), focus == key)),
             _ => None,
         })
     }
 
-    pub fn views_mut(&mut self) -> impl Iterator<Item = (&mut View, bool)> {
+    pub fn views_mut(&mut self) -> impl Iterator<Item = (&mut BufferView, bool)> {
         let focus = self.focus;
         self.nodes
             .iter_mut()
             .filter_map(move |(key, node)| match node {
                 Node {
-                    content: Content::View(view),
+                    content: Content::BufferView(view),
                     ..
                 } => Some((view.as_mut(), focus == key)),
                 _ => None,
@@ -274,7 +271,7 @@ impl Tree {
     /// # Panics
     ///
     /// Panics if `index` is not in self.nodes, or if the node's content is not [Content::View]. This can be checked with [Self::contains].
-    pub fn get(&self, index: ViewId) -> &View {
+    pub fn get(&self, index: BufferViewID) -> &BufferView {
         self.try_get(index).unwrap()
     }
 
@@ -282,10 +279,10 @@ impl Tree {
     /// # Panics
     ///
     /// Panics if `index` is not in self.nodes. This can be checked with [Self::contains]
-    pub fn try_get(&self, index: ViewId) -> Option<&View> {
+    pub fn try_get(&self, index: BufferViewID) -> Option<&BufferView> {
         match &self.nodes[index] {
             Node {
-                content: Content::View(view),
+                content: Content::BufferView(view),
                 ..
             } => Some(view),
             _ => None,
@@ -296,10 +293,10 @@ impl Tree {
     /// # Panics
     ///
     /// Panics if `index` is not in self.nodes, or if the node's content is not [Content::View]. This can be checked with [Self::contains].
-    pub fn get_mut(&mut self, index: ViewId) -> &mut View {
+    pub fn get_mut(&mut self, index: BufferViewID) -> &mut BufferView {
         match &mut self.nodes[index] {
             Node {
-                content: Content::View(view),
+                content: Content::BufferView(view),
                 ..
             } => view,
             _ => unreachable!(),
@@ -307,7 +304,7 @@ impl Tree {
     }
 
     /// Check if tree contains a [Node] with a given index.
-    pub fn contains(&self, index: ViewId) -> bool {
+    pub fn contains(&self, index: BufferViewID) -> bool {
         self.nodes.contains_key(index)
     }
 
@@ -349,7 +346,7 @@ impl Tree {
             let node = &mut self.nodes[key];
 
             match &mut node.content {
-                Content::View(view) => {
+                Content::BufferView(view) => {
                     // debug!!("setting view area {:?}", area);
                     view.area = area;
                 } // TODO: call f()
@@ -422,7 +419,7 @@ impl Tree {
     }
 
     // Finds the split in the given direction if it exists
-    pub fn find_split_in_direction(&self, id: ViewId, direction: Direction) -> Option<ViewId> {
+    pub fn find_split_in_direction(&self, id: BufferViewID, direction: Direction) -> Option<BufferViewID> {
         let parent = self.nodes[id].parent;
         // Base case, we found the root of the tree
         if parent == id {
@@ -431,7 +428,7 @@ impl Tree {
         // Parent must always be a container
         let parent_container = match &self.nodes[parent].content {
             Content::Container(container) => container,
-            Content::View(_) => unreachable!(),
+            Content::BufferView(_) => unreachable!(),
         };
 
         match (direction, parent_container.layout) {
@@ -470,7 +467,7 @@ impl Tree {
         }
     }
 
-    fn find_child(&self, id: ViewId, children: &[ViewId], direction: Direction) -> Option<ViewId> {
+    fn find_child(&self, id: BufferViewID, children: &[BufferViewID], direction: Direction) -> Option<BufferViewID> {
         let mut child_id = match direction {
             // index wise in the child list the Up and Left represents a -1
             // thus reversed iterator.
@@ -486,7 +483,7 @@ impl Tree {
             }
         };
         let (current_x, current_y) = match &self.nodes[self.focus].content {
-            Content::View(current_view) => (current_view.area.left(), current_view.area.top()),
+            Content::BufferView(current_view) => (current_view.area.left(), current_view.area.top()),
             Content::Container(_) => unreachable!(),
         };
 
@@ -499,7 +496,7 @@ impl Tree {
                     // in a vertical container (and already correct based on previous search)
                     child_id = *container.children.iter().min_by_key(|id| {
                         let x = match &self.nodes[**id].content {
-                            Content::View(view) => view.area.left(),
+                            Content::BufferView(view) => view.area.left(),
                             Content::Container(container) => container.area.left(),
                         };
                         (current_x as i16 - x as i16).abs()
@@ -510,7 +507,7 @@ impl Tree {
                     // in a horizontal container (and already correct based on previous search)
                     child_id = *container.children.iter().min_by_key(|id| {
                         let y = match &self.nodes[**id].content {
-                            Content::View(view) => view.area.top(),
+                            Content::BufferView(view) => view.area.top(),
                             Content::Container(container) => container.area.top(),
                         };
                         (current_y as i16 - y as i16).abs()
@@ -521,7 +518,7 @@ impl Tree {
         Some(child_id)
     }
 
-    pub fn prev(&self) -> ViewId {
+    pub fn prev(&self) -> BufferViewID {
         // This function is very dumb, but that's because we don't store any parent links.
         // (we'd be able to go parent.prev_sibling() recursively until we find something)
         // For now that's okay though, since it's unlikely you'll be able to open a large enough
@@ -541,7 +538,7 @@ impl Tree {
         }
     }
 
-    pub fn next(&self) -> ViewId {
+    pub fn next(&self) -> BufferViewID {
         // This function is very dumb, but that's because we don't store any parent links.
         // (we'd be able to go parent.next_sibling() recursively until we find something)
         // For now that's okay though, since it's unlikely you'll be able to open a large enough
@@ -584,8 +581,8 @@ impl Tree {
             match (&mut parent.content, &mut focus.content, &mut target.content) {
                 (
                     Content::Container(parent),
-                    Content::View(focus_view),
-                    Content::View(target_view),
+                    Content::BufferView(focus_view),
+                    Content::BufferView(target_view),
                 ) => {
                     let focus_pos = parent.children.iter().position(|id| focus_view.id == *id)?;
                     let target_pos = parent
@@ -615,8 +612,8 @@ impl Tree {
                 (
                     Content::Container(focus_parent),
                     Content::Container(target_parent),
-                    Content::View(focus_view),
-                    Content::View(target_view),
+                    Content::BufferView(focus_view),
+                    Content::BufferView(target_view),
                 ) => {
                     let focus_pos = focus_parent
                         .children
@@ -650,7 +647,7 @@ impl Tree {
 #[derive(Debug)]
 pub struct Traverse<'a> {
     tree: &'a Tree,
-    stack: Vec<ViewId>, // TODO: reuse the one we use on update
+    stack: Vec<BufferViewID>, // TODO: reuse the one we use on update
 }
 
 impl<'a> Traverse<'a> {
@@ -663,7 +660,7 @@ impl<'a> Traverse<'a> {
 }
 
 impl<'a> Iterator for Traverse<'a> {
-    type Item = (ViewId, &'a View);
+    type Item = (BufferViewID, &'a BufferView);
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -672,7 +669,7 @@ impl<'a> Iterator for Traverse<'a> {
             let node = &self.tree.nodes[key];
 
             match &node.content {
-                Content::View(view) => return Some((key, view)),
+                Content::BufferView(view) => return Some((key, view)),
                 Content::Container(container) => {
                     self.stack.extend(container.children.iter().rev());
                 }
@@ -689,7 +686,7 @@ impl<'a> DoubleEndedIterator for Traverse<'a> {
             let node = &self.tree.nodes[key];
 
             match &node.content {
-                Content::View(view) => return Some((key, view)),
+                Content::BufferView(view) => return Some((key, view)),
                 Content::Container(container) => {
                     self.stack.extend(container.children.iter());
                 }
@@ -702,7 +699,7 @@ impl<'a> DoubleEndedIterator for Traverse<'a> {
 mod test {
     use super::*;
     use crate::editor::GutterType;
-    use crate::DocumentId;
+    use crate::BufferID;
 
     #[test]
     fn find_split_in_direction() {
@@ -712,32 +709,32 @@ mod test {
             width: 180,
             height: 80,
         });
-        let mut view = View::new(
-            DocumentId::default(),
+        let mut view = BufferView::new(
+            BufferID::default(),
             vec![GutterType::Diagnostics, GutterType::LineNumbers],
         );
         view.area = Rect::new(0, 0, 180, 80);
         tree.insert(view);
 
         let l0 = tree.focus;
-        let view = View::new(
-            DocumentId::default(),
+        let view = BufferView::new(
+            BufferID::default(),
             vec![GutterType::Diagnostics, GutterType::LineNumbers],
         );
         tree.split(view, Layout::Vertical);
         let r0 = tree.focus;
 
         tree.focus = l0;
-        let view = View::new(
-            DocumentId::default(),
+        let view = BufferView::new(
+            BufferID::default(),
             vec![GutterType::Diagnostics, GutterType::LineNumbers],
         );
         tree.split(view, Layout::Horizontal);
         let l1 = tree.focus;
 
         tree.focus = l0;
-        let view = View::new(
-            DocumentId::default(),
+        let view = BufferView::new(
+            BufferID::default(),
             vec![GutterType::Diagnostics, GutterType::LineNumbers],
         );
         tree.split(view, Layout::Vertical);
@@ -780,8 +777,8 @@ mod test {
             height: 80,
         });
 
-        let doc_l0 = DocumentId::default();
-        let mut view = View::new(
+        let doc_l0 = BufferID::default();
+        let mut view = BufferView::new(
             doc_l0,
             vec![GutterType::Diagnostics, GutterType::LineNumbers],
         );
@@ -790,8 +787,8 @@ mod test {
 
         let l0 = tree.focus;
 
-        let doc_r0 = DocumentId::default();
-        let view = View::new(
+        let doc_r0 = BufferID::default();
+        let view = BufferView::new(
             doc_r0,
             vec![GutterType::Diagnostics, GutterType::LineNumbers],
         );
@@ -800,8 +797,8 @@ mod test {
 
         tree.focus = l0;
 
-        let doc_l1 = DocumentId::default();
-        let view = View::new(
+        let doc_l1 = BufferID::default();
+        let view = BufferView::new(
             doc_l1,
             vec![GutterType::Diagnostics, GutterType::LineNumbers],
         );
@@ -810,8 +807,8 @@ mod test {
 
         tree.focus = l0;
 
-        let doc_l2 = DocumentId::default();
-        let view = View::new(
+        let doc_l2 = BufferID::default();
+        let view = BufferView::new(
             doc_l2,
             vec![GutterType::Diagnostics, GutterType::LineNumbers],
         );
@@ -826,9 +823,9 @@ mod test {
         // | l0  | l2 |    |
         // |    l1    | r0 |
 
-        fn doc_id(tree: &Tree, view_id: ViewId) -> Option<DocumentId> {
-            if let Content::View(view) = &tree.nodes[view_id].content {
-                Some(view.doc)
+        fn doc_id(tree: &Tree, view_id: BufferViewID) -> Option<BufferID> {
+            if let Content::BufferView(view) = &tree.nodes[view_id].content {
+                Some(view.buffer_id)
             } else {
                 None
             }

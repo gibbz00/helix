@@ -1,4 +1,4 @@
-use crate::{document::Mode, keymap::{KeyTrie, macros::keytrie}};
+use crate::{buffer::Mode, keymap::{KeyTrie, macros::keytrie}};
 use helix_core::hashmap;
 use std::collections::HashMap;
 
@@ -21,7 +21,7 @@ pub fn default() -> HashMap<Mode, KeyTrie> {
         "`" => switch_to_lowercase,
         "A-`" => switch_to_uppercase,
 
-        "home" => goto_line_start,
+        "home" => move_line_start,
         "end" => goto_line_end,
 
         "w" => move_next_word_start,
@@ -38,7 +38,7 @@ pub fn default() -> HashMap<Mode, KeyTrie> {
             "g" => goto_file_start,
             "e" => goto_last_line,
             "f" => goto_file,
-            "h" => goto_line_start,
+            "h" => move_line_start,
             "l" => goto_line_end,
             "s" => goto_first_nonwhitespace,
             "d" => goto_definition,
@@ -338,8 +338,11 @@ pub fn default() -> HashMap<Mode, KeyTrie> {
 
         "home" => extend_to_line_start,
         "end" => extend_to_line_end,
+        
+        "g" => { "Goto"
+            "h" => extend_line_start,
+        },
         "esc" => exit_select_mode,
-
         "v" => normal_mode,
     }));
     let insert = keytrie!({ "Insert mode"
@@ -364,7 +367,7 @@ pub fn default() -> HashMap<Mode, KeyTrie> {
         "right" => move_char_right,
         "pageup" => page_up,
         "pagedown" => page_down,
-        "home" => goto_line_start,
+        movehome" => move_line_start,
         "end" => goto_line_end_newline,
     });
     hashmap!(
@@ -373,3 +376,7 @@ pub fn default() -> HashMap<Mode, KeyTrie> {
         Mode::Insert => insert,
     )
 }
+
+        "C-extend" => kill_to_line_end,
+    hashmap!(
+    Mode::Normal => normal,

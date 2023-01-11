@@ -4,7 +4,7 @@ use serde::{Serialize, Deserialize};
 
 use crate::{
     graphics::{Color, Style, UnderlineStyle},
-    Document, ui_tree, Theme, View,
+    Buffer, ui_tree, Theme, BufferView,
 };
 
 fn count_digits(n: usize) -> usize {
@@ -15,7 +15,7 @@ fn count_digits(n: usize) -> usize {
 
 pub type GutterFn<'doc> = Box<dyn FnMut(usize, bool, &mut String) -> Option<Style> + 'doc>;
 pub type Gutter =
-    for<'doc> fn(&'doc ui_tree, &'doc Document, &View, &Theme, bool, usize) -> GutterFn<'doc>;
+    for<'doc> fn(&'doc ui_tree, &'doc Buffer, &BufferView, &Theme, bool, usize) -> GutterFn<'doc>;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GutterComponents {
@@ -29,8 +29,8 @@ impl GutterComponents {
     pub fn style<'doc>(
         self,
         editor: &'doc ui_tree,
-        doc: &'doc Document,
-        view: &View,
+        doc: &'doc Buffer,
+        view: &BufferView,
         theme: &Theme,
         is_focused: bool,
     ) -> GutterFn<'doc> {
@@ -44,7 +44,7 @@ impl GutterComponents {
         }
     }
 
-    pub fn width(self, _view: &View, doc: &Document) -> usize {
+    pub fn width(self, _view: &BufferView, doc: &Buffer) -> usize {
         match self {
             GutterComponents::Diagnostics => 1,
             GutterComponents::LineNumbers => line_numbers_width(_view, doc),
@@ -89,8 +89,8 @@ impl std::str::FromStr for LineNumberMode {
 
 pub fn diagnostic<'doc>(
     _editor: &'doc ui_tree,
-    doc: &'doc Document,
-    _view: &View,
+    doc: &'doc Buffer,
+    _view: &BufferView,
     theme: &Theme,
     _is_focused: bool,
 ) -> GutterFn<'doc> {
@@ -129,8 +129,8 @@ pub fn diagnostic<'doc>(
 
 pub fn diff<'doc>(
     _editor: &'doc ui_tree,
-    doc: &'doc Document,
-    _view: &View,
+    doc: &'doc Buffer,
+    _view: &BufferView,
     theme: &Theme,
     _is_focused: bool,
 ) -> GutterFn<'doc> {
@@ -176,8 +176,8 @@ pub fn diff<'doc>(
 
 pub fn line_numbers<'doc>(
     editor: &'doc ui_tree,
-    doc: &'doc Document,
-    view: &View,
+    doc: &'doc Buffer,
+    view: &BufferView,
     theme: &Theme,
     is_focused: bool,
 ) -> GutterFn<'doc> {
@@ -205,7 +205,7 @@ pub fn line_numbers<'doc>(
             Some(linenr)
         } else {
             let relative = line_number == LineNumberMode::Relative
-                && mode != crate::document::Mode::Insert
+                && mode != crate::buffer::Mode::Insert
                 && is_focused
                 && current_line != line;
 
@@ -227,7 +227,7 @@ pub fn line_numbers<'doc>(
     })
 }
 
-pub fn line_numbers_width(_view: &View, doc: &Document) -> usize {
+pub fn line_numbers_width(_view: &BufferView, doc: &Buffer) -> usize {
     let text = doc.text();
     let last_line = text.len_lines().saturating_sub(1);
     let draw_last = text.line_to_byte(last_line) < text.len_bytes();
@@ -239,8 +239,8 @@ pub fn line_numbers_width(_view: &View, doc: &Document) -> usize {
 
 pub fn padding<'doc>(
     _editor: &'doc ui_tree,
-    _doc: &'doc Document,
-    _view: &View,
+    _doc: &'doc Buffer,
+    _view: &BufferView,
     _theme: &Theme,
     _is_focused: bool,
 ) -> GutterFn<'doc> {
@@ -258,8 +258,8 @@ const fn abs_diff(a: usize, b: usize) -> usize {
 
 pub fn breakpoints<'doc>(
     editor: &'doc ui_tree,
-    doc: &'doc Document,
-    _view: &View,
+    doc: &'doc Buffer,
+    _view: &BufferView,
     theme: &Theme,
     _is_focused: bool,
 ) -> GutterFn<'doc> {
@@ -310,8 +310,8 @@ pub fn breakpoints<'doc>(
 
 pub fn diagnostics_or_breakpoints<'doc>(
     editor: &'doc ui_tree,
-    doc: &'doc Document,
-    view: &View,
+    doc: &'doc Buffer,
+    view: &BufferView,
     theme: &Theme,
     is_focused: bool,
 ) -> GutterFn<'doc> {

@@ -1,5 +1,5 @@
 use crate::compositor::{Component, Context, Event, EventResult};
-use helix_view::{apply_transaction, editor::CompleteAction, ViewId};
+use helix_view::{apply_transaction, editor::CompleteAction, BufferViewID};
 use tui::buffer::Buffer as Surface;
 
 use std::borrow::Cow;
@@ -8,7 +8,7 @@ use helix_core::{Change, Transaction};
 use helix_view::{
     graphics::Rect,
     input::{KeyCode, KeyEvent},
-    Document, ui_tree,
+    Buffer, ui_tree,
 };
 
 use crate::commands;
@@ -101,8 +101,8 @@ impl Completion {
         // Then create the menu
         let menu = Menu::new(items, (), move |editor: &mut ui_tree, item, event| {
             fn item_to_transaction(
-                doc: &Document,
-                view_id: ViewId,
+                doc: &Buffer,
+                view_id: BufferViewID,
                 item: &CompletionItem,
                 offset_encoding: helix_lsp::OffsetEncoding,
                 start_offset: usize,
@@ -253,7 +253,7 @@ impl Completion {
     }
 
     fn resolve_completion_item(
-        doc: &Document,
+        doc: &Buffer,
         completion_item: lsp::CompletionItem,
     ) -> Option<CompletionItem> {
         let language_server = doc.language_server()?;
@@ -328,7 +328,7 @@ impl Completion {
             _ => return false,
         };
 
-        let language_server = match doc!(cx.ui_tree).language_server() {
+        let language_server = match buffer!(cx.ui_tree).language_server() {
             Some(language_server) => language_server,
             None => return false,
         };

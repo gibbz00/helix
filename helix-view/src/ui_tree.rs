@@ -7,13 +7,13 @@ use crate::{
     lists,
     align_view,
     clipboard::{get_clipboard_provider, ClipboardProvider},
-    document::{DocumentSavedEventFuture, DocumentSavedEventResult, Mode},
+    buffer::{DocumentSavedEventFuture, DocumentSavedEventResult, Mode},
     graphics::{CursorKind, Rect},
     info::Info,
     input::KeyEvent,
     theme::{self, Theme},
     tree::{self, Tree},
-    Align, Document, DocumentId, View, ViewId, config::Config,
+    Align, Buffer, BufferID, BufferView, BufferViewID, config::Config,
 };
 use helix_core::{
     Position,
@@ -84,13 +84,13 @@ pub struct UITree {
     pub pending_keys: Vec<Vec<KeyEvent>>,
     pub command_multiplier: CommandMultiplier,
     pub event_handler: EventHandler,
-    pub next_document_id: DocumentId,
-    pub documents: BTreeMap<DocumentId, Document>,
+    pub next_buffer_id: BufferID,
+    pub buffers: BTreeMap<BufferID, Buffer>,
     pub lists: Vec<Lists>;
 
     // We Flatten<> to resolve the inner DocumentSavedEventFuture. For that we need a stream of streams, hence the Once<>.
     // https://stackoverflow.com/a/66875668
-    pub saves: HashMap<DocumentId, UnboundedSender<Once<DocumentSavedEventFuture>>>,
+    pub saves: HashMap<BufferID, UnboundedSender<Once<DocumentSavedEventFuture>>>,
     pub save_queue: SelectAll<Flatten<UnboundedReceiverStream<Once<DocumentSavedEventFuture>>>>,
     pub write_count: usize,
 
@@ -204,8 +204,8 @@ impl UITree {
             keymap: config.keys,
             pending_keys: vec![Vec::new()],
             command_multiplier: CommandMultiplier::new(),
-            next_document_id: DocumentId::default(),
-            documents: BTreeMap::new(),
+            next_buffer_id: BufferID::default(),
+            buffers: BTreeMap::new(),
             saves: HashMap::new(),
             save_queue: SelectAll::new(),
             write_count: 0,
@@ -342,20 +342,20 @@ impl UITree {
         self._refresh();
     }
 
-    /// Refreshes the language server for a given document
-    pub fn refresh_language_server(&mut self, doc_id: DocumentId) -> Option<()> {
-        let doc = self.documents.get_mut(&doc_id)?;
-        Self::launch_language_server(&mut self.language_servers, doc)
+    /// Refreshes the language server for a given buffer
+    pub fn refresh_language_server(&mut self, buffer_id: BufferID) -> Option<()> {
+        let buffer = self.buffers.get_mut(&buffer_id)?;
+        Self::launch_language_server(&mut self.language_servers, buffer)
     }
 
-    /// Launch a language server for a given document
-    fn launch_language_server(ls: &mut helix_lsp::Registry, doc: &mut Document) -> Option<()> {
+    /// Launch a language server for a given buffer
+    fn launch_language_server(ls: &mut helix_lsp::Registry, buffer: &mut Buffer) -> Option<()> {
         // if doc doesn't have a URL it's a scratch buffer, ignore it
-        let doc_url = doc.url()?;
+        let buffer_url = buffer.url()?;
 
         // try to find a language server based on the language name
-        let language_server = doc.language.as_ref().and_then(|language| {
-            ls.get(language, doc.path())
+        let language_server = buffer.language.as_ref().and_then(|language| {
+            ls.get(language, buffer.path())
                 .map_err(|e| {
                     log::error!(
                         "Failed to initialize the LSP for `{}` {{ {} }}",
@@ -368,22 +368,22 @@ impl UITree {
         });
         if let Some(language_server) = language_server {
             // only spawn a new lang server if the servers aren't the same
-            if Some(language_server.id()) != doc.language_server().map(|server| server.id()) {
-                if let Some(language_server) = doc.language_server() {
-                    tokio::spawn(language_server.text_document_did_close(doc.identifier()));
+            if Some(language_server.id()) != buffer.language_server().map(|server| server.id()) {
+                if let Some(language_server) = buffer.language_server() {
+                    tokio::spawn(language_server.text_document_did_close(buffer.identifier()));
                 }
 
-                let language_id = doc.language_id().map(ToOwned::to_owned).unwrap_or_default();
+                let language_id = buffer.language_id().map(ToOwned::to_owned).unwrap_or_default();
 
                 // TODO: this now races with on_init code if the init happens too quickly
                 tokio::spawn(language_server.text_document_did_open(
-                    doc_url,
-                    doc.version(),
-                    doc.text(),
+                    buffer_url,
+                    buffer.version(),
+                    buffer.text(),
                     language_id,
                 ));
 
-                doc.set_language_server(Some(language_server));
+                buffer.set_language_server(Some(language_server));
             }
         }
         Some(())
@@ -392,28 +392,28 @@ impl UITree {
     fn _refresh(&mut self) {
         let config = self.config();
         for (view, _) in self.tree.views_mut() {
-            let doc = doc_mut!(self, &view.doc);
-            view.sync_changes(doc);
-            view.ensure_cursor_in_view(doc, config.scrolloff)
+            let buffer = buffer_mut!(self, &view.buffer_id);
+            view.sync_changes(buffer);
+            view.ensure_cursor_in_view(buffer, config.scrolloff)
         }
     }
 
-    fn replace_document_in_view(&mut self, current_view: ViewId, doc_id: DocumentId) {
+    fn replace_document_in_view(&mut self, current_view: BufferViewID, doc_id: BufferID) {
         let view = self.tree.get_mut(current_view);
-        view.doc = doc_id;
+        view.buffer_id = doc_id;
         view.offset = Position::default();
 
-        let doc = doc_mut!(self, &doc_id);
+        let doc = buffer_mut!(self, &doc_id);
         doc.ensure_view_init(view.id);
         view.sync_changes(doc);
 
         align_view(doc, view, Align::Center);
     }
 
-    pub fn switch(&mut self, id: DocumentId, action: Action) {
+    pub fn switch(&mut self, id: BufferID, action: Action) {
         use crate::tree::Layout;
 
-        if !self.documents.contains_key(&id) {
+        if !self.buffers.contains_key(&id) {
             log::error!("cannot switch to document that does not exist (anymore)");
             return;
         }
@@ -435,35 +435,35 @@ impl UITree {
                     && !self
                         .tree
                         .traverse()
-                        .any(|(_, v)| v.doc == doc.id && v.id != view.id);
+                        .any(|(_, v)| v.buffer_id == doc.id && v.id != view.id);
 
-                let (view, doc) = current!(self);
+                let (view, buffer) = current!(self);
                 let view_id = view.id;
 
                 // Append any outstanding changes to history in the old document.
-                doc.append_changes_to_history(view);
+                buffer.append_changes_to_history(view);
 
                 if remove_empty_scratch {
                     // Copy `doc.id` into a variable before calling `self.documents.remove`, which requires a mutable
                     // borrow, invalidating direct access to `doc.id`.
-                    let id = doc.id;
-                    self.documents.remove(&id);
+                    let id = buffer.id;
+                    self.buffers.remove(&id);
 
                     // Remove the scratch buffer from any jumplists
                     for (view, _) in self.tree.views_mut() {
-                        view.remove_document(&id);
+                        view.remove_buffer(&id);
                     }
                 } else {
-                    let jump = (view.doc, doc.selection(view.id).clone());
+                    let jump = (view.buffer_id, buffer.selection(view.id).clone());
                     view.jumps.push(jump);
                     // Set last accessed doc if it is a different document
-                    if doc.id != id {
-                        view.add_to_history(view.doc);
+                    if buffer.id != id {
+                        view.add_to_history(view.buffer_id);
                         // Set last modified doc if modified and last modified doc is different
-                        if std::mem::take(&mut doc.modified_since_accessed)
-                            && view.last_modified_docs[0] != Some(view.doc)
+                        if std::mem::take(&mut buffer.modified_since_accessed)
+                            && view.last_modified_buffers[0] != Some(view.buffer_id)
                         {
-                            view.last_modified_docs = [Some(view.doc), view.last_modified_docs[0]];
+                            view.last_modified_buffers = [Some(view.buffer_id), view.last_modified_buffers[0]];
                         }
                     }
                 }
@@ -473,8 +473,8 @@ impl UITree {
                 return;
             }
             Action::Load => {
-                let view_id = view!(self).id;
-                let doc = doc_mut!(self, &id);
+                let view_id = buffer_view!(self).id;
+                let doc = buffer_mut!(self, &id);
                 doc.ensure_view_init(view_id);
                 return;
             }
@@ -483,9 +483,9 @@ impl UITree {
                 let view = self
                     .tree
                     .try_get(self.tree.focus)
-                    .filter(|v| id == v.doc) // Different Document
+                    .filter(|v| id == v.buffer_id) // Different Document
                     .cloned()
-                    .unwrap_or_else(|| View::new(id, self.config().gutters.clone()));
+                    .unwrap_or_else(|| BufferView::new(id, self.config().gutters.clone()));
                 let view_id = self.tree.split(
                     view,
                     match action {
@@ -495,7 +495,7 @@ impl UITree {
                     },
                 );
                 // initialize selection for view
-                let doc = doc_mut!(self, &id);
+                let doc = buffer_mut!(self, &id);
                 doc.ensure_view_init(view_id);
             }
         }
@@ -504,13 +504,13 @@ impl UITree {
     }
 
     /// Generate an id for a new document and register it.
-    fn new_document(&mut self, mut doc: Document) -> DocumentId {
-        let id = self.next_document_id;
+    fn new_document(&mut self, mut doc: Buffer) -> BufferID {
+        let id = self.next_buffer_id;
         // Safety: adding 1 from 1 is fine, probably impossible to reach usize max
-        self.next_document_id =
-            DocumentId(unsafe { NonZeroUsize::new_unchecked(self.next_document_id.0.get() + 1) });
+        self.next_buffer_id =
+            BufferID(unsafe { NonZeroUsize::new_unchecked(self.next_buffer_id.0.get() + 1) });
         doc.id = id;
-        self.documents.insert(id, doc);
+        self.buffers.insert(id, doc);
 
         let (save_sender, save_receiver) = tokio::sync::mpsc::unbounded_channel();
         self.saves.insert(id, save_sender);
@@ -521,30 +521,30 @@ impl UITree {
         id
     }
 
-    fn new_file_from_document(&mut self, action: Action, doc: Document) -> DocumentId {
+    fn new_file_from_document(&mut self, action: Action, doc: Buffer) -> BufferID {
         let id = self.new_document(doc);
         self.switch(id, action);
         id
     }
 
-    pub fn new_file(&mut self, action: Action) -> DocumentId {
-        self.new_file_from_document(action, Document::default())
+    pub fn new_file(&mut self, action: Action) -> BufferID {
+        self.new_file_from_document(action, Buffer::default())
     }
 
-    pub fn new_file_from_stdin(&mut self, action: Action) -> Result<DocumentId, Error> {
-        let (rope, encoding) = crate::document::from_reader(&mut stdin(), None)?;
-        Ok(self.new_file_from_document(action, Document::from(rope, Some(encoding))))
+    pub fn new_file_from_stdin(&mut self, action: Action) -> Result<BufferID, Error> {
+        let (rope, encoding) = crate::buffer::from_reader(&mut stdin(), None)?;
+        Ok(self.new_file_from_document(action, Buffer::from(rope, Some(encoding))))
     }
 
     // ??? possible use for integration tests
-    pub fn open(&mut self, path: &Path, action: Action) -> Result<DocumentId, Error> {
+    pub fn open(&mut self, path: &Path, action: Action) -> Result<BufferID, Error> {
         let path = helix_core::path::get_canonicalized_path(path)?;
         let id = self.document_by_path(&path).map(|doc| doc.id);
 
         let id = if let Some(id) = id {
             id
         } else {
-            let mut doc = Document::open(&path, None, Some(self.syn_loader.clone()))?;
+            let mut doc = Buffer::open(&path, None, Some(self.syn_loader.clone()))?;
 
             let _ = Self::launch_language_server(&mut self.language_servers, &mut doc);
             if let Some(diff_base) = self.diff_providers.get_diff_base(&path) {
@@ -557,7 +557,7 @@ impl UITree {
         Ok(id)
     }
 
-    pub fn close(&mut self, id: ViewId) {
+    pub fn close(&mut self, id: BufferViewID) {
         // Remove selections for the closed view on all documents.
         for doc in self.documents_mut() {
             doc.remove_view(id);
@@ -566,8 +566,8 @@ impl UITree {
         self._refresh();
     }
 
-    pub fn close_document(&mut self, doc_id: DocumentId, force: bool) -> Result<(), CloseError> {
-        let doc = match self.documents.get_mut(&doc_id) {
+    pub fn close_document(&mut self, doc_id: BufferID, force: bool) -> Result<(), CloseError> {
+        let doc = match self.buffers.get_mut(&doc_id) {
             Some(doc) => doc,
             None => return Err(CloseError::DoesNotExist),
         };
@@ -584,19 +584,19 @@ impl UITree {
         }
 
         enum Action {
-            Close(ViewId),
-            ReplaceDoc(ViewId, DocumentId),
+            Close(BufferViewID),
+            ReplaceDoc(BufferViewID, BufferID),
         }
 
         let actions: Vec<Action> = self
             .tree
             .views_mut()
             .filter_map(|(view, _focus)| {
-                view.remove_document(&doc_id);
+                view.remove_buffer(&doc_id);
 
-                if view.doc == doc_id {
+                if view.buffer_id == doc_id {
                     // something was previously open in the view, switch to previous doc
-                    if let Some(prev_doc) = view.docs_access_history.pop() {
+                    if let Some(prev_doc) = view.buffer_access_history.pop() {
                         Some(Action::ReplaceDoc(view.id, prev_doc))
                     } else {
                         // only the document that is being closed was in the view, close it
@@ -619,21 +619,21 @@ impl UITree {
             }
         }
 
-        self.documents.remove(&doc_id);
+        self.buffers.remove(&doc_id);
 
         // If the document we removed was visible in all views, we will have no more views. We don't
         // want to close the editor just for a simple buffer close, so we need to create a new view
         // containing either an existing document, or a brand new document.
         if self.tree.views().next().is_none() {
             let doc_id = self
-                .documents
+                .buffers
                 .iter()
                 .map(|(&doc_id, _)| doc_id)
                 .next()
-                .unwrap_or_else(|| self.new_document(Document::default()));
-            let view = View::new(doc_id, self.config().gutters.clone());
+                .unwrap_or_else(|| self.new_document(Buffer::default()));
+            let view = BufferView::new(doc_id, self.config().gutters.clone());
             let view_id = self.tree.insert(view);
-            let doc = doc_mut!(self, &doc_id);
+            let doc = buffer_mut!(self, &doc_id);
             doc.ensure_view_init(view_id);
         }
 
@@ -644,7 +644,7 @@ impl UITree {
 
     pub fn save<P: Into<PathBuf>>(
         &mut self,
-        doc_id: DocumentId,
+        doc_id: BufferID,
         path: Option<P>,
         force: bool,
     ) -> anyhow::Result<()> {
@@ -652,7 +652,7 @@ impl UITree {
         // via stream.then() ? then push into main future
 
         let path = path.map(|path| path.into());
-        let doc = doc_mut!(self, &doc_id);
+        let doc = buffer_mut!(self, &doc_id);
         let future = doc.save(path, force)?;
 
         use futures_util::stream;
@@ -674,7 +674,7 @@ impl UITree {
         };
     }
 
-    pub fn focus(&mut self, view_id: ViewId) {
+    pub fn focus(&mut self, view_id: BufferViewID) {
         let prev_id = std::mem::replace(&mut self.tree.focus, view_id);
 
         // if leaving the view: mode should reset and the cursor should be
@@ -685,7 +685,7 @@ impl UITree {
 
             // Update jumplist selections with new document changes.
             for (view, _focused) in self.tree.views_mut() {
-                let doc = doc_mut!(self, &view.doc);
+                let doc = buffer_mut!(self, &view.buffer_id);
                 view.sync_changes(doc);
             }
         }
@@ -714,39 +714,39 @@ impl UITree {
         self.tree.is_empty()
     }
 
-    pub fn ensure_cursor_in_view(&mut self, id: ViewId) {
+    pub fn ensure_cursor_in_view(&mut self, id: BufferViewID) {
         let config = self.config();
         let view = self.tree.get_mut(id);
-        let doc = &self.documents[&view.doc];
+        let doc = &self.buffers[&view.buffer_id];
         view.ensure_cursor_in_view(doc, config.scrolloff)
     }
 
     #[inline]
-    pub fn document(&self, id: DocumentId) -> Option<&Document> {
-        self.documents.get(&id)
+    pub fn document(&self, id: BufferID) -> Option<&Buffer> {
+        self.buffers.get(&id)
     }
 
     #[inline]
-    pub fn document_mut(&mut self, id: DocumentId) -> Option<&mut Document> {
-        self.documents.get_mut(&id)
+    pub fn document_mut(&mut self, id: BufferID) -> Option<&mut Buffer> {
+        self.buffers.get_mut(&id)
     }
 
     #[inline]
-    pub fn documents(&self) -> impl Iterator<Item = &Document> {
-        self.documents.values()
+    pub fn documents(&self) -> impl Iterator<Item = &Buffer> {
+        self.buffers.values()
     }
 
     #[inline]
-    pub fn documents_mut(&mut self) -> impl Iterator<Item = &mut Document> {
-        self.documents.values_mut()
+    pub fn documents_mut(&mut self) -> impl Iterator<Item = &mut Buffer> {
+        self.buffers.values_mut()
     }
 
-    pub fn document_by_path<P: AsRef<Path>>(&self, path: P) -> Option<&Document> {
+    pub fn document_by_path<P: AsRef<Path>>(&self, path: P) -> Option<&Buffer> {
         self.documents()
             .find(|doc| doc.path().map(|p| p == path.as_ref()).unwrap_or(false))
     }
 
-    pub fn document_by_path_mut<P: AsRef<Path>>(&mut self, path: P) -> Option<&mut Document> {
+    pub fn document_by_path_mut<P: AsRef<Path>>(&mut self, path: P) -> Option<&mut Buffer> {
         self.documents_mut()
             .find(|doc| doc.path().map(|p| p == path.as_ref()).unwrap_or(false))
     }
@@ -838,7 +838,7 @@ impl UITree {
                     }
                 };
 
-                let doc = doc_mut!(self, &save_event.doc_id);
+                let doc = buffer_mut!(self, &save_event.doc_id);
                 doc.set_last_saved_revision(save_event.revision);
             }
         }
@@ -875,7 +875,7 @@ impl UITree {
     }
 }
 
-fn try_restore_indent(doc: &mut Document, view: &mut View) {
+fn try_restore_indent(doc: &mut Buffer, view: &mut BufferView) {
     use helix_core::{
         chars::char_is_whitespace, line_ending::line_end_char_index, Operation, Transaction,
     };

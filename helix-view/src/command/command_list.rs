@@ -71,11 +71,11 @@ pub const COMMAND_LIST: &'static[Command] = &[
         function: goto
     },
     Command {
-        name: "goto_line_start",
-        aliases: &[],
-        description: "Goto line start.",
+        name: "move_line_start",
+        aliases: &["goto_line_start"],
+        description: "Move to line start.",
         args: &[],
-        function: goto_line_start
+        function: move_line_start
     },
     Command {
         name: "extend_to_line_start",

@@ -1,10 +1,10 @@
 use helix_core::{coords_at_pos, encoding, Position};
 use helix_lsp::lsp::DiagnosticSeverity;
 use helix_view::{
-    document::{Mode, SCRATCH_BUFFER_NAME},
+    buffer::{Mode, SCRATCH_BUFFER_NAME},
     graphics::Rect,
     theme::Style,
-    Document, ui_tree, View,
+    Buffer, ui_tree, BufferView,
 };
 
 use crate::ui::ProgressSpinners;
@@ -15,8 +15,8 @@ use tui::text::{Span, Spans};
 
 pub struct RenderContext<'a> {
     pub editor: &'a ui_tree,
-    pub doc: &'a Document,
-    pub view: &'a View,
+    pub doc: &'a Buffer,
+    pub view: &'a BufferView,
     pub focused: bool,
     pub spinners: &'a ProgressSpinners,
     pub parts: RenderBuffer<'a>,
@@ -25,8 +25,8 @@ pub struct RenderContext<'a> {
 impl<'a> RenderContext<'a> {
     pub fn new(
         editor: &'a ui_tree,
-        doc: &'a Document,
-        view: &'a View,
+        doc: &'a Buffer,
+        view: &'a BufferView,
         focused: bool,
         spinners: &'a ProgressSpinners,
     ) -> Self {
