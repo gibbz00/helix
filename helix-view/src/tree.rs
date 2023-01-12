@@ -1,4 +1,4 @@
-use crate::{graphics::Rect, BufferView, BufferViewID};
+use crate::{graphics::Rect, BufferView, buffer_view::BufferViewID};
 use slotmap::HopSlotMap;
 
 // the dimensions are recomputed on window resize/tree change.

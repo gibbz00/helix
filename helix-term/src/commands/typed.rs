@@ -5,6 +5,7 @@ use crate::job::Job;
 use super::*;
 
 use helix_view::{
+    buffer_view::BufferViewID,
     apply_transaction,
     editor::{Action, CloseError, ConfigEvent},
 };

@@ -1,4 +1,4 @@
-use crate::{align_view, gutter::GutterComponents, graphics::Rect, Align, BufferMirror, BufferViewID, jump::JumpList};
+use crate::{align_view, gutter::GutterComponents, graphics::Rect, Align, BufferMirror, jump::JumpList};
 use helix_server::buffer::BufferID;
 use helix_core::{
     pos_at_visual_coords, visual_coords_at_pos, Position, RopeSlice, Selection, Transaction,
@@ -9,6 +9,9 @@ use std::{
     fmt,
 };
 
+slotmap::new_key_type! {
+    pub struct BufferViewID;
+}
 
 #[derive(Clone)]
 pub struct BufferView {

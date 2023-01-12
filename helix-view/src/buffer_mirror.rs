@@ -2,7 +2,6 @@ use crate::{editor::RedrawHandle,
     apply_transaction,
     ui_tree,
     BufferView,
-    BufferViewID
 };
 
 use helix_server::buffer::BufferID;

@@ -31,10 +31,7 @@ pub use ui_tree::UITree;
 pub use theme::Theme;
 pub use buffer_view::BufferView;
 use std::num::NonZeroUsize;
-
-slotmap::new_key_type! {
-    pub struct BufferViewID;
-}
+use buffer_view::BufferViewID;
 
 pub enum Align {
     Top,
@@ -70,4 +67,3 @@ pub fn apply_transaction(
     // TODO remove this helper function. Just call Buffer::apply everywhere directly.
     buffer.apply(transaction, buffer_view.view_id)
 }
-

@@ -1,5 +1,5 @@
 use crate::compositor::{Component, Context, Event, EventResult};
-use helix_view::{apply_transaction, editor::CompleteAction, BufferViewID};
+use helix_view::{apply_transaction, editor::CompleteAction, buffer_view::BufferViewID};
 use tui::buffer::Buffer as Surface;
 
 use std::borrow::Cow;

@@ -14,7 +14,7 @@ use crate::{
     input::KeyEvent,
     theme::{self, Theme},
     tree::{self, Tree},
-    Align, BufferMirror, BufferView, BufferViewID, config::Config,
+    Align, BufferMirror, BufferView, buffer_view::BufferViewID, config::Config,
 };
 use helix_server::buffer::BufferID;
 use helix_core::{
