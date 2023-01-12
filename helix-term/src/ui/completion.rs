@@ -8,7 +8,7 @@ use helix_core::{Change, Transaction};
 use helix_view::{
     graphics::Rect,
     input::{KeyCode, KeyEvent},
-    BufferMirror, ui_tree,
+    BufferMirror, UITree,
 };
 
 use crate::commands;
@@ -89,7 +89,7 @@ impl Completion {
     pub const ID: &'static str = "completion";
 
     pub fn new(
-        editor: &ui_tree,
+        editor: &UITree,
         mut items: Vec<CompletionItem>,
         offset_encoding: helix_lsp::OffsetEncoding,
         start_offset: usize,
@@ -99,7 +99,7 @@ impl Completion {
         items.sort_by_key(|item| !item.preselect.unwrap_or(false));
 
         // Then create the menu
-        let menu = Menu::new(items, (), move |editor: &mut ui_tree, item, event| {
+        let menu = Menu::new(items, (), move |editor: &mut UITree, item, event| {
             fn item_to_transaction(
                 doc: &BufferMirror,
                 view_id: BufferViewID,
@@ -119,7 +119,7 @@ impl Completion {
 
                     util::generate_transaction_from_completion_edit(
                         doc.text(),
-                        doc.selection(view_id),
+                        doc.selection(),
                         edit,
                         offset_encoding, // TODO: should probably transcode in Client
                     )
@@ -135,13 +135,13 @@ impl Completion {
                     // formula, but can the value change between the LSP request and
                     // response? If it does, can we recover?
                     debug_assert!(
-                        doc.selection(view_id)
+                        doc.selection()
                             .primary()
                             .cursor(doc.text().slice(..))
                             == trigger_offset
                     );
 
-                    Transaction::change_by_selection(doc.text(), doc.selection(view_id), |range| {
+                    Transaction::change_by_selection(doc.text(), doc.selection(), |range| {
                         let cursor = range.cursor(doc.text().slice(..));
 
                         (cursor, cursor, Some(text.into()))
@@ -158,14 +158,15 @@ impl Completion {
                     .collect()
             }
 
-            let (view, doc) = current!(editor);
+            let buffer_mirror = current_mut!(cx.ui_tree);
+            let view = buffer_view_mut!(cx.ui_tree);
 
             // if more text was entered, remove it
-            doc.restore(view);
+            buffer_mirror.restore();
 
             match event {
                 PromptEvent::Abort => {
-                    doc.restore(view);
+                    buffer_mirror.restore();
                     editor.last_completion = None;
                 }
                 PromptEvent::Update => {
@@ -173,7 +174,7 @@ impl Completion {
                     let item = item.unwrap();
 
                     let transaction = item_to_transaction(
-                        doc,
+                        buffer_mirror,
                         view.id,
                         item,
                         offset_encoding,
@@ -182,8 +183,8 @@ impl Completion {
                     );
 
                     // initialize a savepoint
-                    doc.savepoint();
-                    apply_transaction(&transaction, doc, view);
+                    buffer_mirror.savepoint();
+                    apply_transaction(&transaction, buffer_mirror);
 
                     editor.last_completion = Some(CompleteAction {
                         trigger_offset,
@@ -195,7 +196,7 @@ impl Completion {
                     let item = item.unwrap();
 
                     let transaction = item_to_transaction(
-                        doc,
+                        buffer_mirror,
                         view.view_id,
                         item,
                         offset_encoding,
@@ -203,7 +204,7 @@ impl Completion {
                         trigger_offset,
                     );
 
-                    apply_transaction(&transaction, doc, view);
+                    apply_transaction(&transaction, buffer_mirror);
 
                     editor.last_completion = Some(CompleteAction {
                         trigger_offset,
@@ -219,7 +220,7 @@ impl Completion {
                     {
                         None
                     } else {
-                        Self::resolve_completion_item(doc, item.clone())
+                        Self::resolve_completion_item(buffer_mirror, item.clone())
                     };
 
                     if let Some(additional_edits) = resolved_item
@@ -229,11 +230,11 @@ impl Completion {
                     {
                         if !additional_edits.is_empty() {
                             let transaction = util::generate_transaction_from_edits(
-                                doc.text(),
+                                buffer_mirror.text(),
                                 additional_edits.clone(),
                                 offset_encoding, // TODO: should probably transcode in Client
                             );
-                            apply_transaction(&transaction, doc, view);
+                            apply_transaction(&transaction, buffer_mirror);
                         }
                     }
                 }
@@ -269,10 +270,10 @@ impl Completion {
         }
     }
 
-    pub fn recompute_filter(&mut self, editor: &ui_tree) {
+    pub fn recompute_filter(&mut self, ui_tree: &UITree) {
         // recompute menu based on matches
         let menu = self.popup.contents_mut();
-        let (view, doc) = current_ref!(editor);
+        let buffer_mirror = current!(ui_tree);
 
         // cx.hooks()
         // cx.add_hook(enum type,  ||)
@@ -284,12 +285,12 @@ impl Completion {
         // TODO: hooks should get processed immediately so maybe do it after select!(), before
         // looping?
 
-        let cursor = doc
-            .selection(view.id)
+        let cursor = buffer_mirror
+            .selection()
             .primary()
-            .cursor(doc.text().slice(..));
+            .cursor(buffer_mirror.text().slice(..));
         if self.trigger_offset <= cursor {
-            let fragment = doc.text().slice(self.start_offset..cursor);
+            let fragment = buffer_mirror.text().slice(self.start_offset..cursor);
             let text = Cow::from(fragment);
             // TODO: logic is same as ui/picker
             menu.score(&text);
@@ -328,7 +329,7 @@ impl Completion {
             _ => return false,
         };
 
-        let language_server = match buffer!(cx.ui_tree).language_server() {
+        let language_server = match current!(cx.ui_tree).language_server() {
             Some(language_server) => language_server,
             None => return false,
         };
@@ -387,11 +388,12 @@ impl Component for Completion {
             // ---
             // option.documentation
 
-            let (view, doc) = current!(cx.editor);
-            let language = doc.language_name().unwrap_or("");
-            let text = doc.text().slice(..);
-            let cursor_pos = doc.selection(view.id).primary().cursor(text);
-            let coords = helix_core::visual_coords_at_pos(text, cursor_pos, doc.tab_width());
+            let buffer_mirror = current_mut!(cx.ui_tree);
+            let view = buffer_view_mut!(cx.ui_tree);
+            let language = buffer_view.language_name().unwrap_or("");
+            let text = buffer_view.text().slice(..);
+            let cursor_pos = buffer_view.selection().primary().cursor(text);
+            let coords = helix_core::visual_coords_at_pos(text, cursor_pos, buffer_view.tab_width());
             let cursor_pos = (coords.row - view.offset.row) as u16;
 
             let mut markdown_doc = match &option.documentation {
@@ -408,7 +410,7 @@ impl Component for Completion {
                             option.detail.as_deref().unwrap_or_default(),
                             contents
                         ),
-                        cx.editor.syn_loader.clone(),
+                        cx.ui_tree.syn_loader.clone(),
                     )
                 }
                 Some(lsp::Documentation::MarkupContent(lsp::MarkupContent {
@@ -419,10 +421,10 @@ impl Component for Completion {
                     if let Some(detail) = &option.detail.as_deref() {
                         Markdown::new(
                             format!("```{}\n{}\n```\n{}", language, detail, contents),
-                            cx.editor.syn_loader.clone(),
+                            cx.ui_tree.syn_loader.clone(),
                         )
                     } else {
-                        Markdown::new(contents.to_string(), cx.editor.syn_loader.clone())
+                        Markdown::new(contents.to_string(), cx.ui_tree.syn_loader.clone())
                     }
                 }
                 None if option.detail.is_some() => {
@@ -435,7 +437,7 @@ impl Component for Completion {
                             language,
                             option.detail.as_deref().unwrap_or_default(),
                         ),
-                        cx.editor.syn_loader.clone(),
+                        cx.ui_tree.syn_loader.clone(),
                     )
                 }
                 None => return,
@@ -462,7 +464,7 @@ impl Component for Completion {
                 let height = 15.min(half);
                 // we want to make sure the cursor is visible (not hidden behind the documentation)
                 let y = if cursor_pos + area.y
-                    >= (cx.editor.tree.area().height - height - 2/* statusline + commandline */)
+                    >= (cx.ui_tree.tree.area().height - height - 2/* statusline + commandline */)
                 {
                     0
                 } else {
@@ -474,7 +476,7 @@ impl Component for Completion {
             };
 
             // clear area
-            let background = cx.editor.theme.get("ui.popup");
+            let background = cx.ui_tree.theme.get("ui.popup");
             surface.clear_with(area, background);
             markdown_doc.render(area, surface, cx);
         }

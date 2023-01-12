@@ -11,7 +11,7 @@ use helix_core::{
 };
 use helix_view::{
     graphics::{CursorKind, Margin, Rect},
-    ui_tree,
+    UITree,
 };
 
 pub type Completion = (RangeFrom<usize>, Cow<'static, str>);
@@ -25,7 +25,7 @@ pub struct Prompt {
     selection: Option<usize>,
     history_register: Option<char>,
     history_pos: Option<usize>,
-    completion_fn: Box<dyn FnMut(&ui_tree, &str) -> Vec<Completion>>,
+    completion_fn: Box<dyn FnMut(&UITree, &str) -> Vec<Completion>>,
     callback_fn: Box<dyn FnMut(&mut Context, &str, PromptEvent)>,
     pub doc_fn: Box<dyn Fn(&str) -> Option<Cow<str>>>,
     next_char_handler: Option<PromptCharHandler>,
@@ -65,7 +65,7 @@ impl Prompt {
     pub fn new(
         prompt: Cow<'static, str>,
         history_register: Option<char>,
-        completion_fn: impl FnMut(&ui_tree, &str) -> Vec<Completion> + 'static,
+        completion_fn: impl FnMut(&UITree, &str) -> Vec<Completion> + 'static,
         callback_fn: impl FnMut(&mut Context, &str, PromptEvent) + 'static,
     ) -> Self {
         Self {
@@ -83,7 +83,7 @@ impl Prompt {
         }
     }
 
-    pub fn with_line(mut self, line: String, editor: &ui_tree) -> Self {
+    pub fn with_line(mut self, line: String, editor: &UITree) -> Self {
         let cursor = line.len();
         self.line = line;
         self.cursor = cursor;
@@ -95,9 +95,9 @@ impl Prompt {
         &self.line
     }
 
-    pub fn recalculate_completion(&mut self, editor: &ui_tree) {
+    pub fn recalculate_completion(&mut self, ui_tree: &UITree) {
         self.exit_selection();
-        self.completion = (self.completion_fn)(editor, &self.line);
+        self.completion = (self.completion_fn)(ui_tree, &self.line);
     }
 
     /// Compute the cursor position after applying movement
@@ -214,10 +214,10 @@ impl Prompt {
         if let Ok(Some(pos)) = cursor.next_boundary(&self.line, 0) {
             self.cursor = pos;
         }
-        self.recalculate_completion(cx.editor);
+        self.recalculate_completion(cx.ui_tree);
     }
 
-    pub fn insert_str(&mut self, s: &str, editor: &ui_tree) {
+    pub fn insert_str(&mut self, s: &str, editor: &UITree) {
         self.line.insert_str(self.cursor, s);
         self.cursor += s.len();
         self.recalculate_completion(editor);
@@ -236,7 +236,7 @@ impl Prompt {
         self.cursor = self.line.len();
     }
 
-    pub fn delete_char_backwards(&mut self, editor: &ui_tree) {
+    pub fn delete_char_backwards(&mut self, editor: &UITree) {
         let pos = self.eval_movement(Movement::BackwardChar(1));
         self.line.replace_range(pos..self.cursor, "");
         self.cursor = pos;
@@ -244,14 +244,14 @@ impl Prompt {
         self.recalculate_completion(editor);
     }
 
-    pub fn delete_char_forwards(&mut self, editor: &ui_tree) {
+    pub fn delete_char_forwards(&mut self, editor: &UITree) {
         let pos = self.eval_movement(Movement::ForwardChar(1));
         self.line.replace_range(self.cursor..pos, "");
 
         self.recalculate_completion(editor);
     }
 
-    pub fn delete_word_backwards(&mut self, editor: &ui_tree) {
+    pub fn delete_word_backwards(&mut self, editor: &UITree) {
         let pos = self.eval_movement(Movement::BackwardWord(1));
         self.line.replace_range(pos..self.cursor, "");
         self.cursor = pos;
@@ -259,14 +259,14 @@ impl Prompt {
         self.recalculate_completion(editor);
     }
 
-    pub fn delete_word_forwards(&mut self, editor: &ui_tree) {
+    pub fn delete_word_forwards(&mut self, editor: &UITree) {
         let pos = self.eval_movement(Movement::ForwardWord(1));
         self.line.replace_range(self.cursor..pos, "");
 
         self.recalculate_completion(editor);
     }
 
-    pub fn kill_to_start_of_line(&mut self, editor: &ui_tree) {
+    pub fn kill_to_start_of_line(&mut self, editor: &UITree) {
         let pos = self.eval_movement(Movement::StartOfLine);
         self.line.replace_range(pos..self.cursor, "");
         self.cursor = pos;
@@ -274,14 +274,14 @@ impl Prompt {
         self.recalculate_completion(editor);
     }
 
-    pub fn kill_to_end_of_line(&mut self, editor: &ui_tree) {
+    pub fn kill_to_end_of_line(&mut self, editor: &UITree) {
         let pos = self.eval_movement(Movement::EndOfLine);
         self.line.replace_range(self.cursor..pos, "");
 
         self.recalculate_completion(editor);
     }
 
-    pub fn clear(&mut self, editor: &ui_tree) {
+    pub fn clear(&mut self, editor: &UITree) {
         self.line.clear();
         self.cursor = 0;
         self.recalculate_completion(editor);
@@ -294,7 +294,7 @@ impl Prompt {
         direction: CompletionDirection,
     ) {
         (self.callback_fn)(cx, &self.line, PromptEvent::Abort);
-        let values = match cx.editor.registers.read(register) {
+        let values = match cx.ui_tree.registers.read(register) {
             Some(values) if !values.is_empty() => values,
             _ => return,
         };
@@ -315,7 +315,7 @@ impl Prompt {
 
         self.move_end();
         (self.callback_fn)(cx, &self.line, PromptEvent::Update);
-        self.recalculate_completion(cx.editor);
+        self.recalculate_completion(cx.ui_tree);
     }
 
     pub fn change_completion_selection(&mut self, direction: CompletionDirection) {
@@ -348,7 +348,7 @@ const BASE_WIDTH: u16 = 30;
 
 impl Prompt {
     pub fn render_prompt(&self, area: Rect, surface: &mut Surface, cx: &mut Context) {
-        let theme = &cx.editor.theme;
+        let theme = &cx.ui_tree.theme;
         let prompt_color = theme.get("ui.text");
         let completion_color = theme.get("ui.menu");
         let selected_color = theme.get("ui.menu.selected");
@@ -455,7 +455,7 @@ impl Prompt {
             // latest value in the register list
             match self
                 .history_register
-                .and_then(|reg| cx.editor.registers.last(reg))
+                .and_then(|reg| cx.ui_tree.registers.last(reg))
                 .map(|entry| entry.into())
             {
                 Some(value) => (value, true),
@@ -482,8 +482,8 @@ impl Component for Prompt {
     fn handle_event(&mut self, event: &Event, cx: &mut Context) -> EventResult {
         let event = match event {
             Event::Paste(data) => {
-                self.insert_str(data, cx.editor);
-                self.recalculate_completion(cx.editor);
+                self.insert_str(data, cx.ui_tree);
+                self.recalculate_completion(cx.ui_tree);
                 return EventResult::Consumed(None);
             }
             Event::Key(event) => *event,
@@ -508,44 +508,45 @@ impl Component for Prompt {
             ctrl!('e') | key!(End) => self.move_end(),
             ctrl!('a') | key!(Home) => self.move_start(),
             ctrl!('w') | alt!(Backspace) | ctrl!(Backspace) => {
-                self.delete_word_backwards(cx.editor)
+                self.delete_word_backwards(cx.ui_tree)
             }
-            alt!('d') | alt!(Delete) | ctrl!(Delete) => self.delete_word_forwards(cx.editor),
-            ctrl!('k') => self.kill_to_end_of_line(cx.editor),
-            ctrl!('u') => self.kill_to_start_of_line(cx.editor),
+            alt!('d') | alt!(Delete) | ctrl!(Delete) => self.delete_word_forwards(cx.ui_tree),
+            ctrl!('k') => self.kill_to_end_of_line(cx.ui_tree),
+            ctrl!('u') => self.kill_to_start_of_line(cx.ui_tree),
             ctrl!('h') | key!(Backspace) => {
-                self.delete_char_backwards(cx.editor);
+                self.delete_char_backwards(cx.ui_tree);
                 (self.callback_fn)(cx, &self.line, PromptEvent::Update);
             }
             ctrl!('d') | key!(Delete) => {
-                self.delete_char_forwards(cx.editor);
+                self.delete_char_forwards(cx.ui_tree);
                 (self.callback_fn)(cx, &self.line, PromptEvent::Update);
             }
             ctrl!('s') => {
-                let (view, doc) = current!(cx.editor);
-                let text = doc.text().slice(..);
+                let buffer_mirror = current_mut!(cx.ui_tree);
+                let view = buffer_view_mut!(cx.ui_tree);
+                let text = buffer_mirror.text().slice(..);
 
                 use helix_core::textobject;
                 let range = textobject::textobject_word(
                     text,
-                    doc.selection(view.id).primary(),
+                    buffer_mirror.selection(view.id).primary(),
                     textobject::TextObject::Inside,
                     1,
                     false,
                 );
                 let line = text.slice(range.from()..range.to()).to_string();
                 if !line.is_empty() {
-                    self.insert_str(line.as_str(), cx.editor);
+                    self.insert_str(line.as_str(), cx.ui_tree);
                     (self.callback_fn)(cx, &self.line, PromptEvent::Update);
                 }
             }
             key!(Enter) => {
                 if self.selection.is_some() && self.line.ends_with(std::path::MAIN_SEPARATOR) {
-                    self.recalculate_completion(cx.editor);
+                    self.recalculate_completion(cx.ui_tree);
                 } else {
                     let last_item = self
                         .history_register
-                        .and_then(|reg| cx.editor.registers.last(reg).cloned())
+                        .and_then(|reg| cx.ui_tree.registers.last(reg).cloned())
                         .map(|entry| entry.into())
                         .unwrap_or_else(|| Cow::from(""));
 
@@ -556,7 +557,7 @@ impl Component for Prompt {
                         if last_item != self.line {
                             // store in history
                             if let Some(register) = self.history_register {
-                                cx.editor.registers.push(register, self.line.clone());
+                                cx.ui_tree.registers.push(register, self.line.clone());
                             };
                         }
 
@@ -582,7 +583,7 @@ impl Component for Prompt {
                 self.change_completion_selection(CompletionDirection::Forward);
                 // if single completion candidate is a directory list content in completion
                 if self.completion.len() == 1 && self.line.ends_with(std::path::MAIN_SEPARATOR) {
-                    self.recalculate_completion(cx.editor);
+                    self.recalculate_completion(cx.ui_tree);
                 }
                 (self.callback_fn)(cx, &self.line, PromptEvent::Update)
             }
@@ -593,7 +594,7 @@ impl Component for Prompt {
             ctrl!('q') => self.exit_selection(),
             ctrl!('r') => {
                 self.completion = cx
-                    .editor
+                    .ui_tree
                     .registers
                     .inner()
                     .iter()
@@ -609,12 +610,12 @@ impl Component for Prompt {
                 self.next_char_handler = Some(Box::new(|prompt, c, context| {
                     prompt.insert_str(
                         context
-                            .editor
+                            .ui_tree
                             .registers
                             .read(c)
                             .and_then(|r| r.first())
                             .map_or("", |r| r.as_str()),
-                        context.editor,
+                        context.ui_tree,
                     );
                 }));
                 (self.callback_fn)(cx, &self.line, PromptEvent::Update);
@@ -638,7 +639,7 @@ impl Component for Prompt {
         self.render_prompt(area, surface, cx)
     }
 
-    fn cursor(&self, area: Rect, _editor: &ui_tree) -> (Option<Position>, CursorKind) {
+    fn cursor(&self, area: Rect, _editor: &UITree) -> (Option<Position>, CursorKind) {
         let line = area.height as usize - 1;
         (
             Some(Position::new(

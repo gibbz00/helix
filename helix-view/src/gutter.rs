@@ -4,7 +4,7 @@ use serde::{Serialize, Deserialize};
 
 use crate::{
     graphics::{Color, Style, UnderlineStyle},
-    BufferMirror, ui_tree, Theme, BufferView,
+    BufferMirror, UITree, Theme, BufferView,
 };
 
 fn count_digits(n: usize) -> usize {
@@ -15,7 +15,7 @@ fn count_digits(n: usize) -> usize {
 
 pub type GutterFn<'doc> = Box<dyn FnMut(usize, bool, &mut String) -> Option<Style> + 'doc>;
 pub type Gutter =
-    for<'doc> fn(&'doc ui_tree, &'doc BufferMirror, &BufferView, &Theme, bool, usize) -> GutterFn<'doc>;
+    for<'doc> fn(&'doc UITree, &'doc BufferMirror, &BufferView, &Theme, bool, usize) -> GutterFn<'doc>;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GutterComponents {
@@ -28,7 +28,7 @@ pub enum GutterComponents {
 impl GutterComponents {
     pub fn style<'doc>(
         self,
-        editor: &'doc ui_tree,
+        editor: &'doc UITree,
         doc: &'doc BufferMirror,
         view: &BufferView,
         theme: &Theme,
@@ -88,7 +88,7 @@ impl std::str::FromStr for LineNumberMode {
 }
 
 pub fn diagnostic<'doc>(
-    _editor: &'doc ui_tree,
+    _editor: &'doc UITree,
     doc: &'doc BufferMirror,
     _view: &BufferView,
     theme: &Theme,
@@ -128,7 +128,7 @@ pub fn diagnostic<'doc>(
 }
 
 pub fn diff<'doc>(
-    _editor: &'doc ui_tree,
+    _editor: &'doc UITree,
     doc: &'doc BufferMirror,
     _view: &BufferView,
     theme: &Theme,
@@ -175,7 +175,7 @@ pub fn diff<'doc>(
 }
 
 pub fn line_numbers<'doc>(
-    editor: &'doc ui_tree,
+    editor: &'doc UITree,
     doc: &'doc BufferMirror,
     view: &BufferView,
     theme: &Theme,
@@ -194,7 +194,7 @@ pub fn line_numbers<'doc>(
 
     let current_line = doc
         .text()
-        .char_to_line(doc.selection(view.view_id).primary().cursor(text));
+        .char_to_line(doc.selection().primary().cursor(text));
 
     let line_number = editor.config().line_number;
     let mode = editor.mode;
@@ -238,7 +238,7 @@ pub fn line_numbers_width(_view: &BufferView, doc: &BufferMirror) -> usize {
 }
 
 pub fn padding<'doc>(
-    _editor: &'doc ui_tree,
+    _editor: &'doc UITree,
     _doc: &'doc BufferMirror,
     _view: &BufferView,
     _theme: &Theme,
@@ -257,7 +257,7 @@ const fn abs_diff(a: usize, b: usize) -> usize {
 }
 
 pub fn breakpoints<'doc>(
-    editor: &'doc ui_tree,
+    editor: &'doc UITree,
     doc: &'doc BufferMirror,
     _view: &BufferView,
     theme: &Theme,
@@ -309,7 +309,7 @@ pub fn breakpoints<'doc>(
 }
 
 pub fn diagnostics_or_breakpoints<'doc>(
-    editor: &'doc ui_tree,
+    editor: &'doc UITree,
     doc: &'doc BufferMirror,
     view: &BufferView,
     theme: &Theme,

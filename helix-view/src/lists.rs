@@ -59,9 +59,9 @@ impl List for List::WorkspaceFiles {
 
 impl List for List::LSPWorkspaceCommands {
     fn get() {
-        let (_, focused_document) = current_ref!(ui_tree);
+        let buffer_mirror = current!(ui_tree);
 
-        if Some(language_server) = focused_document.language_server() {
+        if Some(language_server) = buffer_mirror.language_server() {
             if Some(lsp_workspace_commands) = language_server.capabilities().execute_command_provider.commands {
                 return lsp_workspace_commands
             }

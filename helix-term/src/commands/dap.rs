@@ -1,4 +1,4 @@
-use super::{Context, ui_tree};
+use super::{Context, UITree};
 use crate::{
     compositor::{self, Compositor},
     job::{Callback, Jobs},
@@ -56,7 +56,7 @@ impl ui::menu::Item for Thread {
 
 fn thread_picker(
     cx: &mut Context,
-    callback_fn: impl Fn(&mut ui_tree, &dap::Thread) + Send + 'static,
+    callback_fn: impl Fn(&mut UITree, &dap::Thread) + Send + 'static,
 ) {
     let debugger = debugger!(cx.ui_tree);
 
@@ -76,7 +76,7 @@ fn thread_picker(
             let picker = FilePicker::new(
                 threads,
                 thread_states,
-                move |cx, thread, _action| callback_fn(cx.editor, thread),
+                move |cx, thread, _action| callback_fn(cx.ui_tree, thread),
                 move |editor, thread| {
                     let frames = editor.debugger.as_ref()?.stack_frames.get(&thread.id)?;
                     let frame = frames.get(0)?;
@@ -93,12 +93,12 @@ fn thread_picker(
     );
 }
 
-fn get_breakpoint_at_current_line(editor: &mut ui_tree) -> Option<(usize, Breakpoint)> {
-    let (view, doc) = current!(editor);
-    let text = doc.text().slice(..);
+fn get_breakpoint_at_current_line(editor: &mut UITree) -> Option<(usize, Breakpoint)> {
+    let buffer_mirror = current_mut!(editor);
+    let text = buffer_mirror.text().slice(..);
 
-    let line = doc.selection(view.id).primary().cursor_line(text);
-    let path = doc.path()?;
+    let line = buffer_mirror.selection().primary().cursor_line(text);
+    let path = buffer_mirror.path()?;
     editor.breakpoints.get(path).and_then(|breakpoints| {
         let i = breakpoints.iter().position(|b| b.line == line);
         i.map(|i| (i, breakpoints[i].clone()))
@@ -113,13 +113,13 @@ fn dap_callback<T, F>(
     callback: F,
 ) where
     T: for<'de> serde::Deserialize<'de> + Send + 'static,
-    F: FnOnce(&mut ui_tree, &mut Compositor, T) + Send + 'static,
+    F: FnOnce(&mut UITree, &mut Compositor, T) + Send + 'static,
 {
     let callback = Box::pin(async move {
         let json = call.await?;
         let response = serde_json::from_value(json)?;
         let call: Callback = Callback::EditorCompositor(Box::new(
-            move |editor: &mut ui_tree, compositor: &mut Compositor| {
+            move |editor: &mut UITree, compositor: &mut Compositor| {
                 callback(editor, compositor, response)
             },
         ));
@@ -135,7 +135,7 @@ pub fn dap_start_impl(
     socket: Option<std::net::SocketAddr>,
     params: Option<Vec<std::borrow::Cow<str>>>,
 ) -> Result<(), anyhow::Error> {
-    let doc = buffer!(cx.editor);
+    let doc = current!(cx.ui_tree);
 
     let config = doc
         .language_config()
@@ -223,7 +223,7 @@ pub fn dap_start_impl(
 
     let args = to_value(args).unwrap();
 
-    let callback = |_editor: &mut ui_tree, _compositor: &mut Compositor, _response: Value| {
+    let callback = |_editor: &mut UITree, _compositor: &mut Compositor, _response: Value| {
         // if let Err(e) = result {
         //     editor.set_error(format!("Failed {} target: {}", template.request, e));
         // }
@@ -242,9 +242,9 @@ pub fn dap_start_impl(
     };
 
     // TODO: either await "initialized" or buffer commands until event is received
-    cx.editor.debugger = Some(debugger);
+    cx.ui_tree.debugger = Some(debugger);
     let stream = UnboundedReceiverStream::new(events);
-    cx.editor.debugger_events.push(stream);
+    cx.ui_tree.debugger_events.push(stream);
     Ok(())
 }
 
@@ -254,7 +254,7 @@ pub fn dap_launch(cx: &mut Context) {
         return;
     }
 
-    let doc = buffer!(cx.ui_tree);
+    let doc = current!(cx.ui_tree);
 
     let config = match doc
         .language_config()
@@ -350,15 +350,15 @@ fn debug_parameter_prompt(
                 None,
                 Some(params.iter().map(|x| x.into()).collect()),
             ) {
-                cx.editor.set_error(err.to_string());
+                cx.ui_tree.set_error(err.to_string());
             }
         },
     )
 }
 
 pub fn dap_toggle_breakpoint(cx: &mut Context) {
-    let (view, doc) = current!(cx.ui_tree);
-    let path = match doc.path() {
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let path = match buffer_mirror.path() {
         Some(path) => path.clone(),
         None => {
             cx.ui_tree
@@ -366,8 +366,8 @@ pub fn dap_toggle_breakpoint(cx: &mut Context) {
             return;
         }
     };
-    let text = doc.text().slice(..);
-    let line = doc.selection(view.id).primary().cursor_line(text);
+    let text = buffer_mirror.text().slice(..);
+    let line = buffer_mirror.selection().primary().cursor_line(text);
     dap_toggle_breakpoint_impl(cx, path, line);
 }
 
@@ -582,7 +582,7 @@ pub fn dap_disable_exceptions(cx: &mut Context) {
 // TODO: both edit condition and edit log need to be stable: we might get new breakpoints from the debugger which can change offsets
 pub fn dap_edit_condition(cx: &mut Context) {
     if let Some((pos, breakpoint)) = get_breakpoint_at_current_line(cx.ui_tree) {
-        let path = match buffer!(cx.ui_tree).path() {
+        let path = match current!(cx.ui_tree).path() {
             Some(path) => path.clone(),
             None => return,
         };
@@ -597,16 +597,16 @@ pub fn dap_edit_condition(cx: &mut Context) {
                             return;
                         }
 
-                        let breakpoints = &mut cx.editor.breakpoints.get_mut(&path).unwrap();
+                        let breakpoints = &mut cx.ui_tree.breakpoints.get_mut(&path).unwrap();
                         breakpoints[pos].condition = match input {
                             "" => None,
                             input => Some(input.to_owned()),
                         };
 
-                        let debugger = debugger!(cx.editor);
+                        let debugger = debugger!(cx.ui_tree);
 
                         if let Err(e) = breakpoints_changed(debugger, path.clone(), breakpoints) {
-                            cx.editor
+                            cx.ui_tree
                                 .set_error(format!("Failed to set breakpoints: {}", e));
                         }
                     },
@@ -624,7 +624,7 @@ pub fn dap_edit_condition(cx: &mut Context) {
 
 pub fn dap_edit_log(cx: &mut Context) {
     if let Some((pos, breakpoint)) = get_breakpoint_at_current_line(cx.ui_tree) {
-        let path = match buffer!(cx.ui_tree).path() {
+        let path = match current!(cx.ui_tree).path() {
             Some(path) => path.clone(),
             None => return,
         };
@@ -639,15 +639,15 @@ pub fn dap_edit_log(cx: &mut Context) {
                             return;
                         }
 
-                        let breakpoints = &mut cx.editor.breakpoints.get_mut(&path).unwrap();
+                        let breakpoints = &mut cx.ui_tree.breakpoints.get_mut(&path).unwrap();
                         breakpoints[pos].log_message = match input {
                             "" => None,
                             input => Some(input.to_owned()),
                         };
 
-                        let debugger = debugger!(cx.editor);
+                        let debugger = debugger!(cx.ui_tree);
                         if let Err(e) = breakpoints_changed(debugger, path.clone(), breakpoints) {
-                            cx.editor
+                            cx.ui_tree
                                 .set_error(format!("Failed to set breakpoints: {}", e));
                         }
                     },
@@ -685,7 +685,7 @@ pub fn dap_switch_stack_frame(cx: &mut Context) {
         frames,
         (),
         move |cx, frame, _action| {
-            let debugger = debugger!(cx.editor);
+            let debugger = debugger!(cx.ui_tree);
             // TODO: this should be simpler to find
             let pos = debugger.stack_frames[&thread_id]
                 .iter()
@@ -696,7 +696,7 @@ pub fn dap_switch_stack_frame(cx: &mut Context) {
                 .get(pos.unwrap_or(0))
                 .cloned();
             if let Some(frame) = &frame {
-                jump_to_stack_frame(cx.editor, frame);
+                jump_to_stack_frame(cx.ui_tree, frame);
             }
         },
         move |_editor, frame| {

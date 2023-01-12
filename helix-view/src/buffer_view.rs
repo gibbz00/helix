@@ -107,7 +107,7 @@ impl BufferView {
         centering: bool,
     ) -> Option<(usize, usize)> {
         let cursor = buffer
-            .selection(self.view_id)
+            .selection()
             .primary()
             .cursor(buffer.text().slice(..));
 
@@ -291,14 +291,14 @@ impl BufferView {
     pub fn apply(&mut self, transaction: &Transaction, buffer: &mut BufferMirror) {
         self.jumps.apply(transaction, buffer);
         self.buffer_revisions
-            .insert(buffer.id(), buffer.get_current_revision());
+            .insert(buffer.buffer_id(), buffer.get_current_revision());
     }
 
     pub fn sync_changes(&mut self, buffer: &mut BufferMirror) {
         let latest_revision = buffer.get_current_revision();
         let current_revision = *self
             .buffer_revisions
-            .entry(buffer.id())
+            .entry(buffer.buffer_id())
             .or_insert(latest_revision);
 
         if current_revision == latest_revision {

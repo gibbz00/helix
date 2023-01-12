@@ -23,12 +23,12 @@ fn quit(cx: &mut compositor::Context, args: &[Cow<str>], event: PromptEvent) -> 
     ensure!(args.is_empty(), ":quit takes no arguments");
 
     // last view and we have unsaved changes
-    if cx.editor.tree.views().count() == 1 {
-        buffers_remaining_impl(cx.editor)?
+    if cx.ui_tree.tree.views().count() == 1 {
+        buffers_remaining_impl(cx.ui_tree)?
     }
 
     cx.block_try_flush_writes()?;
-    cx.editor.close(buffer_view!(cx.editor).id);
+    cx.ui_tree.close(buffer_view!(cx.ui_tree).id);
 
     Ok(())
 }
@@ -45,7 +45,7 @@ fn force_quit(
     ensure!(args.is_empty(), ":quit! takes no arguments");
 
     cx.block_try_flush_writes()?;
-    cx.editor.close(buffer_view!(cx.editor).id);
+    cx.ui_tree.close(buffer_view!(cx.ui_tree).id);
 
     Ok(())
 }
@@ -58,12 +58,13 @@ fn open(cx: &mut compositor::Context, args: &[Cow<str>], event: PromptEvent) -> 
     ensure!(!args.is_empty(), "wrong argument count");
     for arg in args {
         let (path, pos) = args::parse_file(arg);
-        let _ = cx.editor.open(&path, Action::Replace)?;
-        let (view, doc) = current!(cx.editor);
-        let pos = Selection::point(pos_at_coords(doc.text().slice(..), pos, true));
-        doc.set_selection(view.id, pos);
+        let _ = cx.ui_tree.open(&path, Action::Replace)?;
+        let buffer_mirror = current_mut!(cx.ui_tree);
+        let view = buffer_view_mut!(cx.ui_tree);
+        let pos = Selection::point(pos_at_coords(buffer_mirror.text().slice(..), pos, true));
+        buffer_mirror.set_selection(pos);
         // does not affect opening a buffer without pos
-        align_view(doc, view, Align::Center);
+        align_view(buffer_mirror, view, Align::Center);
     }
     Ok(())
 }
@@ -78,7 +79,7 @@ fn buffer_close_by_ids_impl(
     let (modified_ids, modified_names): (Vec<_>, Vec<_>) = doc_ids
         .iter()
         .filter_map(|&doc_id| {
-            if let Err(CloseError::BufferModified(name)) = cx.editor.close_document(doc_id, force) {
+            if let Err(CloseError::BufferModified(name)) = cx.ui_tree.close_document(doc_id, force) {
                 Some((doc_id, name))
             } else {
                 None
@@ -87,11 +88,11 @@ fn buffer_close_by_ids_impl(
         .unzip();
 
     if let Some(first) = modified_ids.first() {
-        let current = buffer!(cx.editor);
+        let current = current!(cx.ui_tree);
         // If the current document is unmodified, and there are modified
         // documents, switch focus to the first modified doc.
         if !modified_ids.contains(&current.id()) {
-            cx.editor.switch(*first, Action::Replace);
+            cx.ui_tree.switch(*first, Action::Replace);
         }
         bail!(
             "{} unsaved buffer(s) remaining: {:?}",
@@ -103,22 +104,22 @@ fn buffer_close_by_ids_impl(
     Ok(())
 }
 
-fn buffer_gather_paths_impl(editor: &mut ui_tree, args: &[Cow<str>]) -> Vec<BufferID> {
+fn buffer_gather_paths_impl(ui_tree: &mut UITree, args: &[Cow<str>]) -> Vec<BufferID> {
     // No arguments implies current document
     if args.is_empty() {
-        let doc_id = buffer_view!(editor).doc;
+        let doc_id = buffer_view!(ui_tree).doc;
         return vec![doc_id];
     }
 
     let mut nonexistent_buffers = vec![];
     let mut document_ids = vec![];
     for arg in args {
-        let doc_id = editor.documents().find_map(|doc| {
+        let doc_id = ui_tree.documents().find_map(|doc| {
             let arg_path = Some(Path::new(arg.as_ref()));
             if doc.path().map(|p| p.as_path()) == arg_path
                 || doc.relative_path().as_deref() == arg_path
             {
-                Some(doc.id())
+                Some(doc.buffer_id())
             } else {
                 None
             }
@@ -131,7 +132,7 @@ fn buffer_gather_paths_impl(editor: &mut ui_tree, args: &[Cow<str>]) -> Vec<Buff
     }
 
     if !nonexistent_buffers.is_empty() {
-        editor.set_error(format!(
+        ui_tree.set_error(format!(
             "cannot close non-existent buffers: {}",
             nonexistent_buffers.join(", ")
         ));
@@ -149,7 +150,7 @@ fn buffer_close(
         return Ok(());
     }
 
-    let document_ids = buffer_gather_paths_impl(cx.editor, args);
+    let document_ids = buffer_gather_paths_impl(cx.ui_tree, args);
     buffer_close_by_ids_impl(cx, &document_ids, false)
 }
 
@@ -162,15 +163,15 @@ fn force_buffer_close(
         return Ok(());
     }
 
-    let document_ids = buffer_gather_paths_impl(cx.editor, args);
+    let document_ids = buffer_gather_paths_impl(cx.ui_tree, args);
     buffer_close_by_ids_impl(cx, &document_ids, true)
 }
 
-fn buffer_gather_others_impl(editor: &mut ui_tree) -> Vec<BufferID> {
-    let current_document = &buffer!(editor).id();
+fn buffer_gather_others_impl(editor: &mut UITree) -> Vec<BufferID> {
+    let current_document = &current!(editor).id();
     editor
         .documents()
-        .map(|doc| doc.id())
+        .map(|doc| doc.buffer_id())
         .filter(|doc_id| doc_id != current_document)
         .collect()
 }
@@ -184,7 +185,7 @@ fn buffer_close_others(
         return Ok(());
     }
 
-    let document_ids = buffer_gather_others_impl(cx.editor);
+    let document_ids = buffer_gather_others_impl(cx.ui_tree);
     buffer_close_by_ids_impl(cx, &document_ids, false)
 }
 
@@ -197,12 +198,12 @@ fn force_buffer_close_others(
         return Ok(());
     }
 
-    let document_ids = buffer_gather_others_impl(cx.editor);
+    let document_ids = buffer_gather_others_impl(cx.ui_tree);
     buffer_close_by_ids_impl(cx, &document_ids, true)
 }
 
-fn buffer_gather_all_impl(editor: &mut ui_tree) -> Vec<BufferID> {
-    editor.documents().map(|doc| doc.id()).collect()
+fn buffer_gather_all_impl(editor: &mut UITree) -> Vec<BufferID> {
+    editor.documents().map(|doc| doc.buffer_id()).collect()
 }
 
 fn buffer_close_all(
@@ -214,7 +215,7 @@ fn buffer_close_all(
         return Ok(());
     }
 
-    let document_ids = buffer_gather_all_impl(cx.editor);
+    let document_ids = buffer_gather_all_impl(cx.ui_tree);
     buffer_close_by_ids_impl(cx, &document_ids, false)
 }
 
@@ -227,7 +228,7 @@ fn force_buffer_close_all(
         return Ok(());
     }
 
-    let document_ids = buffer_gather_all_impl(cx.editor);
+    let document_ids = buffer_gather_all_impl(cx.ui_tree);
     buffer_close_by_ids_impl(cx, &document_ids, true)
 }
 
@@ -240,7 +241,7 @@ fn buffer_next(
         return Ok(());
     }
 
-    goto_buffer(cx.editor, Direction::Forward);
+    goto_buffer(cx.ui_tree, Direction::Forward);
     Ok(())
 }
 
@@ -253,7 +254,7 @@ fn buffer_previous(
         return Ok(());
     }
 
-    goto_buffer(cx.editor, Direction::Backward);
+    goto_buffer(cx.ui_tree, Direction::Backward);
     Ok(())
 }
 
@@ -262,16 +263,17 @@ fn write_impl(
     path: Option<&Cow<str>>,
     force: bool,
 ) -> anyhow::Result<()> {
-    let editor_auto_fmt = cx.editor.config().auto_format;
+    let editor_auto_fmt = cx.ui_tree.config().auto_format;
     let jobs = &mut cx.jobs;
-    let (view, doc) = current!(cx.editor);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
     let path = path.map(AsRef::as_ref);
 
     let fmt = if editor_auto_fmt {
-        doc.auto_format().map(|fmt| {
+        buffer_mirror.auto_format().map(|fmt| {
             let callback = make_format_callback(
-                doc.id(),
-                doc.version(),
+                buffer_mirror.id(),
+                buffer_mirror.version(),
                 view.id,
                 fmt,
                 Some((path.map(Into::into), force)),
@@ -284,8 +286,8 @@ fn write_impl(
     };
 
     if fmt.is_none() {
-        let id = doc.id();
-        cx.editor.save(id, path, force)?;
+        let id = buffer_mirror.id();
+        cx.ui_tree.save(id, path, force)?;
     }
 
     Ok(())
@@ -324,7 +326,7 @@ fn new_file(
         return Ok(());
     }
 
-    cx.editor.new_file(Action::Replace);
+    cx.ui_tree.new_file(Action::Replace);
 
     Ok(())
 }
@@ -338,9 +340,10 @@ fn format(
         return Ok(());
     }
 
-    let (view, doc) = current!(cx.editor);
-    if let Some(format) = doc.format() {
-        let callback = make_format_callback(doc.id(), doc.version(), view.id, format, None);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
+    if let Some(format) = buffer_mirror.format() {
+        let callback = make_format_callback(buffer_mirror.id(), buffer_mirror.version(), view.id, format, None);
         cx.jobs.callback(callback);
     }
 
@@ -359,8 +362,8 @@ fn set_indent_style(
 
     // If no argument, report current indent style.
     if args.is_empty() {
-        let style = buffer!(cx.editor).indent_style;
-        cx.editor.set_status(match style {
+        let style = current!(cx.ui_tree).indent_style;
+        cx.ui_tree.set_status(match style {
             Tabs => "tabs".to_owned(),
             Spaces(1) => "1 space".to_owned(),
             Spaces(n) if (2..=8).contains(&n) => format!("{} spaces", n),
@@ -382,8 +385,8 @@ fn set_indent_style(
     };
 
     let style = style.context("invalid indent style")?;
-    let doc = buffer_mut!(cx.editor);
-    doc.indent_style = style;
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    buffer_mirror.indent_style = style;
 
     Ok(())
 }
@@ -402,8 +405,8 @@ fn set_line_ending(
 
     // If no argument, report current line ending setting.
     if args.is_empty() {
-        let line_ending = buffer!(cx.editor).line_ending;
-        cx.editor.set_status(match line_ending {
+        let line_ending = current!(cx.ui_tree).line_ending;
+        cx.ui_tree.set_status(match line_ending {
             Crlf => "crlf",
             LF => "line feed",
             #[cfg(feature = "unicode-lines")]
@@ -438,13 +441,13 @@ fn set_line_ending(
         arg if arg.starts_with("nel") => Nel,
         _ => bail!("invalid line ending"),
     };
-    let (view, doc) = current!(cx.editor);
-    doc.line_ending = line_ending;
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    buffer_mirror.line_ending = line_ending;
 
     let mut pos = 0;
     let transaction = Transaction::change(
-        doc.text(),
-        doc.text().lines().filter_map(|line| {
+        buffer_mirror.text(),
+        buffer_mirror.text().lines().filter_map(|line| {
             pos += line.len_chars();
             match helix_core::line_ending::get_line_ending(&line) {
                 Some(ending) if ending != line_ending => {
@@ -456,8 +459,9 @@ fn set_line_ending(
             }
         }),
     );
-    apply_transaction(&transaction, doc, view);
-    doc.append_changes_to_history(view);
+    let view = buffer_view_mut!(cx.ui_tree);
+    apply_transaction(&transaction, buffer_mirror);
+    buffer_mirror.append_changes_to_history(view);
 
     Ok(())
 }
@@ -473,10 +477,11 @@ fn earlier(
 
     let uk = args.join(" ").parse::<UndoKind>().map_err(|s| anyhow!(s))?;
 
-    let (view, doc) = current!(cx.editor);
-    let success = doc.earlier(view, uk);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
+    let success = buffer_mirror.earlier(view, uk);
     if !success {
-        cx.editor.set_status("Already at oldest change");
+        cx.ui_tree.set_status("Already at oldest change");
     }
 
     Ok(())
@@ -492,10 +497,11 @@ fn later(
     }
 
     let uk = args.join(" ").parse::<UndoKind>().map_err(|s| anyhow!(s))?;
-    let (view, doc) = current!(cx.editor);
-    let success = doc.later(view, uk);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
+    let success = buffer_view.later(view, uk);
     if !success {
-        cx.editor.set_status("Already at newest change");
+        cx.ui_tree.set_status("Already at newest change");
     }
 
     Ok(())
@@ -532,14 +538,14 @@ fn force_write_quit(
 /// Results in an error if there are modified buffers remaining and sets editor
 /// error, otherwise returns `Ok(())`. If the current document is unmodified,
 /// and there are modified documents, switches focus to one of them.
-pub(super) fn buffers_remaining_impl(editor: &mut ui_tree) -> anyhow::Result<()> {
+pub(super) fn buffers_remaining_impl(editor: &mut UITree) -> anyhow::Result<()> {
     let (modified_ids, modified_names): (Vec<_>, Vec<_>) = editor
         .documents()
         .filter(|doc| doc.is_modified())
-        .map(|doc| (doc.id(), doc.display_name()))
+        .map(|doc| (doc.buffer_id(), doc.display_name()))
         .unzip();
     if let Some(first) = modified_ids.first() {
-        let current = buffer!(editor);
+        let current = current!(editor);
         // If the current document is unmodified, and there are modified
         // documents, switch focus to the first modified doc.
         if !modified_ids.contains(&current.id()) {
@@ -560,13 +566,13 @@ pub fn write_all_impl(
     write_scratch: bool,
 ) -> anyhow::Result<()> {
     let mut errors: Vec<&'static str> = Vec::new();
-    let auto_format = cx.editor.config().auto_format;
+    let auto_format = cx.ui_tree.config().auto_format;
     let jobs = &mut cx.jobs;
-    let current_view = buffer_view!(cx.editor);
+    let current_view = buffer_view!(cx.ui_tree);
 
     // save all documents
     let saves: Vec<_> = cx
-        .editor
+        .ui_tree
         .documents
         .values_mut()
         .filter_map(|doc| {
@@ -580,6 +586,8 @@ pub fn write_all_impl(
                 return None;
             }
 
+            // TODO: write all done server side
+            todo!()
             // Look for a view to apply the formatting change to. If the document
             // is in the current view, just use that. Otherwise, since we don't
             // have any other metric available for better selection, just pick
@@ -591,7 +599,6 @@ pub fn write_all_impl(
             } else if let Some(view) = doc.selections().keys().next() {
                 *view
             } else {
-                doc.ensure_view_init(current_view.id);
                 current_view.id
             };
 
@@ -620,7 +627,7 @@ pub fn write_all_impl(
 
     // manually call save for the rest of docs that don't have a formatter
     for id in saves {
-        cx.editor.save::<PathBuf>(id, None, force)?;
+        cx.ui_tree.save::<PathBuf>(id, None, force)?;
     }
 
     if !errors.is_empty() && !force {
@@ -669,13 +676,13 @@ fn force_write_all_quit(
 fn quit_all_impl(cx: &mut compositor::Context, force: bool) -> anyhow::Result<()> {
     cx.block_try_flush_writes()?;
     if !force {
-        buffers_remaining_impl(cx.editor)?;
+        buffers_remaining_impl(cx.ui_tree)?;
     }
 
     // close all views
-    let views: Vec<_> = cx.editor.tree.views().map(|(view, _)| view.id).collect();
+    let views: Vec<_> = cx.ui_tree.tree.views().map(|(view, _)| view.id).collect();
     for view_id in views {
-        cx.editor.close(view_id);
+        cx.ui_tree.close(view_id);
     }
 
     Ok(())
@@ -719,7 +726,7 @@ fn cquit(
         .and_then(|code| code.parse::<i32>().ok())
         .unwrap_or(1);
 
-    cx.editor.exit_code = exit_code;
+    cx.ui_tree.exit_code = exit_code;
     quit_all_impl(cx, false)
 }
 
@@ -736,7 +743,7 @@ fn force_cquit(
         .first()
         .and_then(|code| code.parse::<i32>().ok())
         .unwrap_or(1);
-    cx.editor.exit_code = exit_code;
+    cx.ui_tree.exit_code = exit_code;
 
     quit_all_impl(cx, true)
 }
@@ -746,39 +753,39 @@ fn theme(
     args: &[Cow<str>],
     event: PromptEvent,
 ) -> anyhow::Result<()> {
-    let true_color = cx.editor.config.load().true_color || crate::true_color();
+    let true_color = cx.ui_tree.config.load().true_color || crate::true_color();
     match event {
         PromptEvent::Abort => {
-            cx.editor.unset_theme_preview();
+            cx.ui_tree.unset_theme_preview();
         }
         PromptEvent::Update => {
             if args.is_empty() {
                 // Ensures that a preview theme gets cleaned up if the user backspaces until the prompt is empty.
-                cx.editor.unset_theme_preview();
+                cx.ui_tree.unset_theme_preview();
             } else if let Some(theme_name) = args.first() {
-                if let Ok(theme) = cx.editor.theme_loader.load(theme_name) {
+                if let Ok(theme) = cx.ui_tree.theme_loader.load(theme_name) {
                     if !(true_color || theme.is_16_color()) {
                         bail!("Unsupported theme: theme requires true color support");
                     }
-                    cx.editor.set_theme_preview(theme);
+                    cx.ui_tree.set_theme_preview(theme);
                 };
             };
         }
         PromptEvent::Validate => {
             if let Some(theme_name) = args.first() {
                 let theme = cx
-                    .editor
+                    .ui_tree
                     .theme_loader
                     .load(theme_name)
                     .map_err(|err| anyhow::anyhow!("Could not load theme: {}", err))?;
                 if !(true_color || theme.is_16_color()) {
                     bail!("Unsupported theme: theme requires true color support");
                 }
-                cx.editor.set_theme(theme);
+                cx.ui_tree.set_theme(theme);
             } else {
-                let name = cx.editor.theme.name().to_string();
+                let name = cx.ui_tree.theme.name().to_string();
 
-                cx.editor.set_status(name);
+                cx.ui_tree.set_status(name);
             }
         }
     };
@@ -795,7 +802,7 @@ fn yank_main_selection_to_clipboard(
         return Ok(());
     }
 
-    yank_main_selection_to_clipboard_impl(cx.editor, ClipboardType::Clipboard)
+    yank_main_selection_to_clipboard_impl(cx.ui_tree, ClipboardType::Clipboard)
 }
 
 fn yank_joined_to_clipboard(
@@ -807,10 +814,10 @@ fn yank_joined_to_clipboard(
         return Ok(());
     }
 
-    let doc = buffer!(cx.editor);
+    let doc = current!(cx.ui_tree);
     let default_sep = Cow::Borrowed(doc.line_ending.as_str());
     let separator = args.first().unwrap_or(&default_sep);
-    yank_joined_to_clipboard_impl(cx.editor, separator, ClipboardType::Clipboard)
+    yank_joined_to_clipboard_impl(cx.ui_tree, separator, ClipboardType::Clipboard)
 }
 
 fn yank_main_selection_to_primary_clipboard(
@@ -822,7 +829,7 @@ fn yank_main_selection_to_primary_clipboard(
         return Ok(());
     }
 
-    yank_main_selection_to_clipboard_impl(cx.editor, ClipboardType::Selection)
+    yank_main_selection_to_clipboard_impl(cx.ui_tree, ClipboardType::Selection)
 }
 
 fn yank_joined_to_primary_clipboard(
@@ -834,10 +841,10 @@ fn yank_joined_to_primary_clipboard(
         return Ok(());
     }
 
-    let doc = buffer!(cx.editor);
+    let doc = current!(cx.ui_tree);
     let default_sep = Cow::Borrowed(doc.line_ending.as_str());
     let separator = args.first().unwrap_or(&default_sep);
-    yank_joined_to_clipboard_impl(cx.editor, separator, ClipboardType::Selection)
+    yank_joined_to_clipboard_impl(cx.ui_tree, separator, ClipboardType::Selection)
 }
 
 fn paste_clipboard_after(
@@ -849,7 +856,7 @@ fn paste_clipboard_after(
         return Ok(());
     }
 
-    paste_clipboard_impl(cx.editor, Paste::After, ClipboardType::Clipboard, 1)
+    paste_clipboard_impl(cx.ui_tree, Paste::After, ClipboardType::Clipboard, 1)
 }
 
 fn paste_clipboard_before(
@@ -861,7 +868,7 @@ fn paste_clipboard_before(
         return Ok(());
     }
 
-    paste_clipboard_impl(cx.editor, Paste::Before, ClipboardType::Clipboard, 1)
+    paste_clipboard_impl(cx.ui_tree, Paste::Before, ClipboardType::Clipboard, 1)
 }
 
 fn paste_primary_clipboard_after(
@@ -873,7 +880,7 @@ fn paste_primary_clipboard_after(
         return Ok(());
     }
 
-    paste_clipboard_impl(cx.editor, Paste::After, ClipboardType::Selection, 1)
+    paste_clipboard_impl(cx.ui_tree, Paste::After, ClipboardType::Selection, 1)
 }
 
 fn paste_primary_clipboard_before(
@@ -885,24 +892,24 @@ fn paste_primary_clipboard_before(
         return Ok(());
     }
 
-    paste_clipboard_impl(cx.editor, Paste::Before, ClipboardType::Selection, 1)
+    paste_clipboard_impl(cx.ui_tree, Paste::Before, ClipboardType::Selection, 1)
 }
 
 fn replace_selections_with_clipboard_impl(
     cx: &mut compositor::Context,
     clipboard_type: ClipboardType,
 ) -> anyhow::Result<()> {
-    let (view, doc) = current!(cx.editor);
-
-    match cx.editor.clipboard_provider.get_contents(clipboard_type) {
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
+    match cx.ui_tree.clipboard_provider.get_contents(clipboard_type) {
         Ok(contents) => {
-            let selection = doc.selection(view.id);
-            let transaction = Transaction::change_by_selection(doc.text(), selection, |range| {
+            let selection = buffer_mirror.selection(view.id);
+            let transaction = Transaction::change_by_selection(buffer_mirror.text(), selection, |range| {
                 (range.from(), range.to(), Some(contents.as_str().into()))
             });
 
-            apply_transaction(&transaction, doc, view);
-            doc.append_changes_to_history(view);
+            apply_transaction(&transaction, buffer_mirror);
+            buffer_mirror.append_changes_to_history(view);
             Ok(())
         }
         Err(e) => Err(e.context("Couldn't get system clipboard contents")),
@@ -942,8 +949,8 @@ fn show_clipboard_provider(
         return Ok(());
     }
 
-    cx.editor
-        .set_status(cx.editor.clipboard_provider.name().to_string());
+    cx.ui_tree
+        .set_status(cx.ui_tree.clipboard_provider.name().to_string());
     Ok(())
 }
 
@@ -968,7 +975,7 @@ fn change_current_directory(
     }
 
     let cwd = std::env::current_dir().context("Couldn't get the new working directory")?;
-    cx.editor.set_status(format!(
+    cx.ui_tree.set_status(format!(
         "Current working directory is now {}",
         cwd.display()
     ));
@@ -985,7 +992,7 @@ fn show_current_directory(
     }
 
     let cwd = std::env::current_dir().context("Couldn't get the new working directory")?;
-    cx.editor
+    cx.ui_tree
         .set_status(format!("Current working directory is {}", cwd.display()));
     Ok(())
 }
@@ -1000,12 +1007,12 @@ fn set_encoding(
         return Ok(());
     }
 
-    let doc = buffer_mut!(cx.editor);
+    let buffer_mirror = current_mut!(cx.ui_tree);
     if let Some(label) = args.first() {
-        doc.set_encoding(label)
+        buffer_mirror.set_encoding(label)
     } else {
-        let encoding = doc.encoding().name().to_owned();
-        cx.editor.set_status(encoding);
+        let encoding = buffer_mirror.encoding().name().to_owned();
+        cx.ui_tree.set_status(encoding);
         Ok(())
     }
 }
@@ -1020,12 +1027,13 @@ fn reload(
         return Ok(());
     }
 
-    let scrolloff = cx.editor.config().scrolloff;
-    let redraw_handle = cx.editor.redraw_handle.clone();
-    let (view, doc) = current!(cx.editor);
-    doc.reload(view, &cx.editor.diff_providers, redraw_handle)
+    let scrolloff = cx.ui_tree.config().scrolloff;
+    let redraw_handle = cx.ui_tree.redraw_handle.clone();
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
+    buffer_mirror.reload(view, &cx.ui_tree.diff_providers, redraw_handle)
         .map(|_| {
-            view.ensure_cursor_in_view(doc, scrolloff);
+            view.ensure_cursor_in_view(buffer_mirror, scrolloff);
         })
 }
 
@@ -1038,11 +1046,12 @@ fn reload_all(
         return Ok(());
     }
 
-    let scrolloff = cx.editor.config().scrolloff;
-    let view_id = buffer_view!(cx.editor).id;
+    let scrolloff = cx.ui_tree.config().scrolloff;
+    let view_id = buffer_view!(cx.ui_tree).id;
 
+    // TODO: ui_tree will all the view_ids.
     let docs_view_ids: Vec<(BufferID, Vec<BufferViewID>)> = cx
-        .editor
+        .ui_tree
         .documents_mut()
         .map(|doc| {
             let mut view_ids: Vec<_> = doc.selections().keys().cloned().collect();
@@ -1057,21 +1066,19 @@ fn reload_all(
         .collect();
 
     for (doc_id, view_ids) in docs_view_ids {
-        let doc = buffer_mut!(cx.editor, &doc_id);
-
+        let buffer_mirror = current_mut!(cx.ui_tree, &doc_id);
         // Every doc is guaranteed to have at least 1 view at this point.
-        let view = buffer_view_mut!(cx.editor, view_ids[0]);
-
+        let view = buffer_view_mut!(cx.ui_tree, view_ids[0]);
         // Ensure that the view is synced with the document's history.
-        view.sync_changes(doc);
+        view.sync_changes(buffer_mirror);
 
-        let redraw_handle = cx.editor.redraw_handle.clone();
-        doc.reload(view, &cx.editor.diff_providers, redraw_handle)?;
+        let redraw_handle = cx.ui_tree.redraw_handle.clone();
+        buffer_mirror.reload(view, &cx.ui_tree.diff_providers, redraw_handle)?;
 
         for view_id in view_ids {
-            let view = buffer_view_mut!(cx.editor, view_id);
+            let view = buffer_view_mut!(cx.ui_tree, view_id);
             if view.doc.eq(&doc_id) {
-                view.ensure_cursor_in_view(doc, scrolloff);
+                view.ensure_cursor_in_view(buffer_mirror, scrolloff);
             }
         }
     }
@@ -1089,8 +1096,8 @@ fn update(
         return Ok(());
     }
 
-    let (_view, doc) = current!(cx.editor);
-    if doc.is_modified() {
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    if buffer_mirror.is_modified() {
         write(cx, args, event)
     } else {
         Ok(())
@@ -1106,12 +1113,12 @@ fn lsp_workspace_command(
         return Ok(());
     }
 
-    let (_, doc) = current!(cx.editor);
+    let buffer_mirror = current_mut!(cx.ui_tree);
 
-    let language_server = match doc.language_server() {
+    let language_server = match buffer_mirror.language_server() {
         Some(language_server) => language_server,
         None => {
-            cx.editor
+            cx.ui_tree
                 .set_status("Language server not active for current buffer");
             return Ok(());
         }
@@ -1120,7 +1127,7 @@ fn lsp_workspace_command(
     let options = match &language_server.capabilities().execute_command_provider {
         Some(options) => options,
         None => {
-            cx.editor
+            cx.ui_tree
                 .set_status("Workspace commands are not supported for this language server");
             return Ok(());
         }
@@ -1137,9 +1144,9 @@ fn lsp_workspace_command(
             .collect::<Vec<_>>();
         let callback = async move {
             let call: job::Callback = Callback::EditorCompositor(Box::new(
-                move |_editor: &mut ui_tree, compositor: &mut Compositor| {
+                move |_editor: &mut UITree, compositor: &mut Compositor| {
                     let picker = ui::Picker::new(commands, (), |cx, command, _action| {
-                        execute_lsp_command(cx.editor, command.clone());
+                        execute_lsp_command(cx.ui_tree, command.clone());
                     });
                     compositor.push(Box::new(overlayed(picker)))
                 },
@@ -1151,7 +1158,7 @@ fn lsp_workspace_command(
         let command = args.join(" ");
         if options.commands.iter().any(|c| c == &command) {
             execute_lsp_command(
-                cx.editor,
+                cx.ui_tree,
                 helix_lsp::lsp::Command {
                     title: command.clone(),
                     arguments: None,
@@ -1159,7 +1166,7 @@ fn lsp_workspace_command(
                 },
             );
         } else {
-            cx.editor.set_status(format!(
+            cx.ui_tree.set_status(format!(
                 "`{command}` is not supported for this language server"
             ));
             return Ok(());
@@ -1177,17 +1184,17 @@ fn lsp_restart(
         return Ok(());
     }
 
-    let (_view, doc) = current!(cx.editor);
-    let config = doc
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let config = buffer_mirror
         .language_config()
         .context("LSP not defined for the current document")?;
 
     let scope = config.scope.clone();
-    cx.editor.language_servers.restart(config, doc.path())?;
+    cx.ui_tree.language_servers.restart(config, buffer_mirror.path())?;
 
     // This collect is needed because refresh_language_server would need to re-borrow editor.
     let document_ids_to_refresh: Vec<BufferID> = cx
-        .editor
+        .ui_tree
         .documents()
         .filter_map(|doc| match doc.language_config() {
             Some(config) if config.scope.eq(&scope) => Some(doc.id()),
@@ -1196,7 +1203,7 @@ fn lsp_restart(
         .collect();
 
     for document_id in document_ids_to_refresh {
-        cx.editor.refresh_language_server(document_id);
+        cx.ui_tree.refresh_language_server(document_id);
     }
 
     Ok(())
@@ -1211,17 +1218,16 @@ fn tree_sitter_scopes(
         return Ok(());
     }
 
-    let (view, doc) = current!(cx.editor);
-    let text = doc.text().slice(..);
-
-    let pos = doc.selection(view.id).primary().cursor(text);
-    let scopes = indent::get_scopes(doc.syntax(), text, pos);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let text = buffer_mirror.text().slice(..);
+    let pos = buffer_mirror.selection().primary().cursor(text);
+    let scopes = indent::get_scopes(buffer_mirror.syntax(), text, pos);
 
     let contents = format!("```json\n{:?}\n````", scopes);
 
     let callback = async move {
         let call: job::Callback = Callback::EditorCompositor(Box::new(
-            move |editor: &mut ui_tree, compositor: &mut Compositor| {
+            move |editor: &mut UITree, compositor: &mut Compositor| {
                 let contents = ui::Markdown::new(contents, editor.syn_loader.clone());
                 let popup = Popup::new("hover", contents).auto_close(true);
                 compositor.replace_or_push("hover", popup);
@@ -1244,13 +1250,13 @@ fn vsplit(
         return Ok(());
     }
 
-    let id = buffer_view!(cx.editor).doc;
+    let id = buffer_view!(cx.ui_tree).doc;
 
     if args.is_empty() {
-        cx.editor.switch(id, Action::VerticalSplit);
+        cx.ui_tree.switch(id, Action::VerticalSplit);
     } else {
         for arg in args {
-            cx.editor
+            cx.ui_tree
                 .open(&PathBuf::from(arg.as_ref()), Action::VerticalSplit)?;
         }
     }
@@ -1267,13 +1273,13 @@ fn hsplit(
         return Ok(());
     }
 
-    let id = buffer_view!(cx.editor).doc;
+    let id = buffer_view!(cx.ui_tree).doc;
 
     if args.is_empty() {
-        cx.editor.switch(id, Action::HorizontalSplit);
+        cx.ui_tree.switch(id, Action::HorizontalSplit);
     } else {
         for arg in args {
-            cx.editor
+            cx.ui_tree
                 .open(&PathBuf::from(arg.as_ref()), Action::HorizontalSplit)?;
         }
     }
@@ -1290,7 +1296,7 @@ fn vsplit_new(
         return Ok(());
     }
 
-    cx.editor.new_file(Action::VerticalSplit);
+    cx.ui_tree.new_file(Action::VerticalSplit);
 
     Ok(())
 }
@@ -1304,7 +1310,7 @@ fn hsplit_new(
         return Ok(());
     }
 
-    cx.editor.new_file(Action::HorizontalSplit);
+    cx.ui_tree.new_file(Action::HorizontalSplit);
 
     Ok(())
 }
@@ -1318,7 +1324,7 @@ fn debug_eval(
         return Ok(());
     }
 
-    if let Some(debugger) = cx.editor.debugger.as_mut() {
+    if let Some(debugger) = cx.ui_tree.debugger.as_mut() {
         let (frame, thread_id) = match (debugger.active_frame, debugger.thread_id) {
             (Some(frame), Some(thread_id)) => (frame, thread_id),
             _ => {
@@ -1330,7 +1336,7 @@ fn debug_eval(
 
         let frame_id = debugger.stack_frames[&thread_id][frame].id;
         let response = helix_lsp::block_on(debugger.eval(args.join(" "), Some(frame_id)))?;
-        cx.editor.set_status(response.result);
+        cx.ui_tree.set_status(response.result);
     }
     Ok(())
 }
@@ -1383,9 +1389,9 @@ fn tutor(
     }
 
     let path = helix_loader::runtime_dir().join("tutor");
-    cx.editor.open(&path, Action::Replace)?;
+    cx.ui_tree.open(&path, Action::Replace)?;
     // Unset path to prevent accidentally saving to the original tutor file.
-    buffer_mut!(cx.editor).set_path(None)?;
+    current_mut!(cx.ui_tree).set_path(None)?;
     Ok(())
 }
 
@@ -1396,40 +1402,43 @@ pub(super) fn goto_line_number(
 ) -> anyhow::Result<()> {
     match event {
         PromptEvent::Abort => {
-            if let Some(line_number) = cx.editor.last_line_number {
-                goto_line_impl(cx.editor, NonZeroUsize::new(line_number));
-                let (view, doc) = current!(cx.editor);
-                view.ensure_cursor_in_view(doc, line_number);
-                cx.editor.last_line_number = None;
+            if let Some(line_number) = cx.ui_tree.last_line_number {
+                goto_line_impl(cx.ui_tree, NonZeroUsize::new(line_number));
+                let buffer_mirror = current_mut!(cx.ui_tree);
+                let view = buffer_view_mut!(cx.ui_tree);
+                view.ensure_cursor_in_view(buffer_mirror, line_number);
+                cx.ui_tree.last_line_number = None;
             }
             return Ok(());
         }
         PromptEvent::Validate => {
             ensure!(!args.is_empty(), "Line number required");
-            cx.editor.last_line_number = None;
+            cx.ui_tree.last_line_number = None;
         }
         PromptEvent::Update => {
             if args.is_empty() {
-                if let Some(line_number) = cx.editor.last_line_number {
+                if let Some(line_number) = cx.ui_tree.last_line_number {
                     // When a user hits backspace and there are no numbers left,
                     // we can bring them back to their original line
-                    goto_line_impl(cx.editor, NonZeroUsize::new(line_number));
-                    let (view, doc) = current!(cx.editor);
-                    view.ensure_cursor_in_view(doc, line_number);
-                    cx.editor.last_line_number = None;
+                    goto_line_impl(cx.ui_tree, NonZeroUsize::new(line_number));
+                    let buffer_mirror = current_mut!(cx.ui_tree);
+                    let view = buffer_view_mut!(cx.ui_tree);
+                    view.ensure_cursor_in_view(buffer_mirror, line_number);
+                    cx.ui_tree.last_line_number = None;
                 }
                 return Ok(());
             }
-            let (view, doc) = current!(cx.editor);
-            let text = doc.text().slice(..);
-            let line = doc.selection(view.id).primary().cursor_line(text);
-            cx.editor.last_line_number.get_or_insert(line + 1);
+            let buffer_mirror = current_mut!(cx.ui_tree);
+            let text = buffer_mirror.text().slice(..);
+            let line = buffer_mirror.selection().primary().cursor_line(text);
+            cx.ui_tree.last_line_number.get_or_insert(line + 1);
         }
     }
     let line = args[0].parse::<usize>()?;
-    goto_line_impl(cx.editor, NonZeroUsize::new(line));
-    let (view, doc) = current!(cx.editor);
-    view.ensure_cursor_in_view(doc, line);
+    goto_line_impl(cx.ui_tree, NonZeroUsize::new(line));
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
+    view.ensure_cursor_in_view(buffer_mirror, line);
     Ok(())
 }
 
@@ -1450,11 +1459,11 @@ fn get_option(
     let key = &args[0].to_lowercase();
     let key_error = || anyhow::anyhow!("Unknown key `{}`", key);
 
-    let config = serde_json::json!(cx.editor.config().deref());
+    let config = serde_json::json!(cx.ui_tree.config().deref());
     let pointer = format!("/{}", key.replace('.', "/"));
     let value = config.pointer(&pointer).ok_or_else(key_error)?;
 
-    cx.editor.set_status(value.to_string());
+    cx.ui_tree.set_status(value.to_string());
     Ok(())
 }
 
@@ -1477,7 +1486,7 @@ fn set_option(
     let key_error = || anyhow::anyhow!("Unknown key `{}`", key);
     let field_error = |_| anyhow::anyhow!("Could not parse field `{}`", arg);
 
-    let mut config = serde_json::json!(&cx.editor.config().deref());
+    let mut config = serde_json::json!(&cx.ui_tree.config().deref());
     let pointer = format!("/{}", key.replace('.', "/"));
     let value = config.pointer_mut(&pointer).ok_or_else(key_error)?;
 
@@ -1489,7 +1498,7 @@ fn set_option(
     };
     let config = serde_json::from_value(config).map_err(field_error)?;
 
-    cx.editor
+    cx.ui_tree
         .config_events
         .0
         .send(ConfigEvent::Update(config))?;
@@ -1510,17 +1519,17 @@ fn language(
         anyhow::bail!("Bad arguments. Usage: `:set-language language`");
     }
 
-    let doc = buffer_mut!(cx.editor);
+    let buffer_mirror = current_mut!(cx.ui_tree);
 
     if args[0] == "text" {
-        doc.set_language(None, None)
+        buffer_mirror.set_language(None, None)
     } else {
-        doc.set_language_by_language_id(&args[0], cx.editor.syn_loader.clone())?;
+        buffer_mirror.set_language_by_language_id(&args[0], cx.ui_tree.syn_loader.clone())?;
     }
-    doc.detect_indent_and_line_ending();
+    buffer_mirror.detect_indent_and_line_ending();
 
-    let id = doc.id();
-    cx.editor.refresh_language_server(id);
+    let id = buffer_mirror.id();
+    cx.ui_tree.refresh_language_server(id);
     Ok(())
 }
 
@@ -1549,10 +1558,10 @@ fn sort_impl(
     _args: &[Cow<str>],
     reverse: bool,
 ) -> anyhow::Result<()> {
-    let (view, doc) = current!(cx.editor);
-    let text = doc.text().slice(..);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let text = buffer_mirror.text().slice(..);
 
-    let selection = doc.selection(view.id);
+    let selection = buffer_mirror.selection();
 
     let mut fragments: Vec<_> = selection
         .slices(text)
@@ -1565,15 +1574,16 @@ fn sort_impl(
     });
 
     let transaction = Transaction::change(
-        doc.text(),
+        buffer_mirror.text(),
         selection
             .into_iter()
             .zip(fragments)
             .map(|(s, fragment)| (s.from(), s.to(), Some(fragment))),
     );
 
-    apply_transaction(&transaction, doc, view);
-    doc.append_changes_to_history(view);
+    let view = buffer_view_mut!(cx.ui_tree);
+    apply_transaction(&transaction, buffer_mirror);
+    buffer_mirror.append_changes_to_history(view);
 
     Ok(())
 }
@@ -1587,8 +1597,8 @@ fn reflow(
         return Ok(());
     }
 
-    let scrolloff = cx.editor.config().scrolloff;
-    let (view, doc) = current!(cx.editor);
+    let scrolloff = cx.ui_tree.config().scrolloff;
+    let buffer_mirror = current_mut!(cx.ui_tree);
 
     const DEFAULT_MAX_LEN: usize = 79;
 
@@ -1601,14 +1611,14 @@ fn reflow(
         .map(|num| num.parse::<usize>())
         .transpose()?
         .or_else(|| {
-            doc.language_config()
+            buffer_mirror.language_config()
                 .and_then(|config| config.max_line_length)
         })
         .unwrap_or(DEFAULT_MAX_LEN);
 
-    let rope = doc.text();
+    let rope = buffer_mirror.text();
 
-    let selection = doc.selection(view.id);
+    let selection = buffer_mirror.selection();
     let transaction = Transaction::change_by_selection(rope, selection, |range| {
         let fragment = range.fragment(rope.slice(..));
         let reflowed_text = helix_core::wrap::reflow_hard_wrap(&fragment, max_line_len);
@@ -1616,9 +1626,10 @@ fn reflow(
         (range.from(), range.to(), Some(reflowed_text))
     });
 
-    apply_transaction(&transaction, doc, view);
-    doc.append_changes_to_history(view);
-    view.ensure_cursor_in_view(doc, scrolloff);
+    let view = buffer_view_mut!(cx.ui_tree);
+    apply_transaction(&transaction, buffer_mirror);
+    buffer_mirror.append_changes_to_history(view);
+    view.ensure_cursor_in_view(buffer_mirror, scrolloff);
 
     Ok(())
 }
@@ -1632,11 +1643,11 @@ fn tree_sitter_subtree(
         return Ok(());
     }
 
-    let (view, doc) = current!(cx.editor);
+    let buffer_mirror = current_mut!(cx.ui_tree);
 
-    if let Some(syntax) = doc.syntax() {
-        let primary_selection = doc.selection(view.id).primary();
-        let text = doc.text();
+    if let Some(syntax) = buffer_mirror.syntax() {
+        let primary_selection = buffer_mirror.selection().primary();
+        let text = buffer_mirror.text();
         let from = text.char_to_byte(primary_selection.from());
         let to = text.char_to_byte(primary_selection.to());
         if let Some(selected_node) = syntax
@@ -1650,7 +1661,7 @@ fn tree_sitter_subtree(
 
             let callback = async move {
                 let call: job::Callback = Callback::EditorCompositor(Box::new(
-                    move |editor: &mut ui_tree, compositor: &mut Compositor| {
+                    move |editor: &mut UITree, compositor: &mut Compositor| {
                         let contents = ui::Markdown::new(contents, editor.syn_loader.clone());
                         let popup = Popup::new("hover", contents).auto_close(true);
                         compositor.replace_or_push("hover", popup);
@@ -1675,7 +1686,7 @@ fn open_config(
         return Ok(());
     }
 
-    cx.editor
+    cx.ui_tree
         .open(&helix_loader::config_file(), Action::Replace)?;
     Ok(())
 }
@@ -1689,7 +1700,7 @@ fn open_log(
         return Ok(());
     }
 
-    cx.editor.open(&helix_loader::log_file(), Action::Replace)?;
+    cx.ui_tree.open(&helix_loader::log_file(), Action::Replace)?;
     Ok(())
 }
 
@@ -1702,7 +1713,7 @@ fn refresh_config(
         return Ok(());
     }
 
-    cx.editor.config_events.0.send(ConfigEvent::Refresh)?;
+    cx.ui_tree.config_events.0.send(ConfigEvent::Refresh)?;
     Ok(())
 }
 
@@ -1770,18 +1781,18 @@ fn run_shell_command(
         return Ok(());
     }
 
-    let shell = &cx.editor.config().shell;
+    let shell = &cx.ui_tree.config().shell;
     let (output, success) = shell_impl(shell, &args.join(" "), None)?;
     if success {
-        cx.editor.set_status("Command succeed");
+        cx.ui_tree.set_status("Command succeed");
     } else {
-        cx.editor.set_error("Command failed");
+        cx.ui_tree.set_error("Command failed");
     }
 
     if !output.is_empty() {
         let callback = async move {
             let call: job::Callback = Callback::EditorCompositor(Box::new(
-                move |editor: &mut ui_tree, compositor: &mut Compositor| {
+                move |editor: &mut UITree, compositor: &mut Compositor| {
                     let contents = ui::Markdown::new(
                         format!("```sh\n{}\n```", output),
                         editor.syn_loader.clone(),
@@ -1806,7 +1817,7 @@ pub(super) fn command_mode(cx: &mut Context) {
     use shellwords::Shellwords;
     use helix_view::command::{Command, COMMAND_MAP, CommandArguments};
 
-    let mut prompt = Prompt::new(":".into(), Some(':'), |editor: &ui_tree, input: &str| {
+    let mut prompt = Prompt::new(":".into(), Some(':'), |editor: &UITree, input: &str| {
             static FUZZY_MATCHER: Lazy<fuzzy_matcher::skim::SkimMatcherV2> =
                 Lazy::new(fuzzy_matcher::skim::SkimMatcherV2::default);
 
@@ -1873,7 +1884,7 @@ pub(super) fn command_mode(cx: &mut Context) {
             // If command is numeric, interpret as line number and go there.
             if parts.len() == 1 && parts[0].parse::<usize>().ok().is_some() {
                 if let Err(e) = typed::goto_line_number(cx, &[Cow::from(parts[0])], event) {
-                    cx.editor.set_error(format!("{}", e));
+                    cx.ui_tree.set_error(format!("{}", e));
                 }
                 return;
             }
@@ -1884,10 +1895,10 @@ pub(super) fn command_mode(cx: &mut Context) {
                 let args = shellwords.words();
 
                 if let Err(e) = (cmd.fun)(cx, &args[1..], event) {
-                    cx.editor.set_error(format!("{}", e));
+                    cx.ui_tree.set_error(format!("{}", e));
                 }
             } else if event == PromptEvent::Validate {
-                cx.editor
+                cx.ui_tree
                     .set_error(format!("no such command: '{}'", parts[0]));
             }
         },

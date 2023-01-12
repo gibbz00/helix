@@ -23,7 +23,7 @@ use helix_view::{
     editor::Action,
     graphics::{CursorKind, Margin, Modifier, Rect},
     theme::Style,
-    BufferMirror, ui_tree,
+    BufferMirror, UITree,
 };
 
 use helix_server::buffer::BufferID;
@@ -72,7 +72,7 @@ pub struct FilePicker<T: Item> {
     preview_cache: HashMap<PathBuf, CachedPreview>,
     read_buffer: Vec<u8>,
     /// Given an item in the picker, return the file path and line number to display.
-    file_fn: Box<dyn Fn(&ui_tree, &T) -> Option<FileLocation>>,
+    file_fn: Box<dyn Fn(&UITree, &T) -> Option<FileLocation>>,
 }
 
 pub enum CachedPreview {
@@ -117,7 +117,7 @@ impl<T: Item> FilePicker<T> {
         options: Vec<T>,
         editor_data: T::Data,
         callback_fn: impl Fn(&mut Context, &T, Action) + 'static,
-        preview_fn: impl Fn(&ui_tree, &T) -> Option<FileLocation> + 'static,
+        preview_fn: impl Fn(&UITree, &T) -> Option<FileLocation> + 'static,
     ) -> Self {
         let truncate_start = true;
         let mut picker = Picker::new(options, editor_data, callback_fn);
@@ -138,7 +138,7 @@ impl<T: Item> FilePicker<T> {
         self
     }
 
-    fn current_file(&self, editor: &ui_tree) -> Option<FileLocation> {
+    fn current_file(&self, editor: &UITree) -> Option<FileLocation> {
         self.picker
             .selection()
             .and_then(|current| (self.file_fn)(editor, current))
@@ -150,7 +150,7 @@ impl<T: Item> FilePicker<T> {
     fn get_preview<'picker, 'editor>(
         &'picker mut self,
         path_or_id: PathOrId,
-        editor: &'editor ui_tree,
+        editor: &'editor UITree,
     ) -> Preview<'picker, 'editor> {
         match path_or_id {
             PathOrId::Path(path) => {
@@ -200,9 +200,9 @@ impl<T: Item> FilePicker<T> {
     fn handle_idle_timeout(&mut self, cx: &mut Context) -> EventResult {
         // Try to find a document in the cache
         let doc = self
-            .current_file(cx.editor)
-            .and_then(|(path, _range)| match path {
-                PathOrId::Id(doc_id) => Some(buffer_mut!(cx.editor, &doc_id)),
+            .current_file(cx.ui_tree)
+            .and_then(|(path_or_id, _range)| match path_or_id {
+                PathOrId::Id(doc_id) => Some(current_mut!(cx.ui_tree, &doc_id)),
                 PathOrId::Path(path) => match self.preview_cache.get_mut(&path) {
                     Some(CachedPreview::Document(doc)) => Some(doc),
                     _ => None,
@@ -212,7 +212,7 @@ impl<T: Item> FilePicker<T> {
         // Then attempt to highlight it if it has no language set
         if let Some(doc) = doc {
             if doc.language_config().is_none() {
-                let loader = cx.editor.syn_loader.clone();
+                let loader = cx.ui_tree.syn_loader.clone();
                 doc.detect_language(loader);
             }
         }
@@ -233,8 +233,8 @@ impl<T: Item + 'static> Component for FilePicker<T> {
         let render_preview = self.picker.show_preview && area.width > MIN_AREA_WIDTH_FOR_PREVIEW;
         // -- Render the frame:
         // clear area
-        let background = cx.editor.theme.get("ui.background");
-        let text = cx.editor.theme.get("ui.text");
+        let background = cx.ui_tree.theme.get("ui.background");
+        let text = cx.ui_tree.theme.get("ui.text");
         surface.clear_with(area, background);
 
         let picker_width = if render_preview {
@@ -262,8 +262,8 @@ impl<T: Item + 'static> Component for FilePicker<T> {
         let inner = inner.inner(&margin);
         block.render(preview_area, surface);
 
-        if let Some((path, range)) = self.current_file(cx.editor) {
-            let preview = self.get_preview(path, cx.editor);
+        if let Some((path, range)) = self.current_file(cx.ui_tree) {
+            let preview = self.get_preview(path, cx.ui_tree);
             let doc = match preview.document() {
                 Some(doc) => doc,
                 None => {
@@ -287,8 +287,8 @@ impl<T: Item + 'static> Component for FilePicker<T> {
             let offset = Position::new(first_line, 0);
 
             let mut highlights =
-                EditorView::doc_syntax_highlights(doc, offset, area.height, &cx.editor.theme);
-            for spans in EditorView::doc_diagnostics_highlights(doc, &cx.editor.theme) {
+                EditorView::doc_syntax_highlights(doc, offset, area.height, &cx.ui_tree.theme);
+            for spans in EditorView::doc_diagnostics_highlights(doc, &cx.ui_tree.theme) {
                 if spans.is_empty() {
                     continue;
                 }
@@ -299,9 +299,9 @@ impl<T: Item + 'static> Component for FilePicker<T> {
                 offset,
                 inner,
                 surface,
-                &cx.editor.theme,
+                &cx.ui_tree.theme,
                 highlights,
-                &cx.editor.config(),
+                &cx.ui_tree.config(),
             );
 
             // highlight the line
@@ -315,10 +315,10 @@ impl<T: Item + 'static> Component for FilePicker<T> {
                         (end.saturating_sub(start) as u16 + 1)
                             .min(inner.height.saturating_sub(offset)),
                     ),
-                    cx.editor
+                    cx.ui_tree
                         .theme
                         .try_get("ui.highlight")
-                        .unwrap_or_else(|| cx.editor.theme.get("ui.selection")),
+                        .unwrap_or_else(|| cx.ui_tree.theme.get("ui.selection")),
                 );
             }
         }
@@ -332,7 +332,7 @@ impl<T: Item + 'static> Component for FilePicker<T> {
         self.picker.handle_event(event, ctx)
     }
 
-    fn cursor(&self, area: Rect, ctx: &ui_tree) -> (Option<Position>, CursorKind) {
+    fn cursor(&self, area: Rect, ctx: &UITree) -> (Option<Position>, CursorKind) {
         self.picker.cursor(area, ctx)
     }
 
@@ -616,7 +616,7 @@ impl<T: Item + 'static> Component for Picker<T> {
         })));
 
         // So that idle timeout retriggers
-        cx.editor.reset_idle_timer();
+        cx.ui_tree.reset_idle_timer();
 
         match key_event {
             shift!(Tab) | key!(Up) | ctrl!('p') => {
@@ -670,13 +670,13 @@ impl<T: Item + 'static> Component for Picker<T> {
     }
 
     fn render(&mut self, area: Rect, surface: &mut Surface, cx: &mut Context) {
-        let text_style = cx.editor.theme.get("ui.text");
-        let selected = cx.editor.theme.get("ui.text.focus");
-        let highlight_style = cx.editor.theme.get("special").add_modifier(Modifier::BOLD);
+        let text_style = cx.ui_tree.theme.get("ui.text");
+        let selected = cx.ui_tree.theme.get("ui.text.focus");
+        let highlight_style = cx.ui_tree.theme.get("special").add_modifier(Modifier::BOLD);
 
         // -- Render the frame:
         // clear area
-        let background = cx.editor.theme.get("ui.background");
+        let background = cx.ui_tree.theme.get("ui.background");
         surface.clear_with(area, background);
 
         // don't like this but the lifetime sucks
@@ -703,7 +703,7 @@ impl<T: Item + 'static> Component for Picker<T> {
         self.prompt.render(area, surface, cx);
 
         // -- Separator
-        let sep_style = cx.editor.theme.get("ui.background.separator");
+        let sep_style = cx.ui_tree.theme.get("ui.background.separator");
         let borders = BorderType::line_symbols(BorderType::Plain);
         for x in inner.left()..inner.right() {
             if let Some(cell) = surface.get_mut(x, inner.y + 1) {
@@ -831,7 +831,7 @@ impl<T: Item + 'static> Component for Picker<T> {
         );
     }
 
-    fn cursor(&self, area: Rect, editor: &ui_tree) -> (Option<Position>, CursorKind) {
+    fn cursor(&self, area: Rect, editor: &UITree) -> (Option<Position>, CursorKind) {
         let block = Block::default().borders(Borders::ALL);
         // calculate the inner area inside the box
         let inner = block.inner(area);
@@ -846,7 +846,7 @@ impl<T: Item + 'static> Component for Picker<T> {
 /// Returns a new list of options to replace the contents of the picker
 /// when called with the current picker query,
 pub type DynQueryCallback<T> =
-    Box<dyn Fn(String, &mut ui_tree) -> BoxFuture<'static, anyhow::Result<Vec<T>>>>;
+    Box<dyn Fn(String, &mut UITree) -> BoxFuture<'static, anyhow::Result<Vec<T>>>>;
 
 /// A picker that updates its contents via a callback whenever the
 /// query string changes. Useful for live grep, workspace symbols, etc.
@@ -883,7 +883,7 @@ impl<T: Item + Send + 'static> Component for DynamicPicker<T> {
 
         self.query.clone_from(current_query);
 
-        let new_options = (self.query_callback)(current_query.to_owned(), cx.editor);
+        let new_options = (self.query_callback)(current_query.to_owned(), cx.ui_tree);
 
         cx.jobs.callback(async move {
             let new_options = new_options.await?;
@@ -905,7 +905,7 @@ impl<T: Item + Send + 'static> Component for DynamicPicker<T> {
         EventResult::Consumed(None)
     }
 
-    fn cursor(&self, area: Rect, ctx: &ui_tree) -> (Option<Position>, CursorKind) {
+    fn cursor(&self, area: Rect, ctx: &UITree) -> (Option<Position>, CursorKind) {
         self.file_picker.cursor(area, ctx)
     }
 

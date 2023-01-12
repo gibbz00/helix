@@ -11,7 +11,7 @@ pub use tui::widgets::{Cell, Row};
 use fuzzy_matcher::skim::SkimMatcherV2 as Matcher;
 use fuzzy_matcher::FuzzyMatcher;
 
-use helix_view::{graphics::Rect, ui_tree};
+use helix_view::{graphics::Rect, UITree};
 use tui::layout::Constraint;
 
 pub trait Item {
@@ -55,7 +55,7 @@ pub struct Menu<T: Item> {
 
     widths: Vec<Constraint>,
 
-    callback_fn: Box<dyn Fn(&mut ui_tree, Option<&T>, MenuEvent)>,
+    callback_fn: Box<dyn Fn(&mut UITree, Option<&T>, MenuEvent)>,
 
     scroll: usize,
     size: (u16, u16),
@@ -71,7 +71,7 @@ impl<T: Item> Menu<T> {
     pub fn new(
         options: Vec<T>,
         editor_data: <T as Item>::Data,
-        callback_fn: impl Fn(&mut ui_tree, Option<&T>, MenuEvent) + 'static,
+        callback_fn: impl Fn(&mut UITree, Option<&T>, MenuEvent) + 'static,
     ) -> Self {
         let matches = (0..options.len()).map(|i| (i, 0)).collect();
         Self {
@@ -248,24 +248,24 @@ impl<T: Item + 'static> Component for Menu<T> {
         match event {
             // esc or ctrl-c aborts the completion and closes the menu
             key!(Esc) | ctrl!('c') => {
-                (self.callback_fn)(cx.editor, self.selection(), MenuEvent::Abort);
+                (self.callback_fn)(cx.ui_tree, self.selection(), MenuEvent::Abort);
                 return EventResult::Consumed(close_fn);
             }
             // arrow up/ctrl-p/shift-tab prev completion choice (including updating the doc)
             shift!(Tab) | key!(Up) | ctrl!('p') | ctrl!('k') => {
                 self.move_up();
-                (self.callback_fn)(cx.editor, self.selection(), MenuEvent::Update);
+                (self.callback_fn)(cx.ui_tree, self.selection(), MenuEvent::Update);
                 return EventResult::Consumed(None);
             }
             key!(Tab) | key!(Down) | ctrl!('n') | ctrl!('j') => {
                 // arrow down/ctrl-n/tab advances completion choice (including updating the doc)
                 self.move_down();
-                (self.callback_fn)(cx.editor, self.selection(), MenuEvent::Update);
+                (self.callback_fn)(cx.ui_tree, self.selection(), MenuEvent::Update);
                 return EventResult::Consumed(None);
             }
             key!(Enter) => {
                 if let Some(selection) = self.selection() {
-                    (self.callback_fn)(cx.editor, Some(selection), MenuEvent::Validate);
+                    (self.callback_fn)(cx.ui_tree, Some(selection), MenuEvent::Validate);
                     return EventResult::Consumed(close_fn);
                 } else {
                     return EventResult::Ignored(close_fn);
@@ -301,7 +301,7 @@ impl<T: Item + 'static> Component for Menu<T> {
     }
 
     fn render(&mut self, area: Rect, surface: &mut Surface, cx: &mut Context) {
-        let theme = &cx.editor.theme;
+        let theme = &cx.ui_tree.theme;
         let style = theme
             .try_get("ui.menu")
             .unwrap_or_else(|| theme.get("ui.text"));

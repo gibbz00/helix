@@ -42,13 +42,13 @@ use helix_view::{
     clipboard::ClipboardType,
     buffer_mirror::{FormatterError, SCRATCH_BUFFER_NAME},
     mode::Mode,
-    ui_tree::{Action, Motion},
+    UITree::{Action, Motion, UITree},
     info::Info,
     input::KeyEvent,
     keyboard::KeyCode,
     tree,
     buffer_view::BufferView,
-    BufferMirror, ui_tree, buffer_view::BufferViewID,
+    BufferMirror, UITree, buffer_view::BufferViewID,
 };
 use helix_server::buffer::BufferID;
 use std::{
@@ -70,7 +70,7 @@ use ignore::{DirEntry, WalkBuilder, WalkState};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
 pub struct Context<'a> {
-    pub ui_tree: &ui_tree,
+    pub ui_tree: &UITree,
     pub callback: Option<crate::compositor::Callback>,
     pub on_next_key_callback: Option<Box<dyn FnOnce(&mut Context, KeyEvent)>>,
     pub jobs: &'a mut Jobs,
@@ -120,15 +120,15 @@ fn move_impl<F>(cx: &mut Context, move_fn: F, dir: Direction, behaviour: Movemen
 where
     F: Fn(RopeSlice, Range, Direction, usize, Movement, usize) -> Range,
 {
-    let command_multiplier = ui_tree.command_multiplier.unwrap_or_one().get();
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let text = buffer.text().slice(..);
+    let command_multiplier = UITree.command_multiplier.unwrap_or_one().get();
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let text = buffer_mirror.text().slice(..);
 
-    let selection = buffer
-        .selection(buffer_view.view_id)
+    let selection = buffer_mirror
+        .selection()
         .clone()
-        .transform(|range| move_fn(text, range, dir, command_multiplier, behaviour, buffer.tab_width()));
-    buffer.set_selection(buffer_view.view_id, selection);
+        .transform(|range| move_fn(text, range, dir, command_multiplier, behaviour, buffer_mirror.tab_width()));
+    buffer_mirror.set_selection(selection);
 }
 
 use helix_core::movement::{move_horizontally, move_vertically};
@@ -165,10 +165,10 @@ fn extend_line_down(cx: &mut Context) {
     move_impl(cx, move_vertically, Direction::Forward, Movement::Extend)
 }
 
-fn goto_line_end_impl(buffer_view: &mut BufferView, buffer: &mut BufferMirror, movement: Movement) {
-    let text = buffer.text().slice(..);
+fn goto_line_end_impl(buffer_mirror: &mut BufferMirror, movement: Movement) {
+    let text = buffer_mirror.text().slice(..);
 
-    let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
+    let selection = buffer_mirror.selection().clone().transform(|range| {
         let line = range.cursor_line(text);
         let line_start = text.line_to_char(line);
 
@@ -177,14 +177,12 @@ fn goto_line_end_impl(buffer_view: &mut BufferView, buffer: &mut BufferMirror, m
 
         range.put_cursor(text, pos, movement == Movement::Extend)
     });
-    buffer.set_selection(buffer_view.view_id, selection);
+    buffer_mirror.set_selection(selection);
 }
 
 fn goto_line_end(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    goto_line_end_impl(
-        buffer_view,
-        buffer,
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    goto_line_end_impl(buffer_mirror,
         if cx.ui_tree.mode == Mode::Select {
             Movement::Extend
         } else {
@@ -194,27 +192,26 @@ fn goto_line_end(cx: &mut Context) {
 }
 
 fn extend_to_line_end(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    goto_line_end_impl(buffer_view, buffer, Movement::Extend)
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    goto_line_end_impl(buffer_mirror, Movement::Extend)
 }
 
-fn goto_line_end_newline_impl(buffer_view: &mut BufferView, buffer: &mut BufferMirror, movement: Movement) {
-    let text = buffer.text().slice(..);
+fn goto_line_end_newline_impl(buffer_mirror: &mut BufferMirror, movement: Movement) {
+    let text = buffer_mirror.text().slice(..);
 
-    let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
+    let selection = buffer_mirror.selection().clone().transform(|range| {
         let line = range.cursor_line(text);
         let pos = line_end_char_index(&text, line);
 
         range.put_cursor(text, pos, movement == Movement::Extend)
     });
-    buffer.set_selection(buffer_view.view_id, selection);
+    buffer_mirror.set_selection(selection);
 }
 
 fn goto_line_end_newline(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
+    let buffer_mirror = current_mut!(cx.ui_tree);
     goto_line_end_newline_impl(
-        buffer_view,
-        buffer,
+        buffer_mirror,
         if cx.ui_tree.mode == Mode::Select {
             Movement::Extend
         } else {
@@ -224,8 +221,8 @@ fn goto_line_end_newline(cx: &mut Context) {
 }
 
 fn extend_to_line_end_newline(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    goto_line_end_newline_impl(buffer_view, buffer, Movement::Extend)
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    goto_line_end_newline_impl(buffer_mirror, Movement::Extend)
 }
 
 fn goto_next_buffer(cx: &mut Context) {
@@ -237,20 +234,20 @@ fn goto_previous_buffer(cx: &mut Context) {
 }
 
 fn goto_buffer(ui_tree: &mut UITree, direction: Direction) {
-    let current = buffer_view!(ui_tree).buffer;
+    let current = buffer_mirror!(ui_tree).buffer;
 
     let id = match direction {
         Direction::Forward => {
-            let iter = ui_tree.buffers.keys();
+            let iter = ui_tree.buffer_mirrors.keys();
             let mut iter = iter.skip_while(|id| *id != &current);
             iter.next(); // skip current item
-            iter.next().or_else(|| ui_tree.buffers.keys().next())
+            iter.next().or_else(|| ui_tree.buffer_mirrors.keys().next())
         }
         Direction::Backward => {
-            let iter = ui_tree.buffers.keys();
+            let iter = ui_tree.buffer_mirrors.keys();
             let mut iter = iter.rev().skip_while(|id| *id != &current);
             iter.next(); // skip current item
-            iter.next().or_else(|| ui_tree.buffers.keys().rev().next())
+            iter.next().or_else(|| ui_tree.buffer_mirrors.keys().rev().next())
         }
     }
     .unwrap();
@@ -262,10 +259,10 @@ fn goto_buffer(ui_tree: &mut UITree, direction: Direction) {
 
 
 fn kill_to_line_start(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let text = buffer.text().slice(..);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let text = buffer_mirror.text().slice(..);
 
-    let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
+    let selection = buffer_mirror.selection().clone().transform(|range| {
         let line = range.cursor_line(text);
         let first_char = text.line_to_char(line);
         let anchor = range.cursor(text);
@@ -286,16 +283,16 @@ fn kill_to_line_start(cx: &mut Context) {
         };
         Range::new(head, anchor)
     });
-    delete_selection_insert_mode(buffer, buffer_view, &selection);
+    delete_selection_insert_mode(buffer_mirror, &selection);
 
     lsp::signature_help_impl(cx, SignatureHelpInvoked::Automatic);
 }
 
 fn kill_to_line_end(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let text = buffer.text().slice(..);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let text = buffer_mirror.text().slice(..);
 
-    let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
+    let selection = buffer_mirror.selection().clone().transform(|range| {
         let line = range.cursor_line(text);
         let line_end_pos = line_end_char_index(&text, line);
         let pos = range.cursor(text);
@@ -307,16 +304,16 @@ fn kill_to_line_end(cx: &mut Context) {
         }
         new_range
     });
-    delete_selection_insert_mode(buffer, buffer_view, &selection);
+    delete_selection_insert_mode(buffer_mirror, &selection);
 
     lsp::signature_help_impl(cx, SignatureHelpInvoked::Automatic);
 }
 
 fn goto_first_nonwhitespace(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let text = buffer.text().slice(..);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let text = buffer_mirror.text().slice(..);
 
-    let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
+    let selection = buffer_mirror.selection().clone().transform(|range| {
         let line = range.cursor_line(text);
 
         if let Some(pos) = find_first_non_whitespace_char(text.line(line)) {
@@ -326,15 +323,15 @@ fn goto_first_nonwhitespace(cx: &mut Context) {
             range
         }
     });
-    buffer.set_selection(buffer_view.view_id, selection);
+    buffer_mirror.set_selection(selection);
 }
 
 fn trim_selections(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let text = buffer.text().slice(..);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let text = buffer_mirror.text().slice(..);
 
-    let ranges: SmallVec<[Range; 1]> = buffer
-        .selection(buffer_view.view_id)
+    let ranges: SmallVec<[Range; 1]> = buffer_mirror
+        .selection()
         .iter()
         .filter_map(|range| {
             if range.is_empty() || range.slice(text).chars().all(|ch| ch.is_whitespace()) {
@@ -349,12 +346,12 @@ fn trim_selections(cx: &mut Context) {
         .collect();
 
     if !ranges.is_empty() {
-        let primary = buffer.selection(buffer_view.view_id).primary();
+        let primary = buffer_mirror.selection().primary();
         let idx = ranges
             .iter()
             .position(|range| range.overlaps(&primary))
             .unwrap_or(ranges.len() - 1);
-        buffer.set_selection(buffer_view.view_id, Selection::new(ranges, idx));
+        buffer_mirror.set_selection(Selection::new(ranges, idx));
     } else {
         collapse_selection(cx);
         keep_primary_selection(cx);
@@ -363,11 +360,11 @@ fn trim_selections(cx: &mut Context) {
 
 // align text in selection
 fn align_selections(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let text = buffer.text().slice(..);
-    let selection = buffer.selection(buffer_view.view_id);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let text = buffer_mirror.text().slice(..);
+    let selection = buffer_mirror.selection();
 
-    let tab_width = buffer.tab_width();
+    let tab_width = buffer_mirror.tab_width();
     let mut column_widths: Vec<Vec<_>> = Vec::new();
     let mut last_line = text.len_lines() + 1;
     let mut col = 0;
@@ -422,16 +419,17 @@ fn align_selections(cx: &mut Context) {
     // The changeset has to be sorted
     changes.sort_unstable_by_key(|(from, _, _)| *from);
 
-    let transaction = Transaction::change(buffer.text(), changes.into_iter());
-    apply_transaction(&transaction, buffer, buffer_view);
+    let transaction = Transaction::change(buffer_mirror.text(), changes.into_iter());
+    apply_transaction(&transaction, buffer_mirror);
 }
 
 fn goto_window(cx: &mut Context, align: Align) {
-    let count = ui_tree.command_multiplier.unwrap_or_one().get() - 1;
+    let count = UITree.command_multiplier.unwrap_or_one().get() - 1;
     let config = cx.ui_tree.config();
-    let (buffer_view, buffer) = current!(cx.ui_tree);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
 
-    let height = buffer_view.inner_height();
+    let height = buffer_mirror.inner_height();
 
     // respect user given count if any
     // - 1 so we have at least one gap in the middle.
@@ -439,23 +437,23 @@ fn goto_window(cx: &mut Context, align: Align) {
     // as we type
     let scrolloff = config.scrolloff.min(height.saturating_sub(1) / 2);
 
-    let last_line = buffer_view.last_line(buffer);
+    let last_line = buffer_mirror.last_line(buffer_mirror);
 
     let line = match align {
-        Align::Top => buffer_view.offset.row + scrolloff + count,
-        Align::Center => buffer_view.offset.row + ((last_line - buffer_view.offset.row) / 2),
+        Align::Top => buffer_mirror.offset.row + scrolloff + count,
+        Align::Center => buffer_mirror.offset.row + ((last_line - buffer_mirror.offset.row) / 2),
         Align::Bottom => last_line.saturating_sub(scrolloff + count),
     }
-    .max(buffer_view.offset.row + scrolloff)
+    .max(buffer_mirror.offset.row + scrolloff)
     .min(last_line.saturating_sub(scrolloff));
 
-    let pos = buffer.text().line_to_char(line);
-    let text = buffer.text().slice(..);
-    let selection = buffer
-        .selection(buffer_view.view_id)
+    let pos = buffer_mirror.text().line_to_char(line);
+    let text = buffer_mirror.text().slice(..);
+    let selection = buffer_mirror
+        .selection()
         .clone()
         .transform(|range| range.put_cursor(text, pos, cx.ui_tree.mode == Mode::Select));
-    buffer.set_selection(buffer_view.view_id, selection);
+    buffer_mirror.set_selection(selection);
 }
 
 fn goto_window_top(cx: &mut Context) {
@@ -474,15 +472,15 @@ fn move_word_impl<F>(cx: &mut Context, move_fn: F)
 where
     F: Fn(RopeSlice, Range, usize) -> Range,
 {
-    let count = ui_tree.command_multiplier.unwrap_or_one().get();
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let text = buffer.text().slice(..);
+    let count = UITree.command_multiplier.unwrap_or_one().get();
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let text = buffer_mirror.text().slice(..);
 
-    let selection = buffer
-        .selection(buffer_view.view_id)
+    let selection = buffer_mirror
+        .selection()
         .clone()
         .transform(|range| move_fn(text, range, count));
-    buffer.set_selection(buffer_view.view_id, selection);
+    buffer_mirror.set_selection(selection);
 }
 
 fn move_next_word_start(cx: &mut Context) {
@@ -517,21 +515,21 @@ fn goto_para_impl<F>(cx: &mut Context, move_fn: F)
 where
     F: Fn(RopeSlice, Range, usize, Movement) -> Range + 'static,
 {
-    let count = ui_tree.command_multiplier.unwrap_or_one().get();
+    let count = UITree.command_multiplier.unwrap_or_one().get();
     let motion = move |ui_tree: &mut UITree| {
-        let (buffer_view, buffer) = current!(ui_tree);
-        let text = buffer.text().slice(..);
+        let buffer_mirror = current_mut!(ui_tree);
+        let text = buffer_mirror.text().slice(..);
         let behavior = if ui_tree.mode == Mode::Select {
             Movement::Extend
         } else {
             Movement::Move
         };
 
-        let selection = buffer
-            .selection(buffer_view.view_id)
+        let selection = buffer_mirror
+            .selection()
             .clone()
             .transform(|range| move_fn(text, range, count, behavior));
-        buffer.set_selection(buffer_view.view_id, selection);
+        buffer_mirror.set_selection(selection);
     };
     motion(cx.ui_tree);
     cx.ui_tree.last_motion = Some(Motion(Box::new(motion)));
@@ -546,30 +544,32 @@ fn goto_next_paragraph(cx: &mut Context) {
 }
 
 fn goto_file_start(cx: &mut Context) {
-    if ui_tree.command_multiplier.get().is_some() {
+    if UITree.command_multiplier.get().is_some() {
         goto_line(cx);
     } else {
-        let (buffer_view, buffer) = current!(cx.ui_tree);
-        let text = buffer.text().slice(..);
-        let selection = buffer
-            .selection(buffer_view.view_id)
+        let buffer_mirror = current_mut!(cx.ui_tree);
+        let view = buffer_view_mut!(cx.ui_tree);
+        let text = buffer_mirror.text().slice(..);
+        let selection = buffer_mirror
+            .selection()
             .clone()
             .transform(|range| range.put_cursor(text, 0, cx.ui_tree.mode == Mode::Select));
-        push_jump(buffer_view, buffer);
-        buffer.set_selection(buffer_view.view_id, selection);
+        push_jump(view, buffer_mirror);
+        buffer_mirror.set_selection(selection);
     }
 }
 
 fn goto_file_end(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let text = buffer.text().slice(..);
-    let pos = buffer.text().len_chars();
-    let selection = buffer
-        .selection(buffer_view.view_id)
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
+    let text = buffer_mirror.text().slice(..);
+    let pos = buffer_mirror.text().len_chars();
+    let selection = buffer_mirror
+        .selection()
         .clone()
         .transform(|range| range.put_cursor(text, pos, cx.ui_tree.mode == Mode::Select));
-    push_jump(buffer_view, buffer);
-    buffer.set_selection(buffer_view.view_id, selection);
+    push_jump(view, buffer_mirror);
+    buffer_mirror.set_selection(selection);
 }
 
 fn goto_file(cx: &mut Context) {
@@ -586,9 +586,9 @@ fn goto_file_vsplit(cx: &mut Context) {
 
 /// Goto files in selection.
 fn goto_file_impl(cx: &mut Context, action: Action) {
-    let (buffer_view, buffer) = current_ref!(cx.ui_tree);
-    let text = buffer.text();
-    let selections = buffer.selection(buffer_view.view_id);
+    let buffer_mirror = current!(cx.ui_tree);
+    let text = buffer_mirror.text();
+    let selections = buffer_mirror.selection();
     let mut paths: Vec<_> = selections
         .iter()
         .map(|r| text.slice(r.from()..r.to()).to_string())
@@ -596,7 +596,7 @@ fn goto_file_impl(cx: &mut Context, action: Action) {
     let primary = selections.primary();
     // Checks whether there is only one selection with a width of 1
     if selections.len() == 1 && primary.len() == 1 {
-        let count = ui_tree.command_multiplier.unwrap_or_one().get();
+        let count = UITree.command_multiplier.unwrap_or_one().get();
         let text_slice = text.slice(..);
         // In this case it selects the WORD under the cursor
         let current_word = textobject::textobject_word(
@@ -630,16 +630,16 @@ fn extend_word_impl<F>(cx: &mut Context, extend_fn: F)
 where
     F: Fn(RopeSlice, Range, usize) -> Range,
 {
-    let count = ui_tree.command_multiplier.unwrap_or_one().get();
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let text = buffer.text().slice(..);
+    let count = UITree.command_multiplier.unwrap_or_one().get();
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let text = buffer_mirror.text().slice(..);
 
-    let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
+    let selection = buffer_mirror.selection().clone().transform(|range| {
         let word = extend_fn(text, range, count);
         let pos = word.cursor(text);
         range.put_cursor(text, pos, true)
     });
-    buffer.set_selection(buffer_view.view_id, selection);
+    buffer_mirror.set_selection(selection);
 }
 
 fn extend_next_word_start(cx: &mut Context) {
@@ -676,7 +676,7 @@ where
 {
     // TODO: count is reset when a mappable command is found, so we move it into the closure here.
     // Would be nice to carry over.
-    let command_multiplier = ui_tree.command_multiplier.unwrap_or_one().get();
+    let command_multiplier = UITree.command_multiplier.unwrap_or_one().get();
 
     // need to wait for next key
     // TODO: should this be done by grapheme rather than char?  For example,
@@ -692,7 +692,7 @@ where
             // usually mix line endings.  But we should fix it eventually
             // anyway.
             {
-                buffer!(cx.ui_tree).line_ending.as_str().chars().next().unwrap()
+                current!(cx.ui_tree).line_ending.as_str().chars().next().unwrap()
             }
 
             KeyEvent {
@@ -726,10 +726,10 @@ fn find_char_impl<F, M: CharMatcher + Clone + Copy>(
 ) where
     F: Fn(RopeSlice, M, usize, usize, bool) -> Option<usize> + 'static,
 {
-    let (buffer_view, buffer) = current!(ui_tree);
-    let text = buffer.text().slice(..);
+    let buffer_mirror = current_mut!(ui_tree);
+    let text = buffer_mirror.text().slice(..);
 
-    let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
+    let selection = buffer_mirror.selection().clone().transform(|range| {
         // TODO: use `Range::cursor()` here instead.  However, that works in terms of
         // graphemes, whereas this function doesn't yet.  So we're doing the same logic
         // here, but just in terms of chars instead.
@@ -747,7 +747,7 @@ fn find_char_impl<F, M: CharMatcher + Clone + Copy>(
             }
         })
     });
-    buffer.set_selection(buffer_view.view_id, selection);
+    buffer_mirror.set_selection(selection);
 }
 
 fn find_next_char_impl(
@@ -820,7 +820,7 @@ fn extend_prev_char(cx: &mut Context) {
 }
 
 fn repeat_last_motion(cx: &mut Context) {
-    let count = ui_tree.command_multiplier.unwrap_or_one().get();
+    let count = UITree.command_multiplier.unwrap_or_one().get();
     let last_motion = cx.ui_tree.last_motion.take();
     if let Some(m) = &last_motion {
         for _ in 0..count {
@@ -835,7 +835,7 @@ fn replace(cx: &mut Context) {
 
     // need to wait for next key
     cx.on_next_key(move |cx, event| {
-        let (buffer_view, buffer) = current!(cx.ui_tree);
+        let buffer_mirror = current_mut!(cx.ui_tree);
         let ch: Option<&str> = match event {
             KeyEvent {
                 code: KeyCode::Char(ch),
@@ -844,20 +844,20 @@ fn replace(cx: &mut Context) {
             KeyEvent {
                 code: KeyCode::Enter,
                 ..
-            } => Some(buffer.line_ending.as_str()),
+            } => Some(buffer_mirror.line_ending.as_str()),
             KeyEvent {
                 code: KeyCode::Tab, ..
             } => Some("\t"),
             _ => None,
         };
 
-        let selection = buffer.selection(buffer_view.view_id);
+        let selection = buffer_mirror.selection();
 
         if let Some(ch) = ch {
-            let transaction = Transaction::change_by_selection(buffer.text(), selection, |range| {
+            let transaction = Transaction::change_by_selection(buffer_mirror.text(), selection, |range| {
                 if !range.is_empty() {
                     let text: String =
-                        RopeGraphemes::new(buffer.text().slice(range.from()..range.to()))
+                        RopeGraphemes::new(buffer_mirror.text().slice(range.from()..range.to()))
                             .map(|g| {
                                 let cow: Cow<str> = g.into();
                                 if str_is_line_ending(&cow) {
@@ -875,7 +875,7 @@ fn replace(cx: &mut Context) {
                 }
             });
 
-            apply_transaction(&transaction, buffer, buffer_view);
+            apply_transaction(&transaction, buffer_mirror);
             exit_select_mode(cx);
         }
     })
@@ -885,15 +885,15 @@ fn switch_case_impl<F>(cx: &mut Context, change_fn: F)
 where
     F: Fn(RopeSlice) -> Tendril,
 {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let selection = buffer.selection(buffer_view.view_id);
-    let transaction = Transaction::change_by_selection(buffer.text(), selection, |range| {
-        let text: Tendril = change_fn(range.slice(buffer.text().slice(..)));
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let selection = buffer_mirror.selection();
+    let transaction = Transaction::change_by_selection(buffer_mirror.text(), selection, |range| {
+        let text: Tendril = change_fn(range.slice(buffer_mirror.text().slice(..)));
 
         (range.from(), range.to(), Some(text))
     });
 
-    apply_transaction(&transaction, buffer, buffer_view);
+    apply_transaction(&transaction, buffer_mirror);
 }
 
 fn switch_case(cx: &mut Context) {
@@ -928,44 +928,45 @@ fn switch_to_lowercase(cx: &mut Context) {
 pub fn scroll(cx: &mut Context, offset: usize, direction: Direction) {
     use Direction::*;
     let config = cx.ui_tree.config();
-    let (buffer_view, buffer) = current!(cx.ui_tree);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
 
-    let range = buffer.selection(buffer_view.view_id).primary();
-    let text = buffer.text().slice(..);
+    let range = buffer_mirror.selection().primary();
+    let text = buffer_mirror.text().slice(..);
 
-    let cursor = visual_coords_at_pos(text, range.cursor(text), buffer.tab_width());
-    let buffer_last_line = buffer.text().len_lines().saturating_sub(1);
+    let cursor = visual_coords_at_pos(text, range.cursor(text), buffer_mirror.tab_width());
+    let buffer_last_line = buffer_mirror.text().len_lines().saturating_sub(1);
 
-    let last_line = buffer_view.last_line(buffer);
+    let last_line = view.last_line(buffer_mirror);
 
-    if direction == Backward && buffer_view.offset.row == 0
+    if direction == Backward && view.offset.row == 0
         || direction == Forward && last_line == buffer_last_line
     {
         return;
     }
 
-    let height = buffer_view.inner_height();
+    let height = view.inner_height();
 
     let scrolloff = config.scrolloff.min(height / 2);
 
-    buffer_view.offset.row = match direction {
-        Forward => buffer_view.offset.row + offset,
-        Backward => buffer_view.offset.row.saturating_sub(offset),
+    view.offset.row = match direction {
+        Forward => view.offset.row + offset,
+        Backward => view.offset.row.saturating_sub(offset),
     }
     .min(buffer_last_line);
 
     // recalculate last line
-    let last_line = buffer_view.last_line(buffer);
+    let last_line = view.last_line(buffer_mirror);
 
     // clamp into buffer_viewport
     let line = cursor
         .row
-        .max(buffer_view.offset.row + scrolloff)
+        .max(view.offset.row + scrolloff)
         .min(last_line.saturating_sub(scrolloff));
 
     // If cursor needs moving, replace primary selection
     if line != cursor.row {
-        let head = pos_at_visual_coords(text, Position::new(line, cursor.col), buffer.tab_width()); // this func will properly truncate to line end
+        let head = pos_at_visual_coords(text, Position::new(line, cursor.col), buffer_mirror.tab_width()); // this func will properly truncate to line end
 
         let anchor = if cx.ui_tree.mode == Mode::Select {
             range.anchor
@@ -975,42 +976,42 @@ pub fn scroll(cx: &mut Context, offset: usize, direction: Direction) {
 
         // replace primary selection with an empty selection at cursor pos
         let prim_sel = Range::new(anchor, head);
-        let mut sel = buffer.selection(buffer_view.view_id).clone();
+        let mut sel = buffer_mirror.selection().clone();
         let idx = sel.primary_index();
         sel = sel.replace(idx, prim_sel);
-        buffer.set_selection(buffer_view.view_id, sel);
+        buffer_mirror.set_selection(sel);
     }
 }
 
 fn page_up(cx: &mut Context) {
-    let buffer_view = buffer_view!(cx.ui_tree);
+    let buffer_view = buffer_mirror!(cx.ui_tree);
     let offset = buffer_view.inner_height();
     scroll(cx, offset, Direction::Backward);
 }
 
 fn page_down(cx: &mut Context) {
-    let buffer_view = buffer_view!(cx.ui_tree);
+    let buffer_view = buffer_mirror!(cx.ui_tree);
     let offset = buffer_view.inner_height();
     scroll(cx, offset, Direction::Forward);
 }
 
 fn half_page_up(cx: &mut Context) {
-    let buffer_view = buffer_view!(cx.ui_tree);
+    let buffer_view = buffer_mirror!(cx.ui_tree);
     let offset = buffer_view.inner_height() / 2;
     scroll(cx, offset, Direction::Backward);
 }
 
 fn half_page_down(cx: &mut Context) {
-    let buffer_view = buffer_view!(cx.ui_tree);
+    let buffer_view = buffer_mirror!(cx.ui_tree);
     let offset = buffer_view.inner_height() / 2;
     scroll(cx, offset, Direction::Forward);
 }
 
 fn copy_selection_on_line(cx: &mut Context, direction: Direction) {
-    let count = ui_tree.command_multiplier.unwrap_or_one().get();
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let text = buffer.text().slice(..);
-    let selection = buffer.selection(buffer_view.view_id);
+    let count = UITree.command_multiplier.unwrap_or_one().get();
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let text = buffer_mirror.text().slice(..);
+    let selection = buffer_mirror.selection();
     let mut ranges = SmallVec::with_capacity(selection.ranges().len() * (count + 1));
     ranges.extend_from_slice(selection.ranges());
     let mut primary_index = 0;
@@ -1024,7 +1025,7 @@ fn copy_selection_on_line(cx: &mut Context, direction: Direction) {
             (range.head, range.anchor.saturating_sub(1))
         };
 
-        let tab_width = buffer.tab_width();
+        let tab_width = buffer_mirror.tab_width();
 
         let head_pos = visual_coords_at_pos(text, head, tab_width);
         let anchor_pos = visual_coords_at_pos(text, anchor, tab_width);
@@ -1078,7 +1079,7 @@ fn copy_selection_on_line(cx: &mut Context, direction: Direction) {
     }
 
     let selection = Selection::new(ranges, primary_index);
-    buffer.set_selection(buffer_view.view_id, selection);
+    buffer_mirror.set_selection(selection);
 }
 
 fn copy_selection_on_prev_line(cx: &mut Context) {
@@ -1090,10 +1091,10 @@ fn copy_selection_on_next_line(cx: &mut Context) {
 }
 
 fn select_all(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
+    let buffer_mirror = current_mut!(cx.ui_tree);
 
-    let end = buffer.text().len_chars();
-    buffer.set_selection(buffer_view.view_id, Selection::single(0, end))
+    let end = buffer_mirror.text().len_chars();
+    buffer_mirror.set_selection(Selection::single(0, end))
 }
 
 fn select_regex(cx: &mut Context) {
@@ -1104,15 +1105,15 @@ fn select_regex(cx: &mut Context) {
         Some(reg),
         ui::completers::none,
         move |ui_tree, regex, event| {
-            let (buffer_view, buffer) = current!(ui_tree);
+            let buffer_mirror = current_mut!(ui_tree);
             if !matches!(event, PromptEvent::Update | PromptEvent::Validate) {
                 return;
             }
-            let text = buffer.text().slice(..);
+            let text = buffer_mirror.text().slice(..);
             if let Some(selection) =
-                selection::select_on_matches(text, buffer.selection(buffer_view.view_id), &regex)
+                selection::select_on_matches(text, buffer_mirror.selection(), &regex)
             {
-                buffer.set_selection(buffer_view.view_id, selection);
+                buffer_mirror.set_selection(selection);
             }
         },
     );
@@ -1126,26 +1127,26 @@ fn split_selection(cx: &mut Context) {
         Some(reg),
         ui::completers::none,
         move |ui_tree, regex, event| {
-            let (buffer_view, buffer) = current!(ui_tree);
+            let buffer_mirror = current_mut!(ui_tree);
             if !matches!(event, PromptEvent::Update | PromptEvent::Validate) {
                 return;
             }
-            let text = buffer.text().slice(..);
-            let selection = selection::split_on_matches(text, buffer.selection(buffer_view.view_id), &regex);
-            buffer.set_selection(buffer_view.view_id, selection);
+            let text = buffer_mirror.text().slice(..);
+            let selection = selection::split_on_matches(text, buffer_mirror.selection(), &regex);
+            buffer_mirror.set_selection(selection);
         },
     );
 }
 
 fn split_selection_on_newline(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let text = buffer.text().slice(..);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let text = buffer_mirror.text().slice(..);
     // only compile the regex once
     #[allow(clippy::trivial_regex)]
     static REGEX: Lazy<Regex> =
         Lazy::new(|| Regex::new(r"\r\n|[\n\r\u{000B}\u{000C}\u{0085}\u{2028}\u{2029}]").unwrap());
-    let selection = selection::split_on_matches(text, buffer.selection(buffer_view.view_id), &REGEX);
-    buffer.set_selection(buffer_view.view_id, selection);
+    let selection = selection::split_on_matches(text, buffer_mirror.selection(), &REGEX);
+    buffer_mirror.set_selection(selection);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1159,9 +1160,9 @@ fn search_impl(
     wrap_around: bool,
     show_warnings: bool,
 ) {
-    let (buffer_view, buffer) = current!(ui_tree);
-    let text = buffer.text().slice(..);
-    let selection = buffer.selection(buffer_view.view_id);
+    let buffer_mirror = current_mut!(ui_tree);
+    let text = buffer_mirror.text().slice(..);
+    let selection = buffer_mirror.selection();
 
     // Get the right side of the primary block cursor for forward search, or the
     // grapheme before the start of the selection for reverse search.
@@ -1208,9 +1209,10 @@ fn search_impl(
         }
     }
 
-    let (buffer_view, buffer) = current!(ui_tree);
-    let text = buffer.text().slice(..);
-    let selection = buffer.selection(buffer_view.view_id);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
+    let text = buffer_mirror.text().slice(..);
+    let selection = buffer_mirror.selection();
 
     if let Some(mat) = mat {
         let start = text.byte_to_char(mat.start() + offset);
@@ -1230,8 +1232,8 @@ fn search_impl(
             Movement::Move => selection.clone().replace(selection.primary_index(), range),
         };
 
-        buffer.set_selection(buffer_view.view_id, selection);
-        buffer_view.ensure_cursor_in_view_center(buffer, scrolloff);
+        buffer_mirror.set_selection(selection);
+        view.ensure_cursor_in_view_center(buffer_mirror, scrolloff);
     };
 }
 
@@ -1258,20 +1260,20 @@ fn searcher(cx: &mut Context, direction: Direction) {
     let scrolloff = config.scrolloff;
     let wrap_around = config.search.wrap_around;
 
-    let buffer = buffer!(cx.ui_tree);
+    let buffer_mirror = current!(cx.ui_tree);
 
     // TODO: could probably share with select_on_matches?
 
     // HAXX: sadly we can't avoid allocating a single string for the whole buffer since we can't
     // feed chunks into the regex yet
-    let contents = buffer.text().slice(..).to_string();
+    let contents = buffer_mirror.text().slice(..).to_string();
     let completions = search_completions(cx, Some(reg));
 
     ui::regex_prompt(
         cx,
         "search:".into(),
         Some(reg),
-        move |_ui_tree: &ui_tree, input: &str| {
+        move |_ui_tree: &UITree, input: &str| {
             completions
                 .iter()
                 .filter(|comp| comp.starts_with(input))
@@ -1297,13 +1299,13 @@ fn searcher(cx: &mut Context, direction: Direction) {
 }
 
 fn search_next_or_prev_impl(cx: &mut Context, movement: Movement, direction: Direction) {
-    let count = ui_tree.command_multiplier.unwrap_or_one().get();
+    let count = UITree.command_multiplier.unwrap_or_one().get();
     let config = cx.ui_tree.config();
     let scrolloff = config.scrolloff;
-    let (_, buffer) = current!(cx.ui_tree);
+    let buffer_mirror = current_mut!(cx.ui_tree);
     let registers = &cx.ui_tree.registers;
     if let Some(query) = registers.read('/').and_then(|query| query.last()) {
-        let contents = buffer.text().slice(..).to_string();
+        let contents = buffer_mirror.text().slice(..).to_string();
         let search_config = &config.search;
         let case_insensitive = if search_config.smart_case {
             !query.chars().any(char::is_uppercase)
@@ -1351,11 +1353,11 @@ fn extend_search_prev(cx: &mut Context) {
 }
 
 fn search_selection(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let contents = buffer.text().slice(..);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let contents = buffer_mirror.text().slice(..);
 
-    let regex = buffer
-        .selection(buffer_view.view_id)
+    let regex = buffer_mirror
+        .selection()
         .iter()
         .map(|selection| regex::escape(&selection.fragment(contents)))
         .collect::<HashSet<_>>() // Collect into hashset to deduplicate identical regexes
@@ -1445,7 +1447,7 @@ fn global_search(cx: &mut Context) {
         cx,
         "global-search:".into(),
         Some(reg),
-        move |_ui_tree: &ui_tree, input: &str| {
+        move |_ui_tree: &UITree, input: &str| {
             completions
                 .iter()
                 .filter(|comp| comp.starts_with(input))
@@ -1526,7 +1528,7 @@ fn global_search(cx: &mut Context) {
         },
     );
 
-    let current_path = buffer_mut!(cx.ui_tree).path().cloned();
+    let current_path = current_mut!(cx.ui_tree).path().cloned();
 
     let show_picker = async move {
         let all_matches: Vec<FileResult> =
@@ -1555,13 +1557,14 @@ fn global_search(cx: &mut Context) {
                         }
 
                         let line_num = *line_num;
-                        let (buffer_view, buffer) = current!(cx.ui_tree);
-                        let text = buffer.text();
+                        let buffer_mirror = current_mut!(cx.ui_tree);
+                        let view = buffer_view_mut!(cx.ui_tree);
+                        let text = buffer_mirror.text();
                         let start = text.line_to_char(line_num);
                         let end = text.line_to_char((line_num + 1).min(text.len_lines()));
 
-                        buffer.set_selection(buffer_view.view_id, Selection::single(start, end));
-                        align_view(buffer, buffer_view, Align::Center);
+                        buffer_mirror.set_selection(Selection::single(start, end));
+                        align_view(buffer_mirror, view, Align::Center);
                     },
                     |_ui_tree, FileResult { path, line_num }| {
                         Some((path.clone().into(), Some((*line_num, *line_num))))
@@ -1581,8 +1584,8 @@ enum Extend {
 }
 
 fn extend_line(cx: &mut Context) {
-    let (buffer_view, buffer) = current_ref!(cx.ui_tree);
-    let extend = match buffer.selection(buffer_view.view_id).primary().direction() {
+    let buffer_mirror = current!(cx.ui_tree);
+    let extend = match buffer_mirror.selection().primary().direction() {
         Direction::Forward => Extend::Below,
         Direction::Backward => Extend::Above,
     };
@@ -1598,11 +1601,11 @@ fn extend_line_above(cx: &mut Context) {
 }
 
 fn extend_line_impl(cx: &mut Context, extend: Extend) {
-    let count = ui_tree.command_multiplier.unwrap_or_one().get();
-    let (buffer_view, buffer) = current!(cx.ui_tree);
+    let count = UITree.command_multiplier.unwrap_or_one().get();
+    let buffer_mirror = current_mut!(cx.ui_tree);
 
-    let text = buffer.text();
-    let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
+    let text = buffer_mirror.text();
+    let selection = buffer_mirror.selection().clone().transform(|range| {
         let (start_line, end_line) = range.line_range(text.slice(..));
 
         let start = text.line_to_char(match extend {
@@ -1636,16 +1639,15 @@ fn extend_line_impl(cx: &mut Context, extend: Extend) {
         Range::new(anchor, head)
     });
 
-    buffer.set_selection(buffer_view.view_id, selection);
+    buffer_mirror.set_selection(selection);
 }
 
 fn extend_to_line_bounds(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
+    let buffer_mirror = current_mut!(cx.ui_tree);
 
-    buffer.set_selection(
-        buffer_view.view_id,
-        buffer.selection(buffer_view.view_id).clone().transform(|range| {
-            let text = buffer.text();
+    buffer_mirror.set_selection(
+        buffer_mirror.selection().clone().transform(|range| {
+            let text = buffer_mirror.text();
 
             let (start_line, end_line) = range.line_range(text.slice(..));
             let start = text.line_to_char(start_line);
@@ -1657,12 +1659,11 @@ fn extend_to_line_bounds(cx: &mut Context) {
 }
 
 fn shrink_to_line_bounds(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
+    let buffer_mirror = current_mut!(cx.ui_tree);
 
-    buffer.set_selection(
-        buffer_view.view_id,
-        buffer.selection(buffer_view.view_id).clone().transform(|range| {
-            let text = buffer.text();
+    buffer_mirror.set_selection(
+        buffer_mirror.selection().clone().transform(|range| {
+            let text = buffer_mirror.text();
 
             let (start_line, end_line) = range.line_range(text.slice(..));
 
@@ -1699,23 +1700,23 @@ enum Operation {
 }
 
 fn delete_selection_impl(cx: &mut Context, op: Operation) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
+    let buffer_mirror = current_mut!(cx.ui_tree);
 
-    let selection = buffer.selection(buffer_view.view_id);
+    let selection = buffer_mirror.selection();
 
     if cx.ui_tree.register != Some('_') {
         // first yank the selection
-        let text = buffer.text().slice(..);
+        let text = buffer_mirror.text().slice(..);
         let values: Vec<String> = selection.fragments(text).map(Cow::into_owned).collect();
         let reg_name = cx.ui_tree.selected_register.unwrap_or('"');
         cx.ui_tree.registers.write(reg_name, values);
     };
 
     // then delete
-    let transaction = Transaction::change_by_selection(buffer.text(), selection, |range| {
+    let transaction = Transaction::change_by_selection(buffer_mirror.text(), selection, |range| {
         (range.from(), range.to(), None)
     });
-    apply_transaction(&transaction, buffer, buffer_view);
+    apply_transaction(&transaction, buffer_mirror);
 
     match op {
         Operation::Delete => {
@@ -1729,11 +1730,11 @@ fn delete_selection_impl(cx: &mut Context, op: Operation) {
 }
 
 #[inline]
-fn delete_selection_insert_mode(buffer: &mut BufferMirror, buffer_view: &mut BufferView, selection: &Selection) {
-    let transaction = Transaction::change_by_selection(buffer.text(), selection, |range| {
+fn delete_selection_insert_mode(buffer_mirror: &mut BufferMirror, selection: &Selection) {
+    let transaction = Transaction::change_by_selection(buffer_mirror.text(), selection, |range| {
         (range.from(), range.to(), None)
     });
-    apply_transaction(&transaction, buffer, buffer_view);
+    apply_transaction(&transaction, buffer_mirror);
 }
 
 fn delete_selection(cx: &mut Context) {
@@ -1755,35 +1756,35 @@ fn change_selection_noyank(cx: &mut Context) {
 }
 
 fn collapse_selection(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let text = buffer.text().slice(..);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let text = buffer_mirror.text().slice(..);
 
-    let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
+    let selection = buffer_mirror.selection().clone().transform(|range| {
         let pos = range.cursor(text);
         Range::new(pos, pos)
     });
-    buffer.set_selection(buffer_view.view_id, selection);
+    buffer_mirror.set_selection(selection);
 }
 
 fn flip_selections(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
+    let buffer_mirror = current_mut!(cx.ui_tree);
 
-    let selection = buffer
-        .selection(buffer_view.view_id)
+    let selection = buffer_mirror
+        .selection()
         .clone()
         .transform(|range| range.flip());
-    buffer.set_selection(buffer_view.view_id, selection);
+    buffer_mirror.set_selection(selection);
 }
 
 fn ensure_selections_forward(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
+    let buffer_mirror = current_mut!(cx.ui_tree);
 
-    let selection = buffer
-        .selection(buffer_view.view_id)
+    let selection = buffer_mirror
+        .selection()
         .clone()
         .transform(|r| r.with_direction(Direction::Forward));
 
-    buffer.set_selection(buffer_view.view_id, selection);
+    buffer_mirror.set_selection(selection);
 }
 
 fn enter_insert_mode(cx: &mut Context) {
@@ -1793,52 +1794,52 @@ fn enter_insert_mode(cx: &mut Context) {
 // inserts at the start of each selection
 fn insert_mode(cx: &mut Context) {
     enter_insert_mode(cx);
-    let (buffer_view, buffer) = current!(cx.ui_tree);
+    let buffer_mirror = current_mut!(cx.ui_tree);
 
     log::trace!(
         "entering insert mode with sel: {:?}, text: {:?}",
-        buffer.selection(buffer_view.view_id),
-        buffer.text().to_string()
+        buffer_mirror.selection(),
+        buffer_mirror.text().to_string()
     );
 
-    let selection = buffer
-        .selection(buffer_view.view_id)
+    let selection = buffer_mirror
+        .selection()
         .clone()
         .transform(|range| Range::new(range.to(), range.from()));
 
-    buffer.set_selection(buffer_view.view_id, selection);
+    buffer_mirror.set_selection(selection);
 }
 
 // inserts at the end of each selection
 fn append_mode(cx: &mut Context) {
     enter_insert_mode(cx);
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    buffer.restore_cursor = true;
-    let text = buffer.text().slice(..);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    buffer_mirror.restore_cursor = true;
+    let text = buffer_mirror.text().slice(..);
 
     // Make sure there's room at the end of the buffer if the last
     // selection butts up against it.
     let end = text.len_chars();
-    let last_range = buffer
-        .selection(buffer_view.view_id)
+    let last_range = buffer_mirror
+        .selection()
         .iter()
         .last()
         .expect("selection should always have at least one range");
     if !last_range.is_empty() && last_range.to() == end {
         let transaction = Transaction::change(
-            buffer.text(),
-            [(end, end, Some(buffer.line_ending.as_str().into()))].into_iter(),
+            buffer_mirror.text(),
+            [(end, end, Some(buffer_mirror.line_ending.as_str().into()))].into_iter(),
         );
-        apply_transaction(&transaction, buffer, buffer_view);
+        apply_transaction(&transaction, buffer_mirror);
     }
 
-    let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
+    let selection = buffer_mirror.selection().clone().transform(|range| {
         Range::new(
             range.from(),
-            graphemes::next_grapheme_boundary(buffer.text().slice(..), range.to()),
+            graphemes::next_grapheme_boundary(buffer_mirror.text().slice(..), range.to()),
         )
     });
-    buffer.set_selection(buffer_view.view_id, selection);
+    buffer_mirror.set_selection(selection);
 }
 
 fn file_picker(cx: &mut Context) {
@@ -1856,7 +1857,7 @@ fn file_picker_in_current_directory(cx: &mut Context) {
 }
 
 fn buffer_picker(cx: &mut Context) {
-    let current = buffer_view!(cx.ui_tree).doc;
+    let current = buffer_mirror!(cx.ui_tree).doc;
 
     struct BufferMeta {
         id: BufferID,
@@ -1896,17 +1897,17 @@ fn buffer_picker(cx: &mut Context) {
     }
 
     let new_meta = |doc: &BufferMirror| BufferMeta {
-        id: buffer.id(),
-        path: buffer.path().cloned(),
-        is_modified: buffer.is_modified(),
-        is_current: buffer.id() == current,
+        id: buffer_mirror.id(),
+        path: buffer_mirror.path().cloned(),
+        is_modified: buffer_mirror.is_modified(),
+        is_current: buffer_mirror.id() == current,
     };
 
     let picker = FilePicker::new(
         cx.ui_tree
             .documents
             .values()
-            .map(|doc| new_meta(buffer))
+            .map(|doc| new_meta(buffer_mirror))
             .collect(),
         (),
         |cx, meta, action| {
@@ -1914,11 +1915,9 @@ fn buffer_picker(cx: &mut Context) {
         },
         |ui_tree, meta| {
             let doc = &ui_tree.buffers.get(&meta.id)?;
-            let &view_id = buffer.selections().keys().next()?;
-            let line = buffer
-                .selection(buffer_view_id)
+            let line = buffer_mirror.selection()
                 .primary()
-                .cursor_line(buffer.text().slice(..));
+                .cursor_line(buffer_mirror.text().slice(..));
             Some((meta.id.into(), Some((line, line))))
         },
     );
@@ -1994,13 +1993,14 @@ fn jumplist_picker(cx: &mut Context) {
         |cx, meta, action| {
             cx.ui_tree.switch(meta.id, action);
             let config = cx.ui_tree.config();
-            let (buffer_view, buffer) = current!(cx.ui_tree);
-            buffer.set_selection(buffer_view.view_id, meta.selection.clone());
-            buffer_view.ensure_cursor_in_view_center(buffer), config.scrolloff);
+            let buffer_mirror = current_mut!(cx.ui_tree);
+            let view = buffer_view_mut!(cx.ui_tree);
+            buffer_mirror.set_selection(meta.selection.clone());
+            view.ensure_cursor_in_view_center(buffer_mirror, config.scrolloff);
         },
         |ui_tree, meta| {
             let doc = &ui_tree.buffers.get(&meta.id)?;
-            let line = meta.selection.primary().cursor_line(buffer.text().slice(..));
+            let line = meta.selection.primary().cursor_line(buffer_mirror.text().slice(..));
             Some((meta.path.clone()?.into(), Some((line, line))))
         },
     );
@@ -2041,11 +2041,10 @@ pub fn command_palette(cx: &mut Context) {
             let command_list = helix_view::command::COMMAND_LIST.to_vec();
             let picker = Picker::new(command_list, command_list_key_events, move |cx, command, _action| {
                 let mut ctx = Context {
-                    ui_tree.register: None,
-                    ui_tree: cx.ui_tree
+                    ui_tree: cx.ui_tree,
                     callback: None,
                     on_next_key_callback: None,
-                    jobs: ui_tree.jobs,
+                    jobs: UITree.jobs,
                 };
                 command.execute(&mut ctx);
             });
@@ -2075,15 +2074,15 @@ fn insert_at_line_start(cx: &mut Context) {
 // A inserts at the end of each line with a selection
 fn insert_at_line_end(cx: &mut Context) {
     enter_insert_mode(cx);
-    let (buffer_view, buffer) = current!(cx.ui_tree);
+    let buffer_mirror = current_mut!(cx.ui_tree);
 
-    let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
-        let text = buffer.text().slice(..);
+    let selection = buffer_mirror.selection().clone().transform(|range| {
+        let text = buffer_mirror.text().slice(..);
         let line = range.cursor_line(text);
         let pos = line_end_char_index(&text, line);
         Range::new(pos, pos)
     });
-    buffer.set_selection(buffer_view.view_id, selection);
+    buffer_mirror.set_selection(selection);
 }
 
 // Creates an LspCallback that waits for formatting changes to be computed. When they're done,
@@ -2093,7 +2092,7 @@ fn insert_at_line_end(cx: &mut Context) {
 // scheme
 async fn make_format_callback(
     buffer_id: BufferID,
-    buffer_version: i32,
+    buffer_version: usize,
     buffer_view_id: BufferViewID,
     format: impl Future<Output = Result<Transaction, FormatterError>> + Send + 'static,
     write: Option<(Option<PathBuf>, bool)>,
@@ -2106,22 +2105,22 @@ async fn make_format_callback(
         }
 
         let scrolloff = ui_tree.config().scrolloff;
-        let buffer = buffer_mut!(ui_tree, &buffer_id);
+        let buffer_mirror = current_mut!(ui_tree, &buffer_id);
         let buffer_view = buffer_view_mut!(ui_tree, buffer_view_id);
 
         if let Ok(format) = format {
-            if buffer.version() == buffer_version {
-                apply_transaction(&format, buffer, buffer_view);
-                buffer.append_changes_to_history(buffer_view);
-                buffer.detect_indent_and_line_ending();
-                buffer_view.ensure_cursor_in_view(buffer, scrolloff);
+            if buffer_mirror.version() == buffer_version {
+                apply_transaction(&format, buffer_mirror);
+                buffer_mirror.append_changes_to_history(buffer_view);
+                buffer_mirror.detect_indent_and_line_ending();
+                buffer_view.ensure_cursor_in_view(buffer_mirror, scrolloff);
             } else {
                 log::info!("discarded formatting changes because the document changed");
             }
         }
 
         if let Some((path, force)) = write {
-            let id = buffer.id();
+            let id = buffer_mirror.id();
             if let Err(err) = ui_tree.save(id, path, force) {
                 ui_tree.set_error(format!("Error saving: {}", err));
             }
@@ -2138,13 +2137,13 @@ pub enum Open {
 }
 
 fn open(cx: &mut Context, open: Open) {
-    let count = ui_tree.command_multiplier.unwrap_or_one().get();
+    let count = UITree.command_multiplier.unwrap_or_one().get();
     enter_insert_mode(cx);
-    let (buffer_view, buffer) = current!(cx.ui_tree);
+    let buffer_mirror = current_mut!(cx.ui_tree);
 
-    let text = buffer.text().slice(..);
-    let contents = buffer.text();
-    let selection = buffer.selection(buffer_view.view_id);
+    let text = buffer_mirror.text().slice(..);
+    let contents = buffer_mirror.text();
+    let selection = buffer_mirror.selection();
 
     let mut ranges = SmallVec::with_capacity(selection.len());
     let mut offs = 0;
@@ -2167,16 +2166,16 @@ fn open(cx: &mut Context, open: Open) {
             (0, 0)
         } else {
             (
-                line_end_char_index(&buffer.text().slice(..), new_line.saturating_sub(1)),
-                buffer.line_ending.len_chars(),
+                line_end_char_index(&buffer_mirror.text().slice(..), new_line.saturating_sub(1)),
+                buffer_mirror.line_ending.len_chars(),
             )
         };
 
         let indent = indent::indent_for_newline(
-            buffer.language_config(),
-            buffer.syntax(),
-            &buffer.indent_style,
-            buffer.tab_width(),
+            buffer_mirror.language_config(),
+            buffer_mirror.syntax(),
+            &buffer_mirror.indent_style,
+            buffer_mirror.tab_width(),
             text,
             new_line.saturating_sub(1),
             line_end_index,
@@ -2184,7 +2183,7 @@ fn open(cx: &mut Context, open: Open) {
         );
         let indent_len = indent.len();
         let mut text = String::with_capacity(1 + indent_len);
-        text.push_str(buffer.line_ending.as_str());
+        text.push_str(buffer_mirror.line_ending.as_str());
         text.push_str(&indent);
         let text = text.repeat(count);
 
@@ -2204,7 +2203,7 @@ fn open(cx: &mut Context, open: Open) {
 
     transaction = transaction.with_selection(Selection::new(ranges, selection.primary_index()));
 
-    apply_transaction(&transaction, buffer, buffer_view);
+    apply_transaction(&transaction, buffer_mirror);
 }
 
 // o inserts a new line after each line with a selection
@@ -2223,7 +2222,7 @@ fn normal_mode(cx: &mut Context) {
 
 // Store a jump on the jumplist.
 fn push_jump(buffer_view: &mut BufferView, buffer: &BufferMirror) {
-    let jump = (buffer.id(), buffer.selection(buffer_view.view_id).clone());
+    let jump = (buffer.buffer_id(), buffer.selection().clone());
     buffer_view.jumps.push(jump);
 }
 
@@ -2231,10 +2230,10 @@ fn goto_line(cx: &mut Context) {
     goto_line_impl(cx.ui_tree)
 }
 
-fn goto_line_impl(ui_tree: &mut UITree) {
+fn goto_line_impl(ui_tree: &mut UITree, line_number: Option<NonZeroUsize>) {
     if let Some(command_multiplier) = ui_tree.command_multiplier.get() {
-        let (buffer_view, buffer) = current!(ui_tree);
-        let text = buffer.text().slice(..);
+        let buffer_mirror = current_mut!(ui_tree);
+        let text = buffer_mirror.text().slice(..);
         let max_line = if text.line(text.len_lines() - 1).len_chars() == 0 {
             // If the last line is blank, don't jump to it.
             text.len_lines().saturating_sub(2)
@@ -2243,19 +2242,20 @@ fn goto_line_impl(ui_tree: &mut UITree) {
         };
         let line_idx = std::cmp::min(command_multiplier.get() - 1, max_line);
         let pos = text.line_to_char(line_idx);
-        let selection = buffer
-            .selection(buffer_view.view_id)
+        let selection = buffer_mirror
+            .selection()
             .clone()
             .transform(|range| range.put_cursor(text, pos, ui_tree.mode == Mode::Select));
 
-        push_jump(buffer_view, buffer);
-        buffer.set_selection(buffer_view.view_id, selection);
+        let view = buffer_view_mut!(cx.ui_tree);
+        push_jump(view, buffer_mirror);
+        buffer_mirror.set_selection(selection);
     }
 }
 
 fn goto_last_line(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let text = buffer.text().slice(..);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let text = buffer_mirror.text().slice(..);
     let line_idx = if text.line(text.len_lines() - 1).len_chars() == 0 {
         // If the last line is blank, don't jump to it.
         text.len_lines().saturating_sub(2)
@@ -2263,13 +2263,14 @@ fn goto_last_line(cx: &mut Context) {
         text.len_lines() - 1
     };
     let pos = text.line_to_char(line_idx);
-    let selection = buffer
-        .selection(buffer_view.view_id)
+    let selection = buffer_mirror
+        .selection()
         .clone()
         .transform(|range| range.put_cursor(text, pos, cx.ui_tree.mode == Mode::Select));
 
-    push_jump(buffer_view, buffer);
-    buffer.set_selection(buffer_view.view_id, selection);
+    let view = buffer_view_mut!(cx.ui_tree);
+    push_jump(view, buffer_mirror);
+    buffer_mirror.set_selection(selection);
 }
 
 fn goto_last_accessed_file(cx: &mut Context) {
@@ -2282,20 +2283,20 @@ fn goto_last_accessed_file(cx: &mut Context) {
 }
 
 fn goto_last_modification(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let pos = buffer.history.get_mut().last_edit_pos();
-    let text = buffer.text().slice(..);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let pos = buffer_mirror.history.get_mut().last_edit_pos();
+    let text = buffer_mirror.text().slice(..);
     if let Some(pos) = pos {
-        let selection = buffer
-            .selection(buffer_view.view_id)
+        let selection = buffer_mirror
+            .selection()
             .clone()
             .transform(|range| range.put_cursor(text, pos, cx.ui_tree.mode == Mode::Select));
-        buffer.set_selection(buffer_view.view_id, selection);
+        buffer_mirror.set_selection(selection);
     }
 }
 
 fn goto_last_modified_file(cx: &mut Context) {
-    let buffer_view = buffer_view!(cx.ui_tree);
+    let buffer_view = buffer_mirror!(cx.ui_tree);
     let alternate_file = buffer_view
         .last_modified_docs
         .into_iter()
@@ -2309,12 +2310,12 @@ fn goto_last_modified_file(cx: &mut Context) {
 }
 
 fn select_mode(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let text = buffer.text().slice(..);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let text = buffer_mirror.text().slice(..);
 
     // Make sure end-of-document selections are also 1-width.
     // (With the exception of being in an empty document, of course.)
-    let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
+    let selection = buffer_mirror.selection().clone().transform(|range| {
         if range.is_empty() && range.head == text.len_chars() {
             Range::new(
                 graphemes::prev_grapheme_boundary(text, range.anchor),
@@ -2324,7 +2325,7 @@ fn select_mode(cx: &mut Context) {
             range
         }
     });
-    buffer.set_selection(buffer_view.view_id, selection);
+    buffer_mirror.set_selection(selection);
 
     cx.ui_tree.mode = Mode::Select;
 }
@@ -2336,69 +2337,73 @@ fn exit_select_mode(cx: &mut Context) {
 }
 
 fn goto_pos(ui_tree: &mut UITree, pos: usize) {
-    let (buffer_view, buffer) = current!(ui_tree);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
 
-    push_jump(buffer_view, doc);
-    buffer.set_selection(buffer_view.view_id, Selection::point(pos));
-    align_view(buffer, buffer_view, Align::Center);
+    push_jump(view, doc);
+    buffer_mirror.set_selection(Selection::point(pos));
+    align_view(buffer_mirror, view, Align::Center);
 }
 
 fn goto_first_diag(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let selection = match buffer.diagnostics().first() {
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let selection = match buffer_mirror.diagnostics().first() {
         Some(diag) => Selection::single(diag.range.start, diag.range.end),
         None => return,
     };
-    buffer.set_selection(buffer_view.view_id, selection);
-    align_view(buffer, buffer_view, Align::Center);
+    buffer_mirror.set_selection(selection);
+    align_view(buffer_mirror, buffer_view_mut!(cx.ui_tree), Align::Center);
 }
 
 fn goto_last_diag(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let selection = match buffer.diagnostics().last() {
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
+    let selection = match buffer_mirror.diagnostics().last() {
         Some(diag) => Selection::single(diag.range.start, diag.range.end),
         None => return,
     };
-    buffer.set_selection(buffer_view.view_id, selection);
-    align_view(buffer, buffer_view, Align::Center);
+    buffer_mirror.set_selection(selection);
+    align_view(buffer_mirror, view, Align::Center);
 }
 
 fn goto_next_diag(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
 
-    let cursor_pos = buffer
-        .selection(buffer_view.view_id)
+    let cursor_pos = buffer_mirror
+        .selection()
         .primary()
-        .cursor(buffer.text().slice(..));
+        .cursor(buffer_mirror.text().slice(..));
 
-    let diag = buffer
+    let diag = buffer_mirror
         .diagnostics()
         .iter()
         .find(|diag| diag.range.start > cursor_pos)
-        .or_else(|| buffer.diagnostics().first());
+        .or_else(|| buffer_mirror.diagnostics().first());
 
     let selection = match diag {
         Some(diag) => Selection::single(diag.range.start, diag.range.end),
         None => return,
     };
-    buffer.set_selection(buffer_view.view_id, selection);
-    align_view(buffer, buffer_view, Align::Center);
+    buffer_mirror.set_selection(selection);
+    align_view(buffer_mirror, view, Align::Center);
 }
 
 fn goto_prev_diag(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
 
-    let cursor_pos = buffer
-        .selection(buffer_view.view_id)
+    let cursor_pos = buffer_mirror
+        .selection()
         .primary()
-        .cursor(buffer.text().slice(..));
+        .cursor(buffer_mirror.text().slice(..));
 
-    let diag = buffer
+    let diag = buffer_mirror
         .diagnostics()
         .iter()
         .rev()
         .find(|diag| diag.range.start < cursor_pos)
-        .or_else(|| buffer.diagnostics().last());
+        .or_else(|| buffer_mirror.diagnostics().last());
 
     let selection = match diag {
         // NOTE: the selection is reversed because we're jumping to the
@@ -2406,8 +2411,8 @@ fn goto_prev_diag(cx: &mut Context) {
         Some(diag) => Selection::single(diag.range.end, diag.range.start),
         None => return,
     };
-    buffer.set_selection(buffer_view.view_id, selection);
-    align_view(buffer, buffer_view, Align::Center);
+    buffer_mirror.set_selection(selection);
+    align_view(buffer_mirror, view, Align::Center);
 }
 
 fn goto_first_change(cx: &mut Context) {
@@ -2420,8 +2425,8 @@ fn goto_last_change(cx: &mut Context) {
 
 fn goto_first_change_impl(cx: &mut Context, reverse: bool) {
     let ui_tree = &mut cx.ui_tree;
-    let (_, doc) = current!(ui_tree);
-    if let Some(handle) = buffer.diff_handle() {
+    let buffer_mirror = current_mut!(ui_tree);
+    if let Some(handle) = buffer_mirror.diff_handle() {
         let hunk = {
             let hunks = handle.hunks();
             let idx = if reverse {
@@ -2432,7 +2437,7 @@ fn goto_first_change_impl(cx: &mut Context, reverse: bool) {
             hunks.nth_hunk(idx)
         };
         if hunk != Hunk::NONE {
-            let pos = buffer.text().line_to_char(hunk.after.start as usize);
+            let pos = buffer_mirror.text().line_to_char(hunk.after.start as usize);
             goto_pos(ui_tree, pos)
         }
     }
@@ -2447,18 +2452,18 @@ fn goto_prev_change(cx: &mut Context) {
 }
 
 fn goto_next_change_impl(cx: &mut Context, direction: Direction) {
-    let count = ui_tree.command_multiplier.unwrap_or_one().get();
+    let count = UITree.command_multiplier.unwrap_or_one().get();
     let motion = move |ui_tree: &mut UITree| {
-        let (buffer_view, buffer) = current!(ui_tree);
-        let buffer_text = buffer.text().slice(..);
-        let diff_handle = if let Some(diff_handle) = buffer.diff_handle() {
+        let buffer_mirror = current_mut!(ui_tree);
+        let buffer_text = buffer_mirror.text().slice(..);
+        let diff_handle = if let Some(diff_handle) = buffer_mirror.diff_handle() {
             diff_handle
         } else {
             ui_tree.set_status("Diff is not available in current buffer");
             return;
         };
 
-        let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
+        let selection = buffer_mirror.selection().clone().transform(|range| {
             let cursor_line = range.cursor_line(buffer_text) as u32;
 
             let hunks = diff_handle.hunks();
@@ -2498,7 +2503,7 @@ fn goto_next_change_impl(cx: &mut Context, direction: Direction) {
             }
         });
 
-        buffer.set_selection(buffer_view.view_id, selection)
+        buffer_mirror.set_selection(selection)
     };
     motion(cx.ui_tree);
     cx.ui_tree.last_motion = Some(Motion(Box::new(motion)));
@@ -2525,9 +2530,9 @@ pub mod insert {
     // Only trigger completion if the word under cursor is longer than n characters
     pub fn idle_completion(cx: &mut Context) {
         let config = cx.ui_tree.config();
-        let (buffer_view, buffer) = current!(cx.ui_tree);
-        let text = buffer.text().slice(..);
-        let cursor = buffer.selection(buffer_view.view_id).primary().cursor(text);
+        let buffer_mirror = current_mut!(cx.ui_tree);
+        let text = buffer_mirror.text().slice(..);
+        let cursor = buffer_mirror.selection().primary().cursor(text);
 
         use helix_core::chars::char_is_word;
         let mut iter = text.chars_at(cursor);
@@ -2549,8 +2554,8 @@ pub mod insert {
 
         use helix_lsp::lsp;
         // if ch matches completion char, trigger completion
-        let buffer = buffer_mut!(cx.ui_tree);
-        let language_server = match buffer.language_server() {
+        let buffer_mirror = current_mut!(cx.ui_tree);
+        let language_server = match buffer_mirror.language_server() {
             Some(language_server) => language_server,
             None => return,
         };
@@ -2573,11 +2578,11 @@ pub mod insert {
     fn signature_help(cx: &mut Context, ch: char) {
         use helix_lsp::lsp;
         // if ch matches signature_help char, trigger
-        let buffer = buffer_mut!(cx.ui_tree);
+        let buffer_mirror = current_mut!(cx.ui_tree);
         // The language_server!() macro is not used here since it will
         // print an "LSP not active for current buffer" message on
         // every keypress.
-        let language_server = match buffer.language_server() {
+        let language_server = match buffer_mirror.language_server() {
             Some(language_server) => language_server,
             None => return,
         };
@@ -2610,29 +2615,29 @@ pub mod insert {
     // The default insert hook: simply insert the character
     #[allow(clippy::unnecessary_wraps)] // need to use Option<> because of the Hook signature
     fn insert(doc: &Rope, selection: &Selection, ch: char) -> Option<Transaction> {
-        let cursors = selection.clone().cursors(buffer.slice(..));
+        let cursors = selection.clone().cursors(buffer_mirror.slice(..));
         let mut t = Tendril::new();
         t.push(ch);
-        let transaction = Transaction::insert(buffer, &cursors, t);
+        let transaction = Transaction::insert(buffer_mirror, &cursors, t);
         Some(transaction)
     }
 
     use helix_core::auto_pairs;
 
     pub fn insert_char(cx: &mut Context, c: char) {
-        let (buffer_view, buffer) = current_ref!(cx.ui_tree);
-        let text = buffer.text();
-        let selection = buffer.selection(buffer_view.view_id);
-        let auto_pairs = buffer.auto_pairs(cx.ui_tree);
+        let buffer_mirror = current!(cx.ui_tree);
+        let text = buffer_mirror.text();
+        let selection = buffer_mirror.selection();
+        let auto_pairs = buffer_mirror.auto_pairs(cx.ui_tree);
 
         let transaction = auto_pairs
             .as_ref()
             .and_then(|ap| auto_pairs::hook(text, selection, c, ap))
             .or_else(|| insert(text, selection, c));
 
-        let (buffer_view, buffer) = current!(cx.ui_tree);
+        let buffer_mirror = current_mut!(cx.ui_tree);
         if let Some(t) = transaction {
-            apply_transaction(&t, buffer, buffer_view);
+            apply_transaction(&t, buffer_mirror);
         }
 
         // TODO: need a post insert hook too for certain triggers (autocomplete, signature help, etc)
@@ -2644,25 +2649,25 @@ pub mod insert {
     }
 
     pub fn insert_tab(cx: &mut Context) {
-        let (buffer_view, buffer) = current!(cx.ui_tree);
+        let buffer_mirror = current_mut!(cx.ui_tree);
         // TODO: round out to nearest indentation level (for example a line with 3 spaces should
         // indent by one to reach 4 spaces).
 
-        let indent = Tendril::from(buffer.indent_style.as_str());
+        let indent = Tendril::from(buffer_mirror.indent_style.as_str());
         let transaction = Transaction::insert(
-            buffer.text(),
-            &buffer.selection(buffer_view.view_id).clone().cursors(buffer.text().slice(..)),
+            buffer_mirror.text(),
+            &buffer_mirror.selection().clone().cursors(buffer_mirror.text().slice(..)),
             indent,
         );
-        apply_transaction(&transaction, buffer, buffer_view);
+        apply_transaction(&transaction, buffer_mirror);
     }
 
     pub fn insert_newline(cx: &mut Context) {
-        let (buffer_view, buffer) = current_ref!(cx.ui_tree);
-        let text = buffer.text().slice(..);
+        let buffer_mirror = current!(cx.ui_tree);
+        let text = buffer_mirror.text().slice(..);
 
-        let contents = buffer.text();
-        let selection = buffer.selection(buffer_view.view_id).clone();
+        let contents = buffer_mirror.text();
+        let selection = buffer_mirror.selection().clone();
         let mut ranges = SmallVec::with_capacity(selection.len());
 
         // TODO: this is annoying, but we need to do it to properly calculate pos after edits
@@ -2691,15 +2696,15 @@ pub mod insert {
             // indentation of the old line.
             let (from, to, local_offs) = if line_is_only_whitespace {
                 let line_start = text.line_to_char(current_line);
-                new_text.push_str(buffer.line_ending.as_str());
+                new_text.push_str(buffer_mirror.line_ending.as_str());
 
                 (line_start, line_start, new_text.chars().count())
             } else {
                 let indent = indent::indent_for_newline(
-                    buffer.language_config(),
-                    buffer.syntax(),
-                    &buffer.indent_style,
-                    buffer.tab_width(),
+                    buffer_mirror.language_config(),
+                    buffer_mirror.syntax(),
+                    &buffer_mirror.indent_style,
+                    buffer_mirror.tab_width(),
                     text,
                     current_line,
                     pos,
@@ -2709,24 +2714,24 @@ pub mod insert {
                 // If we are between pairs (such as brackets), we want to
                 // insert an additional line which is indented one level
                 // more and place the cursor there
-                let on_auto_pair = buffer
+                let on_auto_pair = buffer_mirror
                     .auto_pairs(cx.ui_tree)
                     .and_then(|pairs| pairs.get(prev))
                     .and_then(|pair| if pair.close == curr { Some(pair) } else { None })
                     .is_some();
 
                 let local_offs = if on_auto_pair {
-                    let inner_indent = indent.clone() + buffer.indent_style.as_str();
+                    let inner_indent = indent.clone() + buffer_mirror.indent_style.as_str();
                     new_text.reserve_exact(2 + indent.len() + inner_indent.len());
-                    new_text.push_str(buffer.line_ending.as_str());
+                    new_text.push_str(buffer_mirror.line_ending.as_str());
                     new_text.push_str(&inner_indent);
                     let local_offs = new_text.chars().count();
-                    new_text.push_str(buffer.line_ending.as_str());
+                    new_text.push_str(buffer_mirror.line_ending.as_str());
                     new_text.push_str(&indent);
                     local_offs
                 } else {
                     new_text.reserve_exact(1 + indent.len());
-                    new_text.push_str(buffer.line_ending.as_str());
+                    new_text.push_str(buffer_mirror.line_ending.as_str());
                     new_text.push_str(&indent);
                     new_text.chars().count()
                 };
@@ -2734,7 +2739,7 @@ pub mod insert {
                 (pos, pos, local_offs)
             };
 
-            let new_range = if buffer.restore_cursor {
+            let new_range = if buffer_mirror.restore_cursor {
                 // when appending, extend the range by local_offs
                 Range::new(
                     range.anchor + global_offs,
@@ -2759,20 +2764,20 @@ pub mod insert {
 
         transaction = transaction.with_selection(Selection::new(ranges, selection.primary_index()));
 
-        let (buffer_view, buffer) = current!(cx.ui_tree);
-        apply_transaction(&transaction, buffer, buffer_view);
+        let buffer_mirror = current_mut!(cx.ui_tree);
+        apply_transaction(&transaction, buffer_mirror);
     }
 
     pub fn delete_char_backward(cx: &mut Context) {
-        let count = ui_tree.command_multiplier.unwrap_or_one().get();
-        let (buffer_view, buffer) = current_ref!(cx.ui_tree);
-        let text = buffer.text().slice(..);
-        let indent_unit = buffer.indent_style.as_str();
-        let tab_size = buffer.tab_width();
-        let auto_pairs = buffer.auto_pairs(cx.ui_tree);
+        let count = UITree.command_multiplier.unwrap_or_one().get();
+        let buffer_mirror = current!(cx.ui_tree);
+        let text = buffer_mirror.text().slice(..);
+        let indent_unit = buffer_mirror.indent_style.as_str();
+        let tab_size = buffer_mirror.tab_width();
+        let auto_pairs = buffer_mirror.auto_pairs(cx.ui_tree);
 
         let transaction =
-            Transaction::change_by_selection(buffer.text(), buffer.selection(buffer_view.view_id), |range| {
+            Transaction::change_by_selection(buffer_mirror.text(), buffer_mirror.selection(), |range| {
                 let pos = range.cursor(text);
                 if pos == 0 {
                     return (pos, pos, None);
@@ -2854,18 +2859,18 @@ pub mod insert {
                     }
                 }
             });
-        let (buffer_view, buffer) = current!(cx.ui_tree);
-        apply_transaction(&transaction, buffer, buffer_view);
+        let buffer_mirror = current_mut!(cx.ui_tree);
+        apply_transaction(&transaction, buffer_mirror);
 
         lsp::signature_help_impl(cx, SignatureHelpInvoked::Automatic);
     }
 
     pub fn delete_char_forward(cx: &mut Context) {
-        let count = ui_tree.command_multiplier.unwrap_or_one().get();
-        let (buffer_view, buffer) = current!(cx.ui_tree);
-        let text = buffer.text().slice(..);
+        let count = UITree.command_multiplier.unwrap_or_one().get();
+        let buffer_mirror = current_mut!(cx.ui_tree);
+        let text = buffer_mirror.text().slice(..);
         let transaction =
-            Transaction::change_by_selection(buffer.text(), buffer.selection(buffer_view.view_id), |range| {
+            Transaction::change_by_selection(buffer_mirror.text(), buffer_mirror.selection(), |range| {
                 let pos = range.cursor(text);
                 (
                     pos,
@@ -2873,37 +2878,37 @@ pub mod insert {
                     None,
                 )
             });
-        apply_transaction(&transaction, buffer, buffer_view);
+        apply_transaction(&transaction, buffer_mirror);
 
         lsp::signature_help_impl(cx, SignatureHelpInvoked::Automatic);
     }
 
     pub fn delete_word_backward(cx: &mut Context) {
-        let count = ui_tree.command_multiplier.unwrap_or_one().get();
-        let (buffer_view, buffer) = current!(cx.ui_tree);
-        let text = buffer.text().slice(..);
+        let count = UITree.command_multiplier.unwrap_or_one().get();
+        let buffer_mirror = current_mut!(cx.ui_tree);
+        let text = buffer_mirror.text().slice(..);
 
-        let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
+        let selection = buffer_mirror.selection().clone().transform(|range| {
             let anchor = movement::move_prev_word_start(text, range, count).from();
             let next = Range::new(anchor, range.cursor(text));
             exclude_cursor(text, next, range)
         });
-        delete_selection_insert_mode(buffer, buffer_view, &selection);
+        delete_selection_insert_mode(buffer_mirror, &selection);
 
         lsp::signature_help_impl(cx, SignatureHelpInvoked::Automatic);
     }
 
     pub fn delete_word_forward(cx: &mut Context) {
-        let count = ui_tree.command_multiplier.unwrap_or_one().get();
-        let (buffer_view, buffer) = current!(cx.ui_tree);
-        let text = buffer.text().slice(..);
+        let count = UITree.command_multiplier.unwrap_or_one().get();
+        let buffer_mirror = current_mut!(cx.ui_tree);
+        let text = buffer_mirror.text().slice(..);
 
-        let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
+        let selection = buffer_mirror.selection().clone().transform(|range| {
             let head = movement::move_next_word_end(text, range, count).to();
             Range::new(range.cursor(text), head)
         });
 
-        delete_selection_insert_mode(buffer, buffer_view, &selection);
+        delete_selection_insert_mode(buffer_mirror, &selection);
 
         lsp::signature_help_impl(cx, SignatureHelpInvoked::Automatic);
     }
@@ -2912,10 +2917,11 @@ pub mod insert {
 // Undo / Redo
 
 fn undo(cx: &mut Context) {
-    let count = ui_tree.command_multiplier.unwrap_or_one().get();
-    let (buffer_view, buffer) = current!(cx.ui_tree);
+    let count = UITree.command_multiplier.unwrap_or_one().get();
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
     for _ in 0..count {
-        if !buffer.undo(buffer_view) {
+        if !buffer_mirror.undo(view) {
             cx.ui_tree.set_status("Already at oldest change");
             break;
         }
@@ -2923,10 +2929,11 @@ fn undo(cx: &mut Context) {
 }
 
 fn redo(cx: &mut Context) {
-    let count = ui_tree.command_multiplier.unwrap_or_one().get();
-    let (buffer_view, buffer) = current!(cx.ui_tree);
+    let count = UITree.command_multiplier.unwrap_or_one().get();
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
     for _ in 0..count {
-        if !buffer.redo(buffer_view) {
+        if !buffer_mirror.redo(view) {
             cx.ui_tree.set_status("Already at newest change");
             break;
         }
@@ -2934,11 +2941,12 @@ fn redo(cx: &mut Context) {
 }
 
 fn earlier(cx: &mut Context) {
-    let count = ui_tree.command_multiplier.unwrap_or_one().get();
-    let (buffer_view, buffer) = current!(cx.ui_tree);
+    let count = UITree.command_multiplier.unwrap_or_one().get();
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
     for _ in 0..count {
         // rather than doing in batch we do this so get error halfway
-        if !buffer.earlier(buffer_view, UndoKind::Steps(1)) {
+        if !buffer_mirror.earlier(view, UndoKind::Steps(1)) {
             cx.ui_tree.set_status("Already at oldest change");
             break;
         }
@@ -2946,11 +2954,12 @@ fn earlier(cx: &mut Context) {
 }
 
 fn later(cx: &mut Context) {
-    let count = ui_tree.command_multiplier.unwrap_or_one().get();
-    let (buffer_view, buffer) = current!(cx.ui_tree);
+    let count = UITree.command_multiplier.unwrap_or_one().get();
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
     for _ in 0..count {
         // rather than doing in batch we do this so get error halfway
-        if !buffer.later(buffer_view, UndoKind::Steps(1)) {
+        if !buffer_mirror.later(view, UndoKind::Steps(1)) {
             cx.ui_tree.set_status("Already at newest change");
             break;
         }
@@ -2958,18 +2967,19 @@ fn later(cx: &mut Context) {
 }
 
 fn commit_undo_checkpoint(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    buffer.append_changes_to_history(buffer_view);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
+    buffer_mirror.append_changes_to_history(view);
 }
 
 // Yank / Paste
 
 fn yank(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let text = buffer.text().slice(..);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let text = buffer_mirror.text().slice(..);
 
-    let values: Vec<String> = buffer
-        .selection(buffer_view.view_id)
+    let values: Vec<String> = buffer_mirror
+        .selection()
         .fragments(text)
         .map(Cow::into_owned)
         .collect();
@@ -2989,15 +2999,15 @@ fn yank(cx: &mut Context) {
 }
 
 fn yank_joined_to_clipboard_impl(
-    ui_tree: &mut UITree,
+    ui_tree: &UITree,
     separator: &str,
     clipboard_type: ClipboardType,
 ) -> anyhow::Result<()> {
-    let (buffer_view, buffer) = current!(ui_tree);
-    let text = buffer.text().slice(..);
+    let buffer_mirror = current_mut!(ui_tree);
+    let text = buffer_mirror.text().slice(..);
 
-    let values: Vec<String> = buffer
-        .selection(buffer_view.view_id)
+    let values: Vec<String> = buffer_mirror
+        .selection()
         .fragments(text)
         .map(Cow::into_owned)
         .collect();
@@ -3026,25 +3036,25 @@ fn yank_joined_to_clipboard_impl(
 }
 
 fn yank_joined_to_clipboard(cx: &mut Context) {
-    let line_ending = buffer!(cx.ui_tree).line_ending;
+    let line_ending = current!(cx.ui_tree).line_ending;
     let _ =
         yank_joined_to_clipboard_impl(cx.ui_tree, line_ending.as_str(), ClipboardType::Clipboard);
     exit_select_mode(cx);
 }
 
 fn yank_main_selection_to_clipboard_impl(
-    ui_tree: &mut UITree,
+    ui_tree: &UITree,
     clipboard_type: ClipboardType,
 ) -> anyhow::Result<()> {
-    let (buffer_view, buffer) = current!(ui_tree);
-    let text = buffer.text().slice(..);
+    let buffer_mirror = current_mut!(ui_tree);
+    let text = buffer_mirror.text().slice(..);
 
     let message_text = match clipboard_type {
         ClipboardType::Clipboard => "yanked main selection to system clipboard",
         ClipboardType::Selection => "yanked main selection to primary clipboard",
     };
 
-    let value = buffer.selection(buffer_view.view_id).primary().fragment(text);
+    let value = buffer_mirror.selection().primary().fragment(text);
 
     if let Err(e) = ui_tree
         .clipboard_provider
@@ -3062,7 +3072,7 @@ fn yank_main_selection_to_clipboard(cx: &mut Context) {
 }
 
 fn yank_joined_to_primary_clipboard(cx: &mut Context) {
-    let line_ending = buffer!(cx.ui_tree).line_ending;
+    let line_ending = current!(cx.ui_tree).line_ending;
     let _ =
         yank_joined_to_clipboard_impl(cx.ui_tree, line_ending.as_str(), ClipboardType::Selection);
 }
@@ -3082,7 +3092,6 @@ enum Paste {
 fn paste_impl(
     values: &[String],
     buffer: &mut BufferMirror,
-    buffer_view: &mut BufferView,
     action: Paste,
     count: usize,
     mode: Mode,
@@ -3113,7 +3122,7 @@ fn paste_impl(
         .chain(repeat);
 
     let text = buffer.text();
-    let selection = buffer.selection(buffer_view.view_id);
+    let selection = buffer.selection();
 
     let mut offset = 0;
     let mut ranges = SmallVec::with_capacity(selection.len());
@@ -3154,17 +3163,17 @@ fn paste_impl(
         transaction = transaction.with_selection(Selection::new(ranges, selection.primary_index()));
     }
 
-    apply_transaction(&transaction, buffer, buffer_view);
+    apply_transaction(&transaction, buffer);
 }
 
 pub(crate) fn paste_bracketed_value(cx: &mut Context, contents: String) {
-    let count = ui_tree.command_multiplier.unwrap_or_one().get();
+    let count = UITree.command_multiplier.unwrap_or_one().get();
     let paste = match cx.ui_tree.mode {
         Mode::Insert | Mode::Select => Paste::Cursor,
         Mode::Normal => Paste::Before,
     };
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    paste_impl(&[contents], buffer, buffer_view, paste, count, cx.ui_tree.mode);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    paste_impl(&[contents], buffer_mirror, paste, count, cx.ui_tree.mode);
 }
 
 fn paste_clipboard_impl(
@@ -3173,10 +3182,10 @@ fn paste_clipboard_impl(
     clipboard_type: ClipboardType,
     count: usize,
 ) -> anyhow::Result<()> {
-    let (buffer_view, buffer) = current!(ui_tree);
+    let buffer_mirror = current_mut!(ui_tree);
     match ui_tree.clipboard_provider.get_contents(clipboard_type) {
         Ok(contents) => {
-            paste_impl(&[contents], buffer, buffer_view, action, count, ui_tree.mode);
+            paste_impl(&[contents], buffer_mirror, action, count, ui_tree.mode);
             Ok(())
         }
         Err(e) => Err(e.context("Couldn't get system clipboard contents")),
@@ -3188,7 +3197,7 @@ fn paste_clipboard_after(cx: &mut Context) {
         cx.ui_tree,
         Paste::After,
         ClipboardType::Clipboard,
-        ui_tree.command_multiplier.unwrap_or_one().get(),
+        UITree.command_multiplier.unwrap_or_one().get(),
     );
 }
 
@@ -3197,7 +3206,7 @@ fn paste_clipboard_before(cx: &mut Context) {
         cx.ui_tree,
         Paste::Before,
         ClipboardType::Clipboard,
-        ui_tree.command_multiplier.unwrap_or_one().get(),
+        UITree.command_multiplier.unwrap_or_one().get(),
     );
 }
 
@@ -3206,7 +3215,7 @@ fn paste_primary_clipboard_after(cx: &mut Context) {
         cx.ui_tree,
         Paste::After,
         ClipboardType::Selection,
-        ui_tree.command_multiplier.unwrap_or_one().get(),
+        UITree.command_multiplier.unwrap_or_one().get(),
     );
 }
 
@@ -3215,14 +3224,14 @@ fn paste_primary_clipboard_before(cx: &mut Context) {
         cx.ui_tree,
         Paste::Before,
         ClipboardType::Selection,
-        ui_tree.command_multiplier.unwrap_or_one().get(),
+        UITree.command_multiplier.unwrap_or_one().get(),
     );
 }
 
 fn replace_with_yanked(cx: &mut Context) {
-    let count = ui_tree.command_multiplier.unwrap_or_one().get();
+    let count = UITree.command_multiplier.unwrap_or_one().get();
     let reg_name = cx.ui_tree.selected_register.unwrap_or('"');
-    let (buffer_view, buffer) = current!(cx.ui_tree);
+    let buffer_mirror = current_mut!(cx.ui_tree);
     let registers = &mut cx.ui_tree.registers;
 
     if let Some(values) = registers.read(reg_name) {
@@ -3237,8 +3246,8 @@ fn replace_with_yanked(cx: &mut Context) {
                 .iter()
                 .map(|value| Tendril::from(&value.repeat(count)))
                 .chain(repeat);
-            let selection = buffer.selection(buffer_view.view_id);
-            let transaction = Transaction::change_by_selection(buffer.text(), selection, |range| {
+            let selection = buffer_mirror.selection();
+            let transaction = Transaction::change_by_selection(buffer_mirror.text(), selection, |range| {
                 if !range.is_empty() {
                     (range.from(), range.to(), Some(values.next().unwrap()))
                 } else {
@@ -3246,7 +3255,7 @@ fn replace_with_yanked(cx: &mut Context) {
                 }
             });
 
-            apply_transaction(&transaction, buffer, buffer_view);
+            apply_transaction(&transaction, buffer_mirror);
             exit_select_mode(cx);
         }
     }
@@ -3256,13 +3265,14 @@ fn replace_selections_with_clipboard_impl(
     cx: &mut Context,
     clipboard_type: ClipboardType,
 ) -> anyhow::Result<()> {
-    let count = ui_tree.command_multiplier.unwrap_or_one().get();
-    let (buffer_view, buffer) = current!(cx.ui_tree);
+    let count = UITree.command_multiplier.unwrap_or_one().get();
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
 
     match cx.ui_tree.clipboard_provider.get_contents(clipboard_type) {
         Ok(contents) => {
-            let selection = buffer.selection(buffer_view.view_id);
-            let transaction = Transaction::change_by_selection(buffer.text(), selection, |range| {
+            let selection = buffer_mirror.selection();
+            let transaction = Transaction::change_by_selection(buffer_mirror.text(), selection, |range| {
                 (
                     range.from(),
                     range.to(),
@@ -3270,8 +3280,8 @@ fn replace_selections_with_clipboard_impl(
                 )
             });
 
-            apply_transaction(&transaction, buffer, buffer_view);
-            buffer.append_changes_to_history(buffer_view);
+            apply_transaction(&transaction, buffer_mirror);
+            buffer_mirror.append_changes_to_history(view);
         }
         Err(e) => return Err(e.context("Couldn't get system clipboard contents")),
     }
@@ -3289,13 +3299,13 @@ fn replace_selections_with_primary_clipboard(cx: &mut Context) {
 }
 
 fn paste(cx: &mut Context, pos: Paste) {
-    let count = ui_tree.command_multiplier.unwrap_or_one().get();
+    let count = UITree.command_multiplier.unwrap_or_one().get();
     let reg_name = cx.ui_tree.selected_register.unwrap_or('"');
-    let (buffer_view, buffer) = current!(cx.ui_tree);
+    let buffer_mirror = current_mut!(cx.ui_tree);
     let registers = &mut cx.ui_tree.registers;
 
     if let Some(values) = registers.read(reg_name) {
-        paste_impl(values, buffer, buffer_view, pos, count, cx.ui_tree.mode);
+        paste_impl(values, buffer_mirror, pos, count, cx.ui_tree.mode);
     }
 }
 
@@ -3307,12 +3317,12 @@ fn paste_before(cx: &mut Context) {
     paste(cx, Paste::Before)
 }
 
-fn get_lines(doc: &BufferMirror, buffer_view_id: BufferViewID) -> Vec<usize> {
+fn get_lines(buffer_mirror: &BufferMirror) -> Vec<usize> {
     let mut lines = Vec::new();
 
     // Get all line numbers
-    for range in buffer.selection(buffer_view_id) {
-        let (start, end) = range.line_range(buffer.text().slice(..));
+    for range in buffer_mirror.selection() {
+        let (start, end) = range.line_range(buffer_mirror.text().slice(..));
 
         for line in start..=end {
             lines.push(line)
@@ -3324,37 +3334,37 @@ fn get_lines(doc: &BufferMirror, buffer_view_id: BufferViewID) -> Vec<usize> {
 }
 
 fn indent(cx: &mut Context) {
-    let count = ui_tree.command_multiplier.unwrap_or_one().get();
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let lines = get_lines(buffer, buffer_view.view_id);
+    let count = UITree.command_multiplier.unwrap_or_one().get();
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let lines = get_lines(buffer_mirror);
 
     // Indent by one level
-    let indent = Tendril::from(buffer.indent_style.as_str().repeat(count));
+    let indent = Tendril::from(buffer_mirror.indent_style.as_str().repeat(count));
 
     let transaction = Transaction::change(
-        buffer.text(),
+        buffer_mirror.text(),
         lines.into_iter().filter_map(|line| {
-            let is_blank = buffer.text().line(line).chunks().all(|s| s.trim().is_empty());
+            let is_blank = buffer_mirror.text().line(line).chunks().all(|s| s.trim().is_empty());
             if is_blank {
                 return None;
             }
-            let pos = buffer.text().line_to_char(line);
+            let pos = buffer_mirror.text().line_to_char(line);
             Some((pos, pos, Some(indent.clone())))
         }),
     );
-    apply_transaction(&transaction, buffer, buffer_view);
+    apply_transaction(&transaction, buffer_mirror);
 }
 
 fn unindent(cx: &mut Context) {
-    let count = ui_tree.command_multiplier.unwrap_or_one().get();
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let lines = get_lines(buffer, buffer_view.view_id);
+    let count = UITree.command_multiplier.unwrap_or_one().get();
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let lines = get_lines(buffer_mirror);
     let mut changes = Vec::with_capacity(lines.len());
-    let tab_width = buffer.tab_width();
+    let tab_width = buffer_mirror.tab_width();
     let indent_width = count * tab_width;
 
     for line_idx in lines {
-        let line = buffer.text().line(line_idx);
+        let line = buffer_mirror.text().line(line_idx);
         let mut width = 0;
         let mut pos = 0;
 
@@ -3374,33 +3384,33 @@ fn unindent(cx: &mut Context) {
 
         // now delete from start to first non-blank
         if pos > 0 {
-            let start = buffer.text().line_to_char(line_idx);
+            let start = buffer_mirror.text().line_to_char(line_idx);
             changes.push((start, start + pos, None))
         }
     }
 
-    let transaction = Transaction::change(buffer.text(), changes.into_iter());
+    let transaction = Transaction::change(buffer_mirror.text(), changes.into_iter());
 
-    apply_transaction(&transaction, buffer, buffer_view);
+    apply_transaction(&transaction, buffer_mirror);
 }
 
 fn format_selections(cx: &mut Context) {
     use helix_lsp::{lsp, util::range_to_lsp_range};
 
-    let (buffer_view, buffer) = current!(cx.ui_tree);
+    let buffer_mirror = current_mut!(cx.ui_tree);
 
     // via lsp if available
     // TODO: else via tree-sitter indentation calculations
 
-    let language_server = match buffer.language_server() {
+    let language_server = match buffer_mirror.language_server() {
         Some(language_server) => language_server,
         None => return,
     };
 
-    let ranges: Vec<lsp::Range> = buffer
-        .selection(buffer_view.view_id)
+    let ranges: Vec<lsp::Range> = buffer_mirror
+        .selection()
         .iter()
-        .map(|range| range_to_lsp_range(buffer.text(), *range, language_server.offset_encoding()))
+        .map(|range| range_to_lsp_range(buffer_mirror.text(), *range, language_server.offset_encoding()))
         .collect();
 
     if ranges.len() != 1 {
@@ -3415,7 +3425,7 @@ fn format_selections(cx: &mut Context) {
     let range = ranges[0];
 
     let request = match language_server.text_document_range_formatting(
-        buffer.identifier(),
+        buffer_mirror.identifier(),
         range,
         lsp::FormattingOptions::default(),
         None,
@@ -3431,24 +3441,24 @@ fn format_selections(cx: &mut Context) {
     let edits = tokio::task::block_in_place(|| helix_lsp::block_on(request)).unwrap_or_default();
 
     let transaction = helix_lsp::util::generate_transaction_from_edits(
-        buffer.text(),
+        buffer_mirror.text(),
         edits,
         language_server.offset_encoding(),
     );
 
-    apply_transaction(&transaction, buffer, buffer_view);
+    apply_transaction(&transaction, buffer_mirror);
 }
 
 fn join_selections_impl(cx: &mut Context, select_space: bool) {
     use movement::skip_while;
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let text = buffer.text();
-    let slice = buffer.text().slice(..);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let text = buffer_mirror.text();
+    let slice = buffer_mirror.text().slice(..);
 
     let mut changes = Vec::new();
     let fragment = Tendril::from(" ");
 
-    for selection in buffer.selection(buffer_view.view_id) {
+    for selection in buffer_mirror.selection() {
         let (start, mut end) = selection.line_range(slice);
         if start == end {
             end = (end + 1).min(text.len_lines() - 1);
@@ -3485,12 +3495,12 @@ fn join_selections_impl(cx: &mut Context, select_space: bool) {
             })
             .collect();
         let selection = Selection::new(ranges, 0);
-        Transaction::change(buffer.text(), changes.into_iter()).with_selection(selection)
+        Transaction::change(buffer_mirror.text(), changes.into_iter()).with_selection(selection)
     } else {
-        Transaction::change(buffer.text(), changes.into_iter())
+        Transaction::change(buffer_mirror.text(), changes.into_iter())
     };
 
-    apply_transaction(&transaction, buffer, buffer_view);
+    apply_transaction(&transaction, buffer_mirror);
 }
 
 fn keep_or_remove_selections_impl(cx: &mut Context, remove: bool) {
@@ -3502,16 +3512,16 @@ fn keep_or_remove_selections_impl(cx: &mut Context, remove: bool) {
         Some(reg),
         ui::completers::none,
         move |ui_tree, regex, event| {
-            let (buffer_view, buffer) = current!(ui_tree);
+            let buffer_mirror = current_mut!(ui_tree);
             if !matches!(event, PromptEvent::Update | PromptEvent::Validate) {
                 return;
             }
-            let text = buffer.text().slice(..);
+            let text = buffer_mirror.text().slice(..);
 
             if let Some(selection) =
-                selection::keep_or_remove_matches(text, buffer.selection(buffer_view.view_id), &regex, remove)
+                selection::keep_or_remove_matches(text, buffer_mirror.selection(), &regex, remove)
             {
-                buffer.set_selection(buffer_view.view_id, selection);
+                buffer_mirror.set_selection(selection);
             }
         },
     )
@@ -3534,18 +3544,16 @@ fn remove_selections(cx: &mut Context) {
 }
 
 fn keep_primary_selection(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    // TODO: handle count
-
-    let range = buffer.selection(buffer_view.view_id).primary();
-    buffer.set_selection(buffer_view.view_id, Selection::single(range.anchor, range.head));
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let range = buffer_mirror.selection().primary();
+    buffer_mirror.set_selection(Selection::single(range.anchor, range.head));
 }
 
 fn remove_primary_selection(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
+    let buffer_mirror = current_mut!(cx.ui_tree);
     // TODO: handle count
 
-    let selection = buffer.selection(buffer_view.view_id);
+    let selection = buffer_mirror.selection();
     if selection.len() == 1 {
         cx.ui_tree.set_error("no selections remaining");
         return;
@@ -3553,26 +3561,26 @@ fn remove_primary_selection(cx: &mut Context) {
     let index = selection.primary_index();
     let selection = selection.clone().remove(index);
 
-    buffer.set_selection(buffer_view.view_id, selection);
+    buffer_mirror.set_selection(selection);
 }
 
 pub fn completion(cx: &mut Context) {
     use helix_lsp::{lsp, util::pos_to_lsp_pos};
 
-    let (buffer_view, buffer) = current!(cx.ui_tree);
+    let buffer_mirror = current_mut!(cx.ui_tree);
 
-    let language_server = match buffer.language_server() {
+    let language_server = match buffer_mirror.language_server() {
         Some(language_server) => language_server,
         None => return,
     };
 
     let offset_encoding = language_server.offset_encoding();
-    let text = buffer.text().slice(..);
-    let cursor = buffer.selection(buffer_view.view_id).primary().cursor(text);
+    let text = buffer_mirror.text().slice(..);
+    let cursor = buffer_mirror.selection().primary().cursor(text);
 
-    let pos = pos_to_lsp_pos(buffer.text(), cursor, offset_encoding);
+    let pos = pos_to_lsp_pos(buffer_mirror.text(), cursor, offset_encoding);
 
-    let future = match language_server.completion(buffer.identifier(), pos, None) {
+    let future = match language_server.completion(buffer_mirror.identifier(), pos, None) {
         Some(future) => future,
         None => return,
     };
@@ -3626,28 +3634,28 @@ pub fn completion(cx: &mut Context) {
 
 // comments
 fn toggle_comments(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let token = buffer
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let token = buffer_mirror
         .language_config()
         .and_then(|lc| lc.comment_token.as_ref())
         .map(|tc| tc.as_ref());
-    let transaction = comment::toggle_line_comments(buffer.text(), buffer.selection(buffer_view.view_id), token);
+    let transaction = comment::toggle_line_comments(buffer_mirror.text(), buffer_mirror.selection(), token);
 
-    apply_transaction(&transaction, buffer, buffer_view);
+    apply_transaction(&transaction, buffer_mirror);
     exit_select_mode(cx);
 }
 
 fn rotate_selections(cx: &mut Context, direction: Direction) {
-    let count = ui_tree.command_multiplier.unwrap_or_one().get();
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let mut selection = buffer.selection(buffer_view.view_id).clone();
+    let count = UITree.command_multiplier.unwrap_or_one().get();
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let mut selection = buffer_mirror.selection().clone();
     let index = selection.primary_index();
     let len = selection.len();
     selection.set_primary_index(match direction {
         Direction::Forward => (index + count) % len,
         Direction::Backward => (index + (len.saturating_sub(count) % len)) % len,
     });
-    buffer.set_selection(buffer_view.view_id, selection);
+    buffer_mirror.set_selection(selection);
 }
 fn rotate_selections_forward(cx: &mut Context) {
     rotate_selections(cx, Direction::Forward)
@@ -3658,10 +3666,10 @@ fn rotate_selections_backward(cx: &mut Context) {
 
 fn rotate_selection_contents(cx: &mut Context, direction: Direction) {
     let command_multiplier = cx.ui_tree.command_multiplier;
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let text = buffer.text().slice(..);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let text = buffer_mirror.text().slice(..);
 
-    let selection = buffer.selection(buffer_view.view_id);
+    let selection = buffer_mirror.selection();
     let mut fragments: Vec<_> = selection
         .slices(text)
         .map(|fragment| fragment.chunks().collect())
@@ -3681,7 +3689,7 @@ fn rotate_selection_contents(cx: &mut Context, direction: Direction) {
     }
 
     let transaction = Transaction::change(
-        buffer.text(),
+        buffer_mirror.text(),
         selection
             .ranges()
             .iter()
@@ -3689,7 +3697,7 @@ fn rotate_selection_contents(cx: &mut Context, direction: Direction) {
             .map(|(range, fragment)| (range.from(), range.to(), Some(fragment))),
     );
 
-    apply_transaction(&transaction, buffer, buffer_view);
+    apply_transaction(&transaction, buffer_mirror);
 }
 
 fn rotate_selection_contents_forward(cx: &mut Context) {
@@ -3703,20 +3711,21 @@ fn rotate_selection_contents_backward(cx: &mut Context) {
 
 fn expand_selection(cx: &mut Context) {
     let motion = |ui_tree: &mut UITree| {
-        let (buffer_view, buffer) = current!(ui_tree);
+        let buffer_mirror = current_mut!(cx.ui_tree);
+        let view = buffer_view_mut!(cx.ui_tree);
 
-        if let Some(syntax) = buffer.syntax() {
-            let text = buffer.text().slice(..);
+        if let Some(syntax) = buffer_mirror.syntax() {
+            let text = buffer_mirror.text().slice(..);
 
-            let current_selection = buffer.selection(buffer_view.view_id);
+            let current_selection = buffer_mirror.selection();
             let selection = object::expand_selection(syntax, text, current_selection.clone());
 
             // check if selection is different from the last one
             if *current_selection != selection {
                 // save current selection so it can be restored using shrink_selection
-                buffer_view.object_selections.push(current_selection.clone());
+                view.object_selections.push(current_selection.clone());
 
-                buffer.set_selection(buffer_view.view_id, selection);
+                buffer_mirror.set_selection(selection);
             }
         }
     };
@@ -3726,24 +3735,25 @@ fn expand_selection(cx: &mut Context) {
 
 fn shrink_selection(cx: &mut Context) {
     let motion = |ui_tree: &mut UITree| {
-        let (buffer_view, buffer) = current!(ui_tree);
-        let current_selection = buffer.selection(buffer_view.view_id);
+        let buffer_mirror = current_mut!(cx.ui_tree);
+        let view = buffer_view_mut!(cx.ui_tree);
+        let current_selection = buffer_mirror.selection();
         // try to restore previous selection
-        if let Some(prev_selection) = buffer_view.object_selections.pop() {
+        if let Some(prev_selection) = view.object_selections.pop() {
             if current_selection.contains(&prev_selection) {
                 // allow shrinking the selection only if current selection contains the previous object selection
-                buffer.set_selection(buffer_view.view_id, prev_selection);
+                buffer_mirror.set_selection(prev_selection);
                 return;
             } else {
                 // clear existing selection as they can't be shrunk to anyway
-                buffer_view.object_selections.clear();
+                view.object_selections.clear();
             }
         }
         // if not previous selection, shrink to first child
-        if let Some(syntax) = buffer.syntax() {
-            let text = buffer.text().slice(..);
+        if let Some(syntax) = buffer_mirror.syntax() {
+            let text = buffer_mirror.text().slice(..);
             let selection = object::shrink_selection(syntax, text, current_selection.clone());
-            buffer.set_selection(buffer_view.view_id, selection);
+            buffer_mirror.set_selection(selection);
         }
     };
     motion(cx.ui_tree);
@@ -3755,14 +3765,14 @@ where
     F: Fn(Node) -> Option<Node>,
 {
     let motion = |ui_tree: &mut UITree| {
-        let (buffer_view, buffer) = current!(ui_tree);
+        let buffer_mirror = current_mut!(ui_tree);
 
-        if let Some(syntax) = buffer.syntax() {
-            let text = buffer.text().slice(..);
-            let current_selection = buffer.selection(buffer_view.view_id);
+        if let Some(syntax) = buffer_mirror.syntax() {
+            let text = buffer_mirror.text().slice(..);
+            let current_selection = buffer_mirror.selection();
             let selection =
                 object::select_sibling(syntax, text, current_selection.clone(), sibling_fn);
-            buffer.set_selection(buffer_view.view_id, selection);
+            buffer_mirror.set_selection(selection);
         }
     };
     motion(cx.ui_tree);
@@ -3778,27 +3788,27 @@ fn select_prev_sibling(cx: &mut Context) {
 }
 
 fn match_brackets(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
+    let buffer_mirror = current_mut!(cx.ui_tree);
 
-    if let Some(syntax) = buffer.syntax() {
-        let text = buffer.text().slice(..);
-        let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
+    if let Some(syntax) = buffer_mirror.syntax() {
+        let text = buffer_mirror.text().slice(..);
+        let selection = buffer_mirror.selection().clone().transform(|range| {
             if let Some(pos) =
-                match_brackets::find_matching_bracket_fuzzy(syntax, buffer.text(), range.cursor(text))
+                match_brackets::find_matching_bracket_fuzzy(syntax, buffer_mirror.text(), range.cursor(text))
             {
                 range.put_cursor(text, pos, cx.ui_tree.mode == Mode::Select)
             } else {
                 range
             }
         });
-        buffer.set_selection(buffer_view.view_id, selection);
+        buffer_mirror.set_selection(selection);
     }
 }
 
 //
 
 fn jump_forward(cx: &mut Context) {
-    let command_multiplier = ui_tree.command_multiplier.unwrap_or_one().get();
+    let command_multiplier = UITree.command_multiplier.unwrap_or_one().get();
     let config = cx.ui_tree.config();
     let buffer_view = buffer_view_mut!(cx.ui_tree);
     let buffer_id = buffer_view.buffer_id;
@@ -3806,39 +3816,42 @@ fn jump_forward(cx: &mut Context) {
     if let Some((id, selection)) = buffer_view.jumps.forward(command_multiplier) {
         buffer_view.doc = *id;
         let selection = selection.clone();
-        let (buffer_view, buffer) = current!(cx.ui); // refetch buffer
+        let buffer_mirror = current_mut!(cx.ui_tree);
+        let view = buffer_view_mut!(cx.ui_tree);
 
-        if buffer.id() != buffer_id {
-            buffer_view.add_to_history(buffer_id);
+        if buffer_mirror.id() != buffer_id {
+            view.add_to_history(buffer_id);
         }
 
-        buffer.set_selection(buffer_view.view_id, selection);
-        buffer_view.ensure_cursor_in_view_center(buffer, config.scrolloff);
+        buffer_mirror.set_selection(selection);
+        view.ensure_cursor_in_view_center(buffer_mirror, config.scrolloff);
     };
 }
 
 fn jump_backward(cx: &mut Context) {
-    let command_multiplier = ui_tree.command_multiplier.unwrap_or_one().get();
+    let command_multiplier = UITree.command_multiplier.unwrap_or_one().get();
     let config = cx.ui_tree.config();
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let buffer_id = buffer.id();
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
+    let buffer_id = buffer_mirror.id();
 
-    if let Some((id, selection)) = buffer_view.jumps.backward(buffer_view.view_id, buffer, command_multiplier) {
-        buffer_view.buffer_id = *id;
+    if let Some((id, selection)) = view.jumps.backward(view.view_id, buffer_mirror, command_multiplier) {
+        view.buffer_id = *id;
         let selection = selection.clone();
-        let (buffer_view, buffer) = current!(cx.ui_tree); // refetch buffer
+        let buffer_mirror = current_mut!(cx.ui_tree);
+        let view = buffer_view_mut!(cx.ui_tree);
 
-        if buffer.id() != buffer_id {
-            buffer_view.add_to_history(buffer_id);
+        if buffer_mirror.id() != buffer_id {
+            view.add_to_history(buffer_id);
         }
 
-        buffer.set_selection(buffer_view.view_id, selection);
-        buffer_view.ensure_cursor_in_view_center(buffer, config.scrolloff);
+        buffer_mirror.set_selection(selection);
+        view.ensure_cursor_in_view_center(buffer_mirror, config.scrolloff);
     };
 }
 
 fn save_selection(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
+    let buffer_mirror = current_mut!(cx.ui_tree);
     push_jump(buffer_view, doc);
     cx.ui_tree.set_status("Selection saved to jumplist");
 }
@@ -3885,19 +3898,21 @@ fn transpose_view(cx: &mut Context) {
 
 // split helper, clear it later
 fn split(cx: &mut Context, action: Action) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let id = buffer.id();
-    let selection = buffer.selection(buffer_view.view_id).clone();
-    let offset = buffer_view.offset;
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
+    let id = buffer_mirror.id();
+    let selection = buffer_mirror.selection().clone();
+    let offset = view.offset;
 
     cx.ui_tree.switch(id, action);
 
     // match the selection in the previous buffer_view
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    buffer.set_selection(buffer_view.view_id, selection);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
+    buffer_mirror.set_selection(selection);
     // match the buffer_view scroll offset (switch doesn't handle this fully
     // since the selection is only matched after the split)
-    buffer_view.offset = offset;
+    view.offset = offset;
 }
 
 fn hsplit(cx: &mut Context) {
@@ -3923,7 +3938,7 @@ fn wclose(cx: &mut Context) {
             return;
         }
     }
-    let buffer_view_id = buffer_view!(cx.ui_tree).id;
+    let buffer_view_id = buffer_mirror!(cx.ui_tree).id;
     // close current split
     cx.ui_tree.close(buffer_view_id);
 }
@@ -3964,48 +3979,52 @@ fn insert_register(cx: &mut Context) {
 }
 
 fn align_view_top(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    align_view(buffer, buffer_view, Align::Top);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
+    align_view(buffer_mirror, view, Align::Top);
 }
 
 fn align_view_center(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    align_view(buffer, buffer_view, Align::Center);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
+    align_view(buffer_mirror, view, Align::Center);
 }
 
 fn align_view_bottom(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    align_view(buffer, buffer_view, Align::Bottom);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
+    align_view(buffer_mirror, view, Align::Bottom);
 }
 
 fn align_view_middle(cx: &mut Context) {
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let text = buffer.text().slice(..);
-    let pos = buffer.selection(buffer_view.view_id).primary().cursor(text);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
+    let text = buffer_mirror.text().slice(..);
+    let pos = buffer_mirror.selection().primary().cursor(text);
     let pos = coords_at_pos(text, pos);
 
-    buffer_view.offset.col = pos
+    view.offset.col = pos
         .col
-        .saturating_sub((buffer_view.inner_area(buffer).width as usize) / 2);
+        .saturating_sub((view.inner_area(buffer_mirror).width as usize) / 2);
 }
 
 fn scroll_up(cx: &mut Context) {
-    scroll(cx, ui_tree.command_multiplier.unwrap_or_one().get(), Direction::Backward);
+    scroll(cx, UITree.command_multiplier.unwrap_or_one().get(), Direction::Backward);
 }
 
 fn scroll_down(cx: &mut Context) {
-    scroll(cx, ui_tree.command_multiplier.unwrap_or_one().get(), Direction::Forward);
+    scroll(cx, UITree.command_multiplier.unwrap_or_one().get(), Direction::Forward);
 }
 
 fn goto_ts_object_impl(cx: &mut Context, object: &'static str, direction: Direction) {
-    let command_multiplier = ui_tree.command_multiplier.unwrap_or_one().get();
+    let command_multiplier = UITree.command_multiplier.unwrap_or_one().get();
     let motion = move |ui_tree: &mut UITree| {
-        let (buffer_view, buffer) = current!(ui_tree);
-        if let Some((lang_config, syntax)) = buffer.language_config().zip(buffer.syntax()) {
-            let text = buffer.text().slice(..);
+        let buffer_mirror = current_mut!(ui_tree);
+        if let Some((lang_config, syntax)) = buffer_mirror.language_config().zip(buffer_mirror.syntax()) {
+            let text = buffer_mirror.text().slice(..);
             let root = syntax.tree().root_node();
 
-            let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
+            let selection = buffer_mirror.selection().clone().transform(|range| {
                 let new_range = movement::goto_treesitter_object(
                     text,
                     range,
@@ -4029,7 +4048,7 @@ fn goto_ts_object_impl(cx: &mut Context, object: &'static str, direction: Direct
                 }
             });
 
-            buffer.set_selection(buffer_view.view_id, selection);
+            buffer_mirror.set_selection(selection);
         } else {
             ui_tree.set_status("Syntax-tree is not available in current buffer");
         }
@@ -4087,17 +4106,17 @@ fn select_textobject_inner(cx: &mut Context) {
 }
 
 fn select_textobject(cx: &mut Context, objtype: textobject::TextObject) {
-    let command_multiplier = ui_tree.command_multiplier.unwrap_or_one().get();
+    let command_multiplier = UITree.command_multiplier.unwrap_or_one().get();
 
     cx.on_next_key(move |cx, event| {
         cx.ui_tree.autoinfo = None;
         if let Some(ch) = event.char() {
             let textobject = move |ui_tree: &mut UITree| {
-                let (buffer_view, buffer) = current!(ui_tree);
-                let text = buffer.text().slice(..);
+                let buffer_mirror = current_mut!(ui_tree);
+                let text = buffer_mirror.text().slice(..);
 
                 let textobject_treesitter = |obj_name: &str, range: Range| -> Range {
-                    let (lang_config, syntax) = match buffer.language_config().zip(buffer.syntax()) {
+                    let (lang_config, syntax) = match buffer_mirror.language_config().zip(buffer_mirror.syntax()) {
                         Some(t) => t,
                         None => return range,
                     };
@@ -4112,13 +4131,13 @@ fn select_textobject(cx: &mut Context, objtype: textobject::TextObject) {
                     )
                 };
 
-                if ch == 'g' && buffer.diff_handle().is_none() {
+                if ch == 'g' && buffer_mirror.diff_handle().is_none() {
                     ui_tree.set_status("Diff is not available in current buffer");
                     return;
                 }
 
                 let textobject_change = |range: Range| -> Range {
-                    let diff_handle = buffer.diff_handle().unwrap();
+                    let diff_handle = buffer_mirror.diff_handle().unwrap();
                     let hunks = diff_handle.hunks();
                     let line = range.cursor_line(text);
                     let hunk_idx = if let Some(hunk_idx) = hunks.hunk_at(line as u32, false) {
@@ -4133,7 +4152,7 @@ fn select_textobject(cx: &mut Context, objtype: textobject::TextObject) {
                     Range::new(start, end).with_direction(range.direction())
                 };
 
-                let selection = buffer.selection(buffer_view.view_id).clone().transform(|range| {
+                let selection = buffer_mirror.selection().clone().transform(|range| {
                     match ch {
                         'w' => textobject::textobject_word(text, range, objtype, command_multiplier, false),
                         'W' => textobject::textobject_word(text, range, objtype, command_multiplier, true),
@@ -4154,7 +4173,7 @@ fn select_textobject(cx: &mut Context, objtype: textobject::TextObject) {
                         _ => range,
                     }
                 });
-                buffer.set_selection(buffer_view.view_id, selection);
+                buffer_mirror.set_selection(selection);
             };
             textobject(cx.ui_tree);
             cx.ui_tree.last_motion = Some(Motion(Box::new(textobject)));
@@ -4188,8 +4207,8 @@ fn surround_add(cx: &mut Context) {
             Some(ch) => ch,
             None => return,
         };
-        let (buffer_view, buffer) = current!(cx.ui_tree);
-        let selection = buffer.selection(buffer_view.view_id);
+        let buffer_mirror = current_mut!(cx.ui_tree);
+        let selection = buffer_mirror.selection();
         let (open, close) = surround::get_pair(ch);
         // The number of chars in get_pair
         let surround_len = 2;
@@ -4216,24 +4235,24 @@ fn surround_add(cx: &mut Context) {
             offs += surround_len;
         }
 
-        let transaction = Transaction::change(buffer.text(), changes.into_iter())
+        let transaction = Transaction::change(buffer_mirror.text(), changes.into_iter())
             .with_selection(Selection::new(ranges, selection.primary_index()));
-        apply_transaction(&transaction, buffer, buffer_view);
+        apply_transaction(&transaction, buffer_mirror);
         exit_select_mode(cx);
     })
 }
 
 fn surround_replace(cx: &mut Context) {
-    let command_multiplier = ui_tree.command_multiplier.unwrap_or_one().get();
+    let command_multiplier = UITree.command_multiplier.unwrap_or_one().get();
     cx.on_next_key(move |cx, event| {
         let surround_ch = match event.char() {
             Some('m') => None, // m selects the closest surround pair
             Some(ch) => Some(ch),
             None => return,
         };
-        let (buffer_view, buffer) = current!(cx.ui_tree);
-        let text = buffer.text().slice(..);
-        let selection = buffer.selection(buffer_view.view_id);
+        let buffer_mirror = current_mut!(cx.ui_tree);
+        let text = buffer_mirror.text().slice(..);
+        let selection = buffer_mirror.selection();
 
         let change_pos = match surround::get_surround_pos(text, selection, surround_ch, command_multiplier) {
             Ok(c) => c,
@@ -4244,37 +4263,37 @@ fn surround_replace(cx: &mut Context) {
         };
 
         cx.on_next_key(move |cx, event| {
-            let (buffer_view, buffer) = current!(cx.ui_tree);
+            let buffer_mirror = current_mut!(cx.ui_tree);
             let to = match event.char() {
                 Some(to) => to,
                 None => return,
             };
             let (open, close) = surround::get_pair(to);
             let transaction = Transaction::change(
-                buffer.text(),
+                buffer_mirror.text(),
                 change_pos.iter().enumerate().map(|(i, &pos)| {
                     let mut t = Tendril::new();
                     t.push(if i % 2 == 0 { open } else { close });
                     (pos, pos + 1, Some(t))
                 }),
             );
-            apply_transaction(&transaction, buffer, buffer_view);
+            apply_transaction(&transaction, buffer_mirror);
             exit_select_mode(cx);
         });
     })
 }
 
 fn surround_delete(cx: &mut Context) {
-    let command_multiplier = ui_tree.command_multiplier.unwrap_or_one().get();
+    let command_multiplier = UITree.command_multiplier.unwrap_or_one().get();
     cx.on_next_key(move |cx, event| {
         let surround_ch = match event.char() {
             Some('m') => None, // m selects the closest surround pair
             Some(ch) => Some(ch),
             None => return,
         };
-        let (buffer_view, buffer) = current!(cx.ui_tree);
-        let text = buffer.text().slice(..);
-        let selection = buffer.selection(buffer_view.view_id);
+        let buffer_mirror = current_mut!(cx.ui_tree);
+        let text = buffer_mirror.text().slice(..);
+        let selection = buffer_mirror.selection();
 
         let change_pos = match surround::get_surround_pos(text, selection, surround_ch, command_multiplier) {
             Ok(c) => c,
@@ -4285,8 +4304,8 @@ fn surround_delete(cx: &mut Context) {
         };
 
         let transaction =
-            Transaction::change(buffer.text(), change_pos.into_iter().map(|p| (p, p + 1, None)));
-        apply_transaction(&transaction, buffer, buffer_view);
+            Transaction::change(buffer_mirror.text(), change_pos.into_iter().map(|p| (p, p + 1, None)));
+        apply_transaction(&transaction, buffer_mirror);
         exit_select_mode(cx);
     })
 }
@@ -4329,13 +4348,13 @@ fn shell_keep_pipe(cx: &mut Context) {
             if input.is_empty() {
                 return;
             }
-            let (buffer_view, buffer) = current!(cx.ui_tree);
-            let selection = buffer.selection(buffer_view.view_id);
+            let buffer_mirror = current_mut!(cx.ui_tree);
+            let selection = buffer_mirror.selection();
 
             let mut ranges = SmallVec::with_capacity(selection.len());
             let old_index = selection.primary_index();
             let mut index: Option<usize> = None;
-            let text = buffer.text().slice(..);
+            let text = buffer_mirror.text().slice(..);
 
             for (i, range) in selection.ranges().iter().enumerate() {
                 let fragment = range.slice(text);
@@ -4362,7 +4381,7 @@ fn shell_keep_pipe(cx: &mut Context) {
             }
 
             let index = index.unwrap_or_else(|| ranges.len() - 1);
-            buffer.set_selection(buffer_view.view_id, Selection::new(ranges, index));
+            buffer_mirror.set_selection(Selection::new(ranges, index));
         },
     );
 }
@@ -4445,12 +4464,13 @@ fn shell(cx: &mut compositor::Context, cmd: &str, behavior: &ShellBehavior) {
 
     let config = cx.ui_tree.config();
     let shell = &config.shell;
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let selection = buffer.selection(buffer_view.view_id);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
+    let selection = buffer_mirror.selection();
 
     let mut changes = Vec::with_capacity(selection.len());
     let mut ranges = SmallVec::with_capacity(selection.len());
-    let text = buffer.text().slice(..);
+    let text = buffer_mirror.text().slice(..);
 
     let mut shell_output: Option<Tendril> = None;
     let mut offset = 0isize;
@@ -4499,15 +4519,15 @@ fn shell(cx: &mut compositor::Context, cmd: &str, behavior: &ShellBehavior) {
     }
 
     if behavior != &ShellBehavior::Ignore {
-        let transaction = Transaction::change(buffer.text(), changes.into_iter())
+        let transaction = Transaction::change(buffer_mirror.text(), changes.into_iter())
             .with_selection(Selection::new(ranges, selection.primary_index()));
-        apply_transaction(&transaction, buffer, buffer_view);
-        buffer.append_changes_to_history(buffer_view);
+        apply_transaction(&transaction, buffer_mirror);
+        buffer_mirror.append_changes_to_history(view);
     }
 
     // after replace cursor may be out of bounds, do this to
     // make sure cursor is in buffer_view and update scroll as well
-    buffer_view.ensure_cursor_in_view(buffer, config.scrolloff);
+    view.ensure_cursor_in_view(buffer_mirror, config.scrolloff);
 }
 
 fn shell_prompt(cx: &mut Context, prompt: Cow<'static, str>, behavior: ShellBehavior) {
@@ -4543,10 +4563,10 @@ fn add_newline_below(cx: &mut Context) {
 }
 
 fn add_newline_impl(cx: &mut Context, open: Open) {
-    let command_multiplier = ui_tree.command_multiplier.unwrap_or_one().get();
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let selection = buffer.selection(buffer_view.view_id);
-    let text = buffer.text();
+    let command_multiplier = UITree.command_multiplier.unwrap_or_one().get();
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let selection = buffer_mirror.selection();
+    let text = buffer_mirror.text();
     let slice = text.slice(..);
 
     let changes = selection.into_iter().map(|range| {
@@ -4559,12 +4579,12 @@ fn add_newline_impl(cx: &mut Context, open: Open) {
         (
             pos,
             pos,
-            Some(buffer.line_ending.as_str().repeat(command_multiplier).into()),
+            Some(buffer_mirror.line_ending.as_str().repeat(command_multiplier).into()),
         )
     });
 
     let transaction = Transaction::change(text, changes);
-    apply_transaction(&transaction, buffer, buffer_view);
+    apply_transaction(&transaction, buffer_mirror);
 }
 
 enum IncrementDirection {
@@ -4620,14 +4640,14 @@ fn increment_impl(cx: &mut Context, increment_direction: IncrementDirection) {
         IncrementDirection::Increase => 1,
         IncrementDirection::Decrease => -1,
     };
-    let mut amount = sign * ui_tree.command_multiplier.unwrap_or_one().get() as i64;
+    let mut amount = sign * UITree.command_multiplier.unwrap_or_one().get() as i64;
 
     // If the register is `#` then increase or decrease the `amount` by 1 per element
     let increase_by = if cx.ui_tree.register == Some('#') { sign } else { 0 };
 
-    let (buffer_view, buffer) = current!(cx.ui_tree);
-    let selection = buffer.selection(buffer_view.view_id);
-    let text = buffer.text().slice(..);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let selection = buffer_mirror.selection();
+    let text = buffer_mirror.text().slice(..);
 
     let changes: Vec<_> = selection
         .ranges()
@@ -4675,10 +4695,10 @@ fn increment_impl(cx: &mut Context, increment_direction: IncrementDirection) {
         .collect();
 
     if !changes.is_empty() {
-        let transaction = Transaction::change(buffer.text(), changes.into_iter());
+        let transaction = Transaction::change(buffer_mirror.text(), changes.into_iter());
         let transaction = transaction.with_selection(selection.clone());
 
-        apply_transaction(&transaction, buffer, buffer_view);
+        apply_transaction(&transaction, buffer_mirror);
     }
 }
 

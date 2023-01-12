@@ -53,7 +53,7 @@ impl Component for SignatureHelp {
 
         let active_param_span = self.active_param_range.map(|(start, end)| {
             vec![(
-                cx.editor.theme.find_scope_index("ui.selection").unwrap(),
+                cx.ui_tree.theme.find_scope_index("ui.selection").unwrap(),
                 start..end,
             )]
         });
@@ -61,7 +61,7 @@ impl Component for SignatureHelp {
         let sig_text = crate::ui::markdown::highlighted_code_block(
             self.signature.clone(),
             &self.language,
-            Some(&cx.editor.theme),
+            Some(&cx.ui_tree.theme),
             Arc::clone(&self.config_loader),
             active_param_span,
         );
@@ -88,7 +88,7 @@ impl Component for SignatureHelp {
             None => return,
             Some(doc) => Markdown::new(doc.clone(), Arc::clone(&self.config_loader)),
         };
-        let sig_doc = sig_doc.parse(Some(&cx.editor.theme));
+        let sig_doc = sig_doc.parse(Some(&cx.ui_tree.theme));
         let sig_doc_area = area.clip_top(sig_text_area.height + 2);
         let sig_doc_para = Paragraph::new(sig_doc)
             .wrap(Wrap { trim: false })

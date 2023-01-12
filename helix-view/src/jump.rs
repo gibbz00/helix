@@ -40,7 +40,7 @@ impl JumpList {
     }
 
     // Taking buffer_view and buffer to prevent unnecessary cloning when jump is not required.
-    pub fn backward(&mut self, buffer_view_id: BufferViewID, buffer: &mut Buffer, count: usize) -> Option<&Jump> {
+    pub fn backward(&mut self, buffer_view_id: BufferViewID, buffer: &mut BufferMirror, count: usize) -> Option<&Jump> {
         if let Some(current) = self.current.checked_sub(count) {
             if self.current == self.jumps.len() {
                 let jump = (buffer.id(), buffer.selection(buffer_view_id).clone());

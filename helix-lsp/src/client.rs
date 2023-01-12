@@ -430,7 +430,7 @@ impl Client {
     pub fn text_document_did_open(
         &self,
         uri: lsp::Url,
-        version: i32,
+        version: usize,
         doc: &Rope,
         language_id: String,
     ) -> impl Future<Output = Result<()>> {

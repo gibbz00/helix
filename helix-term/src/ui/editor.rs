@@ -26,7 +26,7 @@ use helix_view::{
     graphics::{Color, CursorKind, Modifier, Rect, Style},
     input::{KeyEvent, MouseButton, MouseEvent, MouseEventKind},
     keyboard::{KeyCode, KeyModifiers},
-    BufferMirror, ui_tree, Theme, BufferView,
+    BufferMirror, UITree, Theme, BufferView,
 };
 use std::{borrow::Cow, cmp::min, num::NonZeroUsize, path::PathBuf};
 
@@ -165,27 +165,27 @@ impl EditorView {
                         match key {
                             InsertEvent::Key(key) => self.insert_mode(cxt, key),
                             InsertEvent::CompletionApply(compl) => {
-                                let (view, doc) = current!(cxt.ui_tree);
+                                let buffer_mirror = current_mut!(cxt.ui_tree);
 
-                                doc.restore(view);
+                                buffer_mirror.restore();
 
-                                let text = doc.text().slice(..);
-                                let cursor = doc.selection(view.id).primary().cursor(text);
+                                let text = buffer_mirror.text().slice(..);
+                                let cursor = buffer_mirror.selection().primary().cursor(text);
 
                                 let shift_position =
                                     |pos: usize| -> usize { pos + cursor - compl.trigger_offset };
 
                                 let tx = Transaction::change(
-                                    doc.text(),
+                                    buffer_mirror.text(),
                                     compl.changes.iter().cloned().map(|(start, end, t)| {
                                         (shift_position(start), shift_position(end), t)
                                     }),
                                 );
-                                apply_transaction(&tx, doc, view);
+                                apply_transaction(&tx, buffer_mirror);
                             }
                             InsertEvent::TriggerCompletion => {
-                                let (_, doc) = current!(cxt.ui_tree);
-                                doc.savepoint();
+                                let buffer_mirror = current_mut!(cxt.ui_tree);
+                                buffer_mirror.savepoint();
                             }
                         }
                     }
@@ -209,7 +209,7 @@ impl EditorView {
 
     pub fn render_view(
         &self,
-        editor: &ui_tree,
+        editor: &UITree,
         doc: &BufferMirror,
         view: &BufferView,
         viewport: Rect,
@@ -320,7 +320,7 @@ impl EditorView {
     }
 
     pub fn render_rulers(
-        editor: &ui_tree,
+        editor: &UITree,
         doc: &BufferMirror,
         view: &BufferView,
         viewport: Rect,
@@ -470,7 +470,7 @@ impl EditorView {
         cursor_shape_config: &CursorShapeConfig,
     ) -> Vec<(usize, std::ops::Range<usize>)> {
         let text = doc.text().slice(..);
-        let selection = doc.selection(view.view_id);
+        let selection = doc.selection();
         let primary_idx = selection.primary_index();
 
         let cursorkind = cursor_shape_config.from_mode(mode);
@@ -767,7 +767,7 @@ impl EditorView {
         if let Some(syntax) = doc.syntax() {
             let text = doc.text().slice(..);
             use helix_core::match_brackets;
-            let pos = doc.selection(view.view_id).primary().cursor(text);
+            let pos = doc.selection().primary().cursor(text);
 
             let pos = match_brackets::find_matching_bracket(syntax, doc.text(), pos)
                 .and_then(|pos| view.screen_coords_at_pos(doc, text, pos));
@@ -791,7 +791,7 @@ impl EditorView {
     }
 
     /// Render bufferline at the top
-    pub fn render_bufferline(editor: &ui_tree, viewport: Rect, surface: &mut Surface) {
+    pub fn render_bufferline(editor: &UITree, viewport: Rect, surface: &mut Surface) {
         let scratch = PathBuf::from(SCRATCH_BUFFER_NAME); // default filename to use for scratch buffer
         surface.clear_with(
             viewport,
@@ -844,7 +844,7 @@ impl EditorView {
     }
 
     pub fn render_gutter(
-        editor: &ui_tree,
+        editor: &UITree,
         doc: &BufferMirror,
         view: &BufferView,
         viewport: Rect,
@@ -859,7 +859,7 @@ impl EditorView {
         // https://github.com/rust-lang/rust-clippy/issues/6164
         #[allow(clippy::needless_collect)]
         let cursors: Vec<_> = doc
-            .selection(view.view_id)
+            .selection()
             .iter()
             .map(|range| range.cursor_line(text))
             .collect();
@@ -922,7 +922,7 @@ impl EditorView {
         };
 
         let cursor = doc
-            .selection(view.view_id)
+            .selection()
             .primary()
             .cursor(doc.text().slice(..));
 
@@ -966,7 +966,7 @@ impl EditorView {
         let text = doc.text().slice(..);
         let last_line = view.last_line(doc);
 
-        let primary_line = doc.selection(view.view_id).primary().cursor_line(text);
+        let primary_line = doc.selection().primary().cursor_line(text);
 
         // The secondary_lines do contain the primary_line, it doesn't matter
         // as the else-if clause in the loop later won't test for the
@@ -975,7 +975,7 @@ impl EditorView {
         // https://github.com/rust-lang/rust-clippy/issues/6164
         #[allow(clippy::needless_collect)]
         let secondary_lines: Vec<_> = doc
-            .selection(view.view_id)
+            .selection()
             .iter()
             .map(|range| range.cursor_line(text))
             .collect();
@@ -1021,7 +1021,7 @@ impl EditorView {
         let inner_area = view.inner_area(doc);
         let offset = view.offset.col;
 
-        let selection = doc.selection(view.view_id);
+        let selection = doc.selection();
         let primary = selection.primary();
         for range in selection.iter() {
             let is_primary = primary == *range;
@@ -1053,7 +1053,7 @@ impl EditorView {
 
     pub fn set_completion(
         &mut self,
-        editor: &mut ui_tree,
+        ui_tree: &mut UITree,
         items: Vec<helix_lsp::lsp::CompletionItem>,
         offset_encoding: helix_lsp::OffsetEncoding,
         start_offset: usize,
@@ -1061,7 +1061,7 @@ impl EditorView {
         size: Rect,
     ) {
         let mut completion =
-            Completion::new(editor, items, offset_encoding, start_offset, trigger_offset);
+            Completion::new(ui_tree, items, offset_encoding, start_offset, trigger_offset);
 
         if completion.is_empty() {
             // skip if we got no completion results
@@ -1069,9 +1069,9 @@ impl EditorView {
         }
 
         // Immediately initialize a savepoint
-        buffer_mut!(editor).savepoint();
+        current_mut!(ui_tree).savepoint();
 
-        editor.last_completion = None;
+        ui_tree.last_completion = None;
         self.last_insert.1.push(InsertEvent::TriggerCompletion);
 
         // TODO : propagate required size on resize to completion too
@@ -1079,13 +1079,13 @@ impl EditorView {
         self.completion = Some(completion);
     }
 
-    pub fn clear_completion(&mut self, editor: &mut ui_tree) {
+    pub fn clear_completion(&mut self, ui_tree: &mut UITree) {
         self.completion = None;
 
         // Clear any savepoints
-        let doc = buffer_mut!(editor);
-        doc.savepoint = None;
-        editor.clear_idle_timer(); // don't retrigger
+        let buffer_mirror = current_mut!(ui_tree);
+        buffer_mirror.savepoint = None;
+        ui_tree.clear_idle_timer(); // don't retrigger
     }
 
     pub fn handle_idle_timeout(&mut self, cx: &mut commands::Context) -> EventResult {
@@ -1122,14 +1122,14 @@ impl EditorView {
             ..
         } = *event;
 
-        let pos_and_view = |editor: &ui_tree, row, column| {
+        let pos_and_view = |editor: &UITree, row, column| {
             editor.tree.views().find_map(|(view, _focus)| {
                 view.pos_at_screen_coords(&editor.documents[&view.doc], row, column)
                     .map(|pos| (pos, view.id))
             })
         };
 
-        let gutter_coords_and_view = |editor: &ui_tree, row, column| {
+        let gutter_coords_and_view = |editor: &UITree, row, column| {
             editor.tree.views().find_map(|(view, _focus)| {
                 view.gutter_coords_at_screen_coords(row, column)
                     .map(|coords| (coords, view.id))
@@ -1138,35 +1138,36 @@ impl EditorView {
 
         match kind {
             MouseEventKind::Down(MouseButton::Left) => {
-                let editor = &mut cxt.ui_tree;
+                let ui_tree = &mut cxt.ui_tree;
 
-                if let Some((pos, view_id)) = pos_and_view(editor, row, column) {
-                    let doc = buffer_mut!(editor, &buffer_view!(editor, view_id).doc);
+                if let Some((pos, view_id)) = pos_and_view(ui_tree, row, column) {
+                    let buffer_mirror = ui_tree.buffer_mirrors.get_mut(&buffer_view!(ui_tree, view_id).doc).unwrap();
 
                     if modifiers == KeyModifiers::ALT {
-                        let selection = doc.selection(view_id).clone();
-                        doc.set_selection(view_id, selection.push(Range::point(pos)));
+                        let selection = doc.selection().clone();
+                        doc.set_selection(selection.push(Range::point(pos)));
                     } else {
-                        doc.set_selection(view_id, Selection::point(pos));
+                        doc.set_selection(Selection::point(pos));
                     }
 
-                    editor.focus(view_id);
+                    ui_tree.focus(view_id);
 
                     return EventResult::Consumed(None);
                 }
 
-                if let Some((coords, view_id)) = gutter_coords_and_view(editor, row, column) {
-                    editor.focus(view_id);
+                if let Some((coords, view_id)) = gutter_coords_and_view(ui_tree, row, column) {
+                    ui_tree.focus(view_id);
 
-                    let (view, doc) = current!(cxt.ui_tree);
+                    let buffer_mirror = current_mut!(cx.ui_tree);
+                    let view = buffer_view_mut!(cx.ui_tree);
 
-                    let path = match doc.path() {
+                    let path = match buffer_view.path() {
                         Some(path) => path.clone(),
                         None => return EventResult::Ignored(None),
                     };
 
                     let line = coords.row + view.offset.row;
-                    if line < doc.text().len_lines() {
+                    if line < buffer_view.text().len_lines() {
                         commands::dap_toggle_breakpoint_impl(cxt, path, line);
                         return EventResult::Consumed(None);
                     }
@@ -1176,17 +1177,18 @@ impl EditorView {
             }
 
             MouseEventKind::Drag(MouseButton::Left) => {
-                let (view, doc) = current!(cxt.ui_tree);
+                let buffer_mirror = current_mut!(cx.ui_tree);
+                let view = buffer_view_mut!(cx.ui_tree);
 
-                let pos = match view.pos_at_screen_coords(doc, row, column) {
+                let pos = match view.pos_at_screen_coords(buffer_mirror, row, column) {
                     Some(pos) => pos,
                     None => return EventResult::Ignored(None),
                 };
 
-                let mut selection = doc.selection(view.id).clone();
+                let mut selection = buffer_mirror.selection().clone();
                 let primary = selection.primary_mut();
-                *primary = primary.put_cursor(doc.text().slice(..), pos, true);
-                doc.set_selection(view.id, selection);
+                *primary = primary.put_cursor(buffer_mirror.text().slice(..), pos, true);
+                buffer_mirror.set_selection(selection);
 
                 EventResult::Consumed(None)
             }
@@ -1218,12 +1220,12 @@ impl EditorView {
                     return EventResult::Ignored(None);
                 }
 
-                let (view, doc) = current!(cxt.ui_tree);
+                let buffer_mirror = current_mut!(cxt.ui_tree);
 
-                if doc
-                    .selection(view.id)
+                if buffer_mirror
+                    .selection()
                     .primary()
-                    .slice(doc.text().slice(..))
+                    .slice(buffer_mirror.text().slice(..))
                     .len_chars()
                     <= 1
                 {
@@ -1236,13 +1238,14 @@ impl EditorView {
             }
 
             MouseEventKind::Up(MouseButton::Right) => {
-                if let Some((coords, view_id)) = gutter_coords_and_view(cxt.ui_tree, row, column) {
+                if let Some((coords, view_id)) = gutter_coords_and_view(cx.ui_tree, row, column) {
                     cxt.ui_tree.focus(view_id);
 
-                    let (view, doc) = current!(cxt.ui_tree);
+                    let buffer_mirror = current_mut!(cx.ui_tree);
+                    let view = buffer_view_mut!(cx.ui_tree);
                     let line = coords.row + view.offset.row;
-                    if let Ok(pos) = doc.text().try_line_to_char(line) {
-                        doc.set_selection(view_id, Selection::point(pos));
+                    if let Ok(pos) = buffer_view.text().try_line_to_char(line) {
+                        buffer_view.set_selection(Selection::point(pos));
                         if modifiers == KeyModifiers::ALT {
                             commands::MappableCommand::dap_edit_log.execute(cxt);
                         } else {
@@ -1257,7 +1260,7 @@ impl EditorView {
             }
 
             MouseEventKind::Up(MouseButton::Middle) => {
-                let editor = &mut cxt.ui_tree;
+                let ui_tree = &mut cxt.ui_tree;
                 if !config.middle_click_paste {
                     return EventResult::Ignored(None);
                 }
@@ -1269,9 +1272,10 @@ impl EditorView {
                     return EventResult::Consumed(None);
                 }
 
-                if let Some((pos, view_id)) = pos_and_view(editor, row, column) {
-                    let doc = buffer_mut!(editor, &buffer_view!(editor, view_id).doc);
-                    doc.set_selection(view_id, Selection::point(pos));
+                if let Some((pos, view_id)) = pos_and_view(ui_tree, row, column) {
+
+                    let buffer_mirror = ui_tree.buffer_mirrors.get_mut(&buffer_view!(ui_tree, view_id).doc).unwrap();
+                    buffer_mirror.set_selection(Selection::point(pos));
                     cxt.ui_tree.focus(view_id);
                     commands::MappableCommand::paste_primary_clipboard_before.execute(cxt);
 
@@ -1307,13 +1311,15 @@ impl Component for EditorView {
 
                 let config = cx.ui_tree.config();
                 let mode = cx.ui_tree.mode();
-                let (view, doc) = current!(cx.ui_tree);
-                view.ensure_cursor_in_view(doc, config.scrolloff);
+                let buffer_mirror = current_mut!(cx.ui_tree);
+                let view = buffer_view_mut!(cx.ui_tree);
+
+                view.ensure_cursor_in_view(buffer_mirror, config.scrolloff);
 
                 // Store a history state if not in insert mode. Otherwise wait till we exit insert
                 // to include any edits to the paste in the history state.
                 if mode != Mode::Insert {
-                    doc.append_changes_to_history(view);
+                    buffer_mirror.append_changes_to_history(view);
                 }
 
                 EventResult::Consumed(None)
@@ -1331,7 +1337,7 @@ impl Component for EditorView {
                 cx.ui_tree.status_msg = None;
 
                 let mode = cx.ui_tree.mode();
-                let (view, _) = current!(cx.ui_tree);
+                let view = buffer_view_mut!(cx.ui_tree);
                 let focus = view.id;
 
                 if let Some(on_next_key) = self.on_next_key.take() {
@@ -1345,7 +1351,7 @@ impl Component for EditorView {
                             if let Some(completion) = &mut self.completion {
                                 // use a fake context here
                                 let mut cx = Context {
-                                    editor: cx.ui_tree,
+                                    ui_tree: cx.ui_tree,
                                     jobs: cx.jobs,
                                     scroll: None,
                                 };
@@ -1356,7 +1362,7 @@ impl Component for EditorView {
 
                                     if callback.is_some() {
                                         // assume close_fn
-                                        self.clear_completion(cx.editor);
+                                        self.clear_completion(cx.ui_tree);
                                     }
                                 }
                             }
@@ -1405,14 +1411,14 @@ impl Component for EditorView {
                     let config = cx.ui_tree.config();
                     let mode = cx.ui_tree.mode();
                     let view = buffer_view_mut!(cx.ui_tree, focus);
-                    let doc = buffer_mut!(cx.ui_tree, &view.doc);
+                    let buffer_mirror = current_mut!(cx.ui_tree, &view.doc);
 
-                    view.ensure_cursor_in_view(doc, config.scrolloff);
+                    view.ensure_cursor_in_view(buffer_mirror, config.scrolloff);
 
                     // Store a history state if not in insert mode. This also takes care of
                     // committing changes when leaving insert mode.
                     if mode != Mode::Insert {
-                        doc.append_changes_to_history(view);
+                        buffer_mirror.append_changes_to_history(view);
                     }
                 }
 
@@ -1423,9 +1429,9 @@ impl Component for EditorView {
             Event::IdleTimeout => self.handle_idle_timeout(&mut cx),
             Event::FocusGained => EventResult::Ignored(None),
             Event::FocusLost => {
-                if context.editor.config().auto_save {
+                if context.ui_tree.config().auto_save {
                     if let Err(e) = commands::typed::write_all_impl(context, false, false) {
-                        context.editor.set_error(format!("{}", e));
+                        context.ui_tree.set_error(format!("{}", e));
                     }
                 }
                 EventResult::Consumed(None)
@@ -1435,14 +1441,14 @@ impl Component for EditorView {
 
     fn render(&mut self, area: Rect, surface: &mut Surface, cx: &mut Context) {
         // clear with background color
-        surface.set_style(area, cx.editor.theme.get("ui.background"));
-        let config = cx.editor.config();
+        surface.set_style(area, cx.ui_tree.theme.get("ui.background"));
+        let config = cx.ui_tree.config();
 
         // check if bufferline should be rendered
         use helix_view::editor::BufferLine;
         let use_bufferline = match config.bufferline {
             BufferLine::Always => true,
-            BufferLine::Multiple if cx.editor.documents.len() > 1 => true,
+            BufferLine::Multiple if cx.ui_tree.documents.len() > 1 => true,
             _ => false,
         };
 
@@ -1453,21 +1459,21 @@ impl Component for EditorView {
         }
 
         // if the terminal size suddenly changed, we need to trigger a resize
-        cx.editor.resize(editor_area);
+        cx.ui_tree.resize(editor_area);
 
         if use_bufferline {
-            Self::render_bufferline(cx.editor, area.with_height(1), surface);
+            Self::render_bufferline(cx.ui_tree, area.with_height(1), surface);
         }
 
-        for (view, is_focused) in cx.editor.tree.views() {
-            let doc = cx.editor.document(view.doc).unwrap();
-            self.render_view(cx.editor, doc, view, area, surface, is_focused);
+        for (view, is_focused) in cx.ui_tree.tree.views() {
+            let doc = cx.ui_tree.document(view.doc).unwrap();
+            self.render_view(cx.ui_tree, doc, view, area, surface, is_focused);
         }
 
         if config.auto_info {
-            if let Some(mut info) = cx.editor.autoinfo.take() {
+            if let Some(mut info) = cx.ui_tree.autoinfo.take() {
                 info.render(area, surface, cx);
-                cx.editor.autoinfo = Some(info)
+                cx.ui_tree.autoinfo = Some(info)
             }
         }
 
@@ -1475,13 +1481,13 @@ impl Component for EditorView {
         let mut status_msg_width = 0;
 
         // render status msg
-        if let Some((status_msg, severity)) = &cx.editor.status_msg {
+        if let Some((status_msg, severity)) = &cx.ui_tree.status_msg {
             status_msg_width = status_msg.width();
             use helix_view::editor::Severity;
             let style = if *severity == Severity::Error {
-                cx.editor.theme.get("error")
+                cx.ui_tree.theme.get("error")
             } else {
-                cx.editor.theme.get("ui.text")
+                cx.ui_tree.theme.get("ui.text")
             };
 
             surface.set_string(
@@ -1494,7 +1500,7 @@ impl Component for EditorView {
 
         if area.width.saturating_sub(status_msg_width as u16) > key_width {
             let mut disp = String::new();
-            if let Some(count) = cx.editor.count {
+            if let Some(count) = cx.ui_tree.count {
                 disp.push_str(&count.to_string())
             }
             for key in self.keymap.pending_keys() {
@@ -1503,8 +1509,8 @@ impl Component for EditorView {
             for key in &self.keymap.pseudo_pending {
                 disp.push_str(&key.key_sequence_format());
             }
-            let style = cx.editor.theme.get("ui.text");
-            let macro_width = if cx.editor.macro_recording.is_some() {
+            let style = cx.ui_tree.theme.get("ui.text");
+            let macro_width = if cx.ui_tree.macro_recording.is_some() {
                 3
             } else {
                 0
@@ -1516,7 +1522,7 @@ impl Component for EditorView {
                     .unwrap_or(&disp),
                 style,
             );
-            if let Some((reg, _)) = cx.editor.macro_recording {
+            if let Some((reg, _)) = cx.ui_tree.macro_recording {
                 let disp = format!("[{}]", reg);
                 let style = style
                     .fg(helix_view::graphics::Color::Yellow)
@@ -1535,7 +1541,7 @@ impl Component for EditorView {
         }
     }
 
-    fn cursor(&self, _area: Rect, editor: &ui_tree) -> (Option<Position>, CursorKind) {
+    fn cursor(&self, _area: Rect, editor: &UITree) -> (Option<Position>, CursorKind) {
         match editor.cursor() {
             // All block cursors are drawn manually
             (pos, CursorKind::Block) => (pos, CursorKind::Hidden),

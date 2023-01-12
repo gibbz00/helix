@@ -330,7 +330,7 @@ impl Component for Markdown {
     fn render(&mut self, area: Rect, surface: &mut Surface, cx: &mut Context) {
         use tui::widgets::{Paragraph, Widget, Wrap};
 
-        let text = self.parse(Some(&cx.editor.theme));
+        let text = self.parse(Some(&cx.ui_tree.theme));
 
         let par = Paragraph::new(text)
             .wrap(Wrap { trim: false })

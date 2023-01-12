@@ -81,7 +81,7 @@ impl<T: Component> Popup<T> {
     pub fn get_rel_position(&mut self, viewport: Rect, cx: &Context) -> (u16, u16) {
         let position = self
             .position
-            .get_or_insert_with(|| cx.editor.cursor().0.unwrap_or_default());
+            .get_or_insert_with(|| cx.ui_tree.cursor().0.unwrap_or_default());
 
         let (width, height) = self.size;
 
@@ -233,7 +233,7 @@ impl<T: Component> Component for Popup<T> {
         let area = viewport.intersection(Rect::new(rel_x, rel_y, self.size.0, self.size.1));
 
         // clear area
-        let background = cx.editor.theme.get("ui.popup");
+        let background = cx.ui_tree.theme.get("ui.popup");
         surface.clear_with(area, background);
 
         let inner = area.inner(&self.margin);
@@ -245,7 +245,7 @@ impl<T: Component> Component for Popup<T> {
             let len = self.child_size.1 as usize;
             let fits = len <= win_height;
             let scroll = self.scroll;
-            let scroll_style = cx.editor.theme.get("ui.menu.scroll");
+            let scroll_style = cx.ui_tree.theme.get("ui.menu.scroll");
 
             const fn div_ceil(a: usize, b: usize) -> usize {
                 (a + b - 1) / b

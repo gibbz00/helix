@@ -7,10 +7,10 @@
 //! putting a `&mut` in front of it. This way rust can see that we are only borrowing a
 //! part of the struct and not the entire thing.
 
-/// Get the current view and document mutably as a tuple.
-/// Returns `(&mut BufferView, &mut Buffer)`
+/// Get the currently focused buffer_mirror as mutable.
+/// Returns `&mut BufferMirror`
 #[macro_export]
-macro_rules! current {
+macro_rules! current_mut {
     ($ui_tree:expr) => {{
         let buffer_view = $crate::buffer_view_mut!($ui_tree);
         let buffer = $crate::buffer_mut!($ui_tree, &buffer_view.buffer_id);
@@ -18,36 +18,12 @@ macro_rules! current {
     }};
 }
 
+/// Get the currently focused buffer_mirror.
+/// Returns `&mut BufferMirror`
 #[macro_export]
-macro_rules! current_ref {
+macro_rules! current {
     ($ui_tree:expr) => {{
-        let buffer_view = $ui_tree.tree.get($ui_tree.tree.focus);
-        let buffer = &$ui_tree.buffers[&view.buffer_id];
-        (buffer_view, buffer)
-    }};
-}
-
-/// Get the current document mutably.
-/// Returns `&mut Buffer`
-#[macro_export]
-macro_rules! buffer_mut {
-    ($ui_tree:expr, $id:expr) => {{
-        $ui_tree.buffers.get_mut($id).unwrap()
-    }};
-    ($ui_tree:expr) => {{
-        $crate::current!($ui_tree).1
-    }};
-}
-
-/// Get the current buffer immutably
-/// Returns `&Buffer`
-#[macro_export]
-macro_rules! buffer {
-    ($ui_tree:expr, $id:expr) => {{
-        &$ui_tree.buffers[$id]
-    }};
-    ($ui_tree:expr) => {{
-        $crate::current_ref!($ui_tree).1
+        &$ui_tree.buffers[&$ui_tree.tree.get($ui_tree.tree.focus).buffer_id];
     }};
 }
 

@@ -11,7 +11,7 @@ use helix_view::{
     graphics::Rect,
     theme,
     tree::Layout,
-    Align, ui_tree,
+    Align, UITree,
 };
 use crate::{
     args::Args,
@@ -66,7 +66,7 @@ type Terminal = tui::terminal::Terminal<TestBackend>;
 pub struct Application {
     compositor: Compositor,
     terminal: Terminal,
-    pub editor: ui_tree,
+    pub ui_tree: UITree,
 
     config: Arc<ArcSwap<Config>>,
 
@@ -163,7 +163,7 @@ impl Application {
         let terminal = Terminal::new(backend)?;
         let area = terminal.size().expect("couldn't get terminal size");
         let mut compositor = Compositor::new(area);
-        let mut editor = ui_tree::new(
+        let mut ui_tree = UITree::new(
             area,
             theme_loader.clone(),
             syn_loader.clone(),
@@ -173,14 +173,14 @@ impl Application {
 
         if args.load_tutor {
             let path = helix_loader::runtime_dir().join("tutor");
-            editor.open(&path, Action::VerticalSplit)?;
+            ui_tree.open(&path, Action::VerticalSplit)?;
             // Unset path to prevent accidentally saving to the original tutor file.
-            buffer_mut!(editor).set_path(None)?;
+            current_mut!(ui_tree).set_path(None)?;
         } else if !args.files.is_empty() {
             let first = &args.files[0].0; // we know it's not empty
             if first.is_dir() {
                 std::env::set_current_dir(first).context("set current dir")?;
-                editor.new_file(Action::VerticalSplit);
+                ui_tree.new_file(Action::VerticalSplit);
                 let picker = ui::file_picker(".".into(), &config.load().editor);
                 compositor.push(Box::new(overlayed(picker)));
             } else {
@@ -202,39 +202,41 @@ impl Application {
                             Some(Layout::Horizontal) => Action::HorizontalSplit,
                             None => Action::Load,
                         };
-                        let doc_id = editor
+                        let doc_id = ui_tree
                             .open(&file, action)
                             .context(format!("open '{}'", file.to_string_lossy()))?;
                         // with Action::Load all documents have the same view
                         // NOTE: this isn't necessarily true anymore. If
                         // `--vsplit` or `--hsplit` are used, the file which is
                         // opened last is focused on.
-                        let view_id = editor.tree.focus;
-                        let doc = buffer_mut!(editor, &doc_id);
-                        let pos = Selection::point(pos_at_coords(doc.text().slice(..), pos, true));
-                        doc.set_selection(view_id, pos);
+                        let view_id = ui_tree.tree.focus;
+
+                        let buffer_mirror = ui_tree.buffer_mirrors.get_mut(&doc_id).unwrap();
+                        let pos = Selection::point(pos_at_coords(buffer_mirror.text().slice(..), pos, true));
+                        buffer_mirror.set_selection(pos);
                     }
                 }
-                editor.set_status(format!("Loaded {} files.", nr_of_files));
+                ui_tree.set_status(format!("Loaded {} files.", nr_of_files));
                 // align the view to center after all files are loaded,
                 // does not affect views without pos since it is at the top
-                let (view, doc) = current!(editor);
-                align_view(doc, view, Align::Center);
+                let buffer_mirror = current_mut!(cx.ui_tree);
+                let view = buffer_view_mut!(cx.ui_tree);
+                align_view(buffer_mirror, view, Align::Center);
             }
         } else if stdin().is_tty() || cfg!(feature = "integration") {
-            editor.new_file(Action::VerticalSplit);
+            ui_tree.new_file(Action::VerticalSplit);
         } else if cfg!(target_os = "macos") {
             // On Linux and Windows, we allow the output of a command to be piped into the new buffer.
             // This doesn't currently work on macOS because of the following issue:
             //   https://github.com/crossterm-rs/crossterm/issues/500
             anyhow::bail!("Piping into helix-term is currently not supported on macOS");
         } else {
-            editor
+            ui_tree
                 .new_file_from_stdin(Action::VerticalSplit)
-                .unwrap_or_else(|_| editor.new_file(Action::VerticalSplit));
+                .unwrap_or_else(|_| ui_tree.new_file(Action::VerticalSplit));
         }
 
-        editor.set_theme(theme);
+        ui_tree.set_theme(theme);
 
         #[cfg(windows)]
         let signals = futures_util::stream::empty();
@@ -245,7 +247,7 @@ impl Application {
         let app = Self {
             compositor,
             terminal,
-            editor,
+            ui_tree,
 
             config,
 
@@ -267,18 +269,18 @@ impl Application {
     #[cfg(not(feature = "integration"))]
     async fn render(&mut self) {
         let mut cx = crate::compositor::Context {
-            editor: &mut self.editor,
+            ui_tree: &mut self.ui_tree,
             jobs: &mut self.jobs,
             scroll: None,
         };
 
         // Acquire mutable access to the redraw_handle lock
         // to ensure that there are no tasks running that want to block rendering
-        drop(cx.editor.redraw_handle.1.write().await);
-        cx.editor.needs_redraw = false;
+        drop(cx.ui_tree.redraw_handle.1.write().await);
+        cx.ui_tree.needs_redraw = false;
         {
             // exhaust any leftover redraw notifications
-            let notify = cx.editor.redraw_handle.0.notified();
+            let notify = cx.ui_tree.redraw_handle.0.notified();
             tokio::pin!(notify);
             notify.enable();
         }
@@ -294,7 +296,7 @@ impl Application {
 
         self.compositor.render(area, surface, &mut cx);
 
-        let (pos, kind) = self.compositor.cursor(area, &self.editor);
+        let (pos, kind) = self.compositor.cursor(area, &self.ui_tree);
         let pos = pos.map(|pos| (pos.col as u16, pos.row as u16));
         self.terminal.draw(pos, kind).unwrap();
     }
@@ -318,7 +320,7 @@ impl Application {
         S: Stream<Item = crossterm::Result<crossterm::event::Event>> + Unpin,
     {
         loop {
-            if self.editor.should_close() {
+            if self.ui_tree.should_close() {
                 return false;
             }
 
@@ -334,14 +336,14 @@ impl Application {
                     self.handle_signals(signal).await;
                 }
                 Some(callback) = self.jobs.futures.next() => {
-                    self.jobs.handle_callback(&mut self.editor, &mut self.compositor, callback);
+                    self.jobs.handle_callback(&mut self.ui_tree, &mut self.compositor, callback);
                     self.render().await;
                 }
                 Some(callback) = self.jobs.wait_futures.next() => {
-                    self.jobs.handle_callback(&mut self.editor, &mut self.compositor, callback);
+                    self.jobs.handle_callback(&mut self.ui_tree, &mut self.compositor, callback);
                     self.render().await;
                 }
-                event = self.editor.wait_event() => {
+                event = self.ui_tree.wait_event() => {
                     let _idle_handled = self.handle_editor_event(event).await;
 
                     #[cfg(feature = "integration")]
@@ -390,7 +392,7 @@ impl Application {
                         }
                     }
                     Err(err) => {
-                        self.editor.set_error(err.to_string());
+                        self.ui_tree.set_error(err.to_string());
                     }
                 }
             }
@@ -407,7 +409,7 @@ impl Application {
 
         // Update all the relevant members in the editor after updating
         // the configuration.
-        self.editor.refresh_config();
+        self.ui_tree.refresh_config();
     }
 
     #[cfg(windows)]
@@ -446,12 +448,12 @@ impl Application {
 
     pub async fn handle_idle_timeout(&mut self) {
         let mut cx = crate::compositor::Context {
-            editor: &mut self.editor,
+            ui_tree: &mut self.ui_tree,
             jobs: &mut self.jobs,
             scroll: None,
         };
         let should_render = self.compositor.handle_event(&Event::IdleTimeout, &mut cx);
-        if should_render || self.editor.needs_redraw {
+        if should_render || self.ui_tree.needs_redraw {
             self.render().await;
         }
     }
@@ -460,12 +462,12 @@ impl Application {
         let doc_save_event = match doc_save_event {
             Ok(event) => event,
             Err(err) => {
-                self.editor.set_error(err.to_string());
+                self.ui_tree.set_error(err.to_string());
                 return;
             }
         };
 
-        let doc = match self.editor.document_mut(doc_save_event.buffer_id) {
+        let doc = match self.ui_tree.document_mut(doc_save_event.buffer_id) {
             None => {
                 warn!(
                     "received document saved event for non-existent doc id: {}",
@@ -496,21 +498,21 @@ impl Application {
                     err.to_string(),
                 );
 
-                self.editor.set_error(err.to_string());
+                self.ui_tree.set_error(err.to_string());
                 return;
             }
 
-            let loader = self.editor.syn_loader.clone();
+            let loader = self.ui_tree.syn_loader.clone();
 
             // borrowing the same doc again to get around the borrow checker
-            let doc = buffer_mut!(self.editor, &doc_save_event.buffer_id);
-            let id = doc.id();
-            doc.detect_language(loader);
-            let _ = self.editor.refresh_language_server(id);
+            let buffer_mirror = ui_tree.buffer_mirrors.get_mut(&doc_save_event.buffer_id).unwrap()
+            let id = buffer_mirror.id();
+            buffer_mirror.detect_language(loader);
+            let _ = self.ui_tree.refresh_language_server(id);
         }
 
         // TODO: fix being overwritten by lsp
-        self.editor.set_status(format!(
+        self.ui_tree.set_status(format!(
             "'{}' written, {}L {}B",
             get_relative_path(&doc_save_event.path).to_string_lossy(),
             lines,
@@ -534,7 +536,7 @@ impl Application {
             EditorEvent::LanguageServerMessage((id, call)) => {
                 self.handle_language_server_message(call, id).await;
                 // limit render calls for fast language server messages
-                let last = self.editor.language_servers.incoming.is_empty();
+                let last = self.ui_tree.language_servers.incoming.is_empty();
 
                 if last || self.last_render.elapsed() > LSP_DEADLINE {
                     self.render().await;
@@ -542,13 +544,13 @@ impl Application {
                 }
             }
             EditorEvent::DebuggerEvent(payload) => {
-                let needs_render = self.editor.handle_debugger_message(payload).await;
+                let needs_render = self.ui_tree.handle_debugger_message(payload).await;
                 if needs_render {
                     self.render().await;
                 }
             }
             EditorEvent::IdleTimer => {
-                self.editor.clear_idle_timer();
+                self.ui_tree.clear_idle_timer();
                 self.handle_idle_timeout().await;
 
                 #[cfg(feature = "integration")]
@@ -566,7 +568,7 @@ impl Application {
         event: Result<CrosstermEvent, crossterm::ErrorKind>,
     ) {
         let mut cx = crate::compositor::Context {
-            editor: &mut self.editor,
+            ui_tree: &mut self.ui_tree,
             jobs: &mut self.jobs,
             scroll: None,
         };
@@ -587,7 +589,7 @@ impl Application {
             event => self.compositor.handle_event(&event.into(), &mut cx),
         };
 
-        if should_redraw && !self.editor.should_close() {
+        if should_redraw && !self.ui_tree.should_close() {
             self.render().await;
         }
     }
@@ -615,7 +617,7 @@ impl Application {
                 match notification {
                     Notification::Initialized => {
                         let language_server =
-                            match self.editor.language_servers.get_by_id(server_id) {
+                            match self.ui_tree.language_servers.get_by_id(server_id) {
                                 Some(language_server) => language_server,
                                 None => {
                                     warn!("can't find language server with id `{}`", server_id);
@@ -630,7 +632,7 @@ impl Application {
                             tokio::spawn(language_server.did_change_configuration(config.clone()));
                         }
 
-                        let docs = self.editor.documents().filter(|doc| {
+                        let docs = self.ui_tree.documents().filter(|doc| {
                             doc.language_server().map(|server| server.id()) == Some(server_id)
                         });
 
@@ -654,7 +656,7 @@ impl Application {
                     }
                     Notification::PublishDiagnostics(mut params) => {
                         let path = params.uri.to_file_path().unwrap();
-                        let doc = self.editor.document_by_path_mut(&path);
+                        let doc = self.ui_tree.document_by_path_mut(&path);
 
                         if let Some(doc) = doc {
                             let lang_conf = doc.language_config();
@@ -768,7 +770,7 @@ impl Application {
                         // Insert the original lsp::Diagnostics here because we may have no open document
                         // for diagnosic message and so we can't calculate the exact position.
                         // When using them later in the diagnostics picker, we calculate them on-demand.
-                        self.editor
+                        self.ui_tree
                             .diagnostics
                             .insert(params.uri, params.diagnostics);
                     }
@@ -810,7 +812,7 @@ impl Application {
                                     if !self.lsp_progress.is_progressing(server_id) {
                                         editor_view.spinners_mut().get_or_create(server_id).stop();
                                     }
-                                    self.editor.clear_status();
+                                    self.ui_tree.clear_status();
 
                                     // we want to render to clear any leftover spinners or messages
                                     return;
@@ -858,18 +860,18 @@ impl Application {
                         }
 
                         if self.config.load().editor.lsp.display_messages {
-                            self.editor.set_status(status);
+                            self.ui_tree.set_status(status);
                         }
                     }
                     Notification::ProgressMessage(_params) => {
                         // do nothing
                     }
                     Notification::Exit => {
-                        self.editor.set_status("Language server exited");
+                        self.ui_tree.set_status("Language server exited");
 
                         // Clear any diagnostics for documents with this server open.
                         let urls: Vec<_> = self
-                            .editor
+                            .ui_tree
                             .documents_mut()
                             .filter_map(|doc| {
                                 if doc.language_server().map(|server| server.id())
@@ -884,11 +886,11 @@ impl Application {
                             .collect();
 
                         for url in urls {
-                            self.editor.diagnostics.remove(&url);
+                            self.ui_tree.diagnostics.remove(&url);
                         }
 
                         // Remove the language server from the registry.
-                        self.editor.language_servers.remove_by_id(server_id);
+                        self.ui_tree.language_servers.remove_by_id(server_id);
                     }
                 }
             }
@@ -928,7 +930,7 @@ impl Application {
                     }
                     MethodCall::ApplyWorkspaceEdit(params) => {
                         apply_workspace_edit(
-                            &mut self.editor,
+                            &mut self.ui_tree,
                             helix_lsp::OffsetEncoding::Utf8,
                             &params.edit,
                         );
@@ -941,7 +943,7 @@ impl Application {
                     }
                     MethodCall::WorkspaceFolders => {
                         let language_server =
-                            self.editor.language_servers.get_by_id(server_id).unwrap();
+                            self.ui_tree.language_servers.get_by_id(server_id).unwrap();
 
                         Ok(json!(language_server.workspace_folders()))
                     }
@@ -953,11 +955,11 @@ impl Application {
                                 let mut config = match &item.scope_uri {
                                     Some(scope) => {
                                         let path = scope.to_file_path().ok()?;
-                                        let doc = self.editor.document_by_path(path)?;
+                                        let doc = self.ui_tree.document_by_path(path)?;
                                         doc.language_config()?.config.as_ref()?
                                     }
                                     None => self
-                                        .editor
+                                        .ui_tree
                                         .language_servers
                                         .get_by_id(server_id)
                                         .unwrap()
@@ -975,7 +977,7 @@ impl Application {
                     }
                 };
 
-                let language_server = match self.editor.language_servers.get_by_id(server_id) {
+                let language_server = match self.ui_tree.language_servers.get_by_id(server_id) {
                     Some(language_server) => language_server,
                     None => {
                         warn!("can't find language server with id `{}`", server_id);
@@ -1038,11 +1040,11 @@ impl Application {
         restore_term()?;
 
         for err in close_errs {
-            self.editor.exit_code = 1;
+            self.ui_tree.exit_code = 1;
             eprintln!("Error: {}", err);
         }
 
-        Ok(self.editor.exit_code)
+        Ok(self.ui_tree.exit_code)
     }
 
     pub async fn close(&mut self) -> Vec<anyhow::Error> {
@@ -1053,19 +1055,19 @@ impl Application {
 
         if let Err(err) = self
             .jobs
-            .finish(&mut self.editor, Some(&mut self.compositor))
+            .finish(&mut self.ui_tree, Some(&mut self.compositor))
             .await
         {
             log::error!("Error executing job: {}", err);
             errs.push(err);
         };
 
-        if let Err(err) = self.editor.flush_writes().await {
+        if let Err(err) = self.ui_tree.flush_writes().await {
             log::error!("Error writing: {}", err);
             errs.push(err);
         }
 
-        if self.editor.close_language_servers(None).await.is_err() {
+        if self.ui_tree.close_language_servers(None).await.is_err() {
             log::error!("Timed out waiting for language servers to shutdown");
             errs.push(anyhow::format_err!(
                 "Timed out waiting for language servers to shutdown"

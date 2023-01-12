@@ -1,4 +1,4 @@
-use crate::{input::KeyEvent, keyboard::KeyCode, mode::Mode, keymap::{KeyTrie, KeyTrieNode}, command::MappableCommands, ui_tree::UITree};
+use crate::{input::KeyEvent, keyboard::KeyCode, mode::Mode, keymap::{KeyTrie, KeyTrieNode}, command::MappableCommands, UITree::UITree};
 
 pub struct EventHandler {
     ui_tree: UITree,

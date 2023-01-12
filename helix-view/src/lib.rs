@@ -3,7 +3,7 @@ pub mod macros;
 
 pub mod clipboard;
 pub mod buffer_mirror;
-pub mod ui_tree;
+pub mod UITree;
 pub mod env;
 pub mod graphics;
 pub mod gutter;
@@ -27,7 +27,7 @@ mod lists;
 mod jump;
 
 pub use buffer_mirror::BufferMirror;
-pub use ui_tree::UITree;
+pub use UITree::UITree;
 pub use theme::Theme;
 pub use buffer_view::BufferView;
 use std::num::NonZeroUsize;
@@ -41,7 +41,7 @@ pub enum Align {
 
 pub fn align_view(buffer: &BufferMirror, buffer_view: &mut BufferView, align: Align) {
     let pos = buffer
-        .selection(buffer_view.view_id)
+        .selection()
         .primary()
         .cursor(buffer.text().slice(..));
     let line = buffer.text().char_to_line(pos);
@@ -58,12 +58,10 @@ pub fn align_view(buffer: &BufferMirror, buffer_view: &mut BufferView, align: Al
 }
 
 /// Applies a [`helix_core::Transaction`] to the given [`Buffer`]
-/// and [`BufferView`].
 pub fn apply_transaction(
     transaction: &helix_core::Transaction,
-    buffer: &mut BufferMirror,
-    buffer_view: &BufferView,
+    buffer_mirror: &mut BufferMirror,
 ) -> bool {
     // TODO remove this helper function. Just call Buffer::apply everywhere directly.
-    buffer.apply(transaction, buffer_view.view_id)
+    buffer_mirror.apply(transaction)
 }

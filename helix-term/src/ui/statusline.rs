@@ -5,7 +5,7 @@ use helix_view::{
     mode::Mode,
     graphics::Rect,
     theme::Style,
-    BufferMirror, ui_tree, BufferView,
+    BufferMirror, UITree, BufferView,
 };
 
 use crate::ui::ProgressSpinners;
@@ -15,7 +15,7 @@ use tui::buffer::Buffer as Surface;
 use tui::text::{Span, Spans};
 
 pub struct RenderContext<'a> {
-    pub editor: &'a ui_tree,
+    pub editor: &'a UITree,
     pub doc: &'a BufferMirror,
     pub view: &'a BufferView,
     pub focused: bool,
@@ -25,7 +25,7 @@ pub struct RenderContext<'a> {
 
 impl<'a> RenderContext<'a> {
     pub fn new(
-        editor: &'a ui_tree,
+        editor: &'a UITree,
         doc: &'a BufferMirror,
         view: &'a BufferView,
         focused: bool,
@@ -297,7 +297,7 @@ fn render_selections<F>(context: &mut RenderContext, write: F)
 where
     F: Fn(&mut RenderContext, String, Option<Style>) + Copy,
 {
-    let count = context.doc.selection(context.view.view_id).len();
+    let count = context.doc.selection().len();
     write(
         context,
         format!(" {} sel{} ", count, if count == 1 { "" } else { "s" }),
@@ -309,7 +309,7 @@ fn render_primary_selection_length<F>(context: &mut RenderContext, write: F)
 where
     F: Fn(&mut RenderContext, String, Option<Style>) + Copy,
 {
-    let tot_sel = context.doc.selection(context.view.view_id).primary().len();
+    let tot_sel = context.doc.selection().primary().len();
     write(
         context,
         format!(" {} char{} ", tot_sel, if tot_sel == 1 { "" } else { "s" }),
@@ -322,7 +322,7 @@ fn get_position(context: &RenderContext) -> Position {
         context.doc.text().slice(..),
         context
             .doc
-            .selection(context.view.view_id)
+            .selection()
             .primary()
             .cursor(context.doc.text().slice(..)),
     )

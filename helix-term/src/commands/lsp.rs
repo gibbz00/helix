@@ -10,7 +10,7 @@ use tui::{
     widgets::Row,
 };
 
-use super::{align_view, push_jump, Align, Context, ui_tree, Open};
+use super::{align_view, push_jump, Align, Context, UITree, Open};
 
 use helix_core::{path, Selection};
 use helix_view::{apply_transaction, mode::Mode, editor::Action, theme::Style};
@@ -167,41 +167,43 @@ fn location_to_file_location(location: &lsp::Location) -> FileLocation {
 
 // TODO: share with symbol picker(symbol.location)
 fn jump_to_location(
-    editor: &mut ui_tree,
+    ui_tree: &mut UITree,
     location: &lsp::Location,
     offset_encoding: OffsetEncoding,
     action: Action,
 ) {
-    let (view, doc) = current!(editor);
-    push_jump(view, doc);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
+    push_jump(view, buffer_mirror);
 
     let path = match location.uri.to_file_path() {
         Ok(path) => path,
         Err(_) => {
             let err = format!("unable to convert URI to filepath: {}", location.uri);
-            editor.set_error(err);
+            ui_tree.set_error(err);
             return;
         }
     };
-    match editor.open(&path, action) {
+    match ui_tree.open(&path, action) {
         Ok(_) => (),
         Err(err) => {
             let err = format!("failed to open path: {:?}: {:?}", location.uri, err);
-            editor.set_error(err);
+            ui_tree.set_error(err);
             return;
         }
     }
-    let (view, doc) = current!(editor);
+    let buffer_mirror = current_mut!(ui_tree);
     let definition_pos = location.range.start;
     // TODO: convert inside server
-    let new_pos = if let Some(new_pos) = lsp_pos_to_pos(doc.text(), definition_pos, offset_encoding)
+    let new_pos = if let Some(new_pos) = lsp_pos_to_pos(buffer_mirror.text(), definition_pos, offset_encoding)
     {
         new_pos
     } else {
         return;
     };
-    doc.set_selection(view.id, Selection::point(new_pos));
-    align_view(doc, view, Align::Center);
+    buffer_mirror.set_selection(selection::point(new_pos));
+    let view = buffer_view_mut!(cx.ui_tree);
+    align_view(buffer_mirror, view, Align::Center);
 }
 
 fn sym_picker(
@@ -214,7 +216,8 @@ fn sym_picker(
         symbols,
         current_path.clone(),
         move |cx, symbol, action| {
-            let (view, doc) = current!(cx.editor);
+            let buffer_mirror = current_mut!(cx.ui_tree);
+            let view = buffer_view_mut!(cx.ui_tree);
             push_jump(view, doc);
 
             if current_path.as_ref() != Some(&symbol.location.uri) {
@@ -223,27 +226,28 @@ fn sym_picker(
                     Ok(path) => path,
                     Err(_) => {
                         let err = format!("unable to convert URI to filepath: {}", uri);
-                        cx.editor.set_error(err);
+                        cx.ui_tree.set_error(err);
                         return;
                     }
                 };
-                if let Err(err) = cx.editor.open(&path, action) {
+                if let Err(err) = cx.ui_tree.open(&path, action) {
                     let err = format!("failed to open document: {}: {}", uri, err);
                     log::error!("{}", err);
-                    cx.editor.set_error(err);
+                    cx.ui_tree.set_error(err);
                     return;
                 }
             }
 
-            let (view, doc) = current!(cx.editor);
+            let buffer_mirror = current_mut!(cx.ui_tree);
 
             if let Some(range) =
-                lsp_range_to_range(doc.text(), symbol.location.range, offset_encoding)
+                lsp_range_to_range(buffer_mirror.text(), symbol.location.range, offset_encoding)
             {
                 // we flip the range so that the cursor sits on the start of the symbol
                 // (for example start of the function).
-                doc.set_selection(view.id, Selection::single(range.head, range.anchor));
-                align_view(doc, view, Align::Center);
+                buffer_mirror.set_selection(Selection::single(range.head, range.anchor));
+                let view = buffer_view_mut!(cx.ui_tree);
+                align_view(buffer_mirror, view, Align::Center);
             }
         },
         move |_editor, symbol| Some(location_to_file_location(&symbol.location)),
@@ -290,20 +294,22 @@ fn diag_picker(
         (styles, format),
         move |cx, PickerDiagnostic { url, diag }, action| {
             if current_path.as_ref() == Some(url) {
-                let (view, doc) = current!(cx.editor);
-                push_jump(view, doc);
+                let buffer_mirror = current_mut!(cx.ui_tree);
+                let view = buffer_view_mut!(cx.ui_tree);
+                push_jump(view, buffer_mirror);
             } else {
                 let path = url.to_file_path().unwrap();
-                cx.editor.open(&path, action).expect("editor.open failed");
+                cx.ui_tree.open(&path, action).expect("editor.open failed");
             }
 
-            let (view, doc) = current!(cx.editor);
+            let buffer_mirror = current_mut!(cx.ui_tree);
+            let view = buffer_view_mut!(cx.ui_tree);
 
-            if let Some(range) = lsp_range_to_range(doc.text(), diag.range, offset_encoding) {
+            if let Some(range) = lsp_range_to_range(buffer_mirror.text(), diag.range, offset_encoding) {
                 // we flip the range so that the cursor sits on the start of the symbol
                 // (for example start of the function).
-                doc.set_selection(view.id, Selection::single(range.head, range.anchor));
-                align_view(doc, view, Align::Center);
+                buffer_mirror.set_selection(Selection::single(range.head, range.anchor));
+                align_view(buffer_mirror, view, Align::Center);
             }
         },
         move |_editor, PickerDiagnostic { url, diag }| {
@@ -333,7 +339,7 @@ pub fn symbol_picker(cx: &mut Context) {
             nested_to_flat(list, file, child);
         }
     }
-    let doc = buffer!(cx.ui_tree);
+    let doc = current!(cx.ui_tree);
 
     let language_server = language_server!(cx.ui_tree, doc);
     let current_url = doc.url();
@@ -357,7 +363,7 @@ pub fn symbol_picker(cx: &mut Context) {
                 let symbols = match symbols {
                     lsp::DocumentSymbolResponse::Flat(symbols) => symbols,
                     lsp::DocumentSymbolResponse::Nested(symbols) => {
-                        let doc = buffer!(editor);
+                        let doc = current!(editor);
                         let mut flat_symbols = Vec::new();
                         for symbol in symbols {
                             nested_to_flat(&mut flat_symbols, &doc.identifier(), symbol)
@@ -374,7 +380,7 @@ pub fn symbol_picker(cx: &mut Context) {
 }
 
 pub fn workspace_symbol_picker(cx: &mut Context) {
-    let doc = buffer!(cx.ui_tree);
+    let doc = current!(cx.ui_tree);
     let current_url = doc.url();
     let language_server = language_server!(cx.ui_tree, doc);
     let offset_encoding = language_server.offset_encoding();
@@ -392,8 +398,8 @@ pub fn workspace_symbol_picker(cx: &mut Context) {
         move |_editor, compositor, response: Option<Vec<lsp::SymbolInformation>>| {
             let symbols = response.unwrap_or_default();
             let picker = sym_picker(symbols, current_url, offset_encoding);
-            let get_symbols = |query: String, editor: &mut ui_tree| {
-                let doc = buffer!(editor);
+            let get_symbols = |query: String, editor: &mut UITree| {
+                let doc = current!(editor);
                 let language_server = match doc.language_server() {
                     Some(s) => s,
                     None => {
@@ -432,7 +438,7 @@ pub fn workspace_symbol_picker(cx: &mut Context) {
 }
 
 pub fn diagnostics_picker(cx: &mut Context) {
-    let doc = buffer!(cx.ui_tree);
+    let doc = current!(cx.ui_tree);
     let language_server = language_server!(cx.ui_tree, doc);
     if let Some(current_url) = doc.url() {
         let offset_encoding = language_server.offset_encoding();
@@ -454,7 +460,7 @@ pub fn diagnostics_picker(cx: &mut Context) {
 }
 
 pub fn workspace_diagnostics_picker(cx: &mut Context) {
-    let doc = buffer!(cx.ui_tree);
+    let doc = current!(cx.ui_tree);
     let language_server = language_server!(cx.ui_tree, doc);
     let current_url = doc.url();
     let offset_encoding = language_server.offset_encoding();
@@ -537,28 +543,28 @@ fn action_fixes_diagnostics(action: &CodeActionOrCommand) -> bool {
 }
 
 pub fn code_action(cx: &mut Context) {
-    let (view, doc) = current!(cx.ui_tree);
+    let buffer_mirror = current_mut!(cx.ui_tree);
 
-    let language_server = language_server!(cx.ui_tree, doc);
+    let language_server = language_server!(cx.ui_tree, buffer_mirror);
 
-    let selection_range = doc.selection(view.id).primary();
+    let selection_range = buffer_mirror.selection().primary();
     let offset_encoding = language_server.offset_encoding();
 
-    let range = range_to_lsp_range(doc.text(), selection_range, offset_encoding);
+    let range = range_to_lsp_range(buffer_mirror.text(), selection_range, offset_encoding);
 
     let future = match language_server.code_actions(
-        doc.identifier(),
+        buffer_mirror.identifier(),
         range,
         // Filter and convert overlapping diagnostics
         lsp::CodeActionContext {
-            diagnostics: doc
+            diagnostics: buffer_mirror
                 .diagnostics()
                 .iter()
                 .filter(|&diag| {
                     selection_range
                         .overlaps(&helix_core::Range::new(diag.range.start, diag.range.end))
                 })
-                .map(|diag| diagnostic_to_lsp_diagnostic(doc.text(), diag, offset_encoding))
+                .map(|diag| diagnostic_to_lsp_diagnostic(buffer_mirror.text(), diag, offset_encoding))
                 .collect(),
             only: None,
         },
@@ -671,8 +677,8 @@ impl ui::menu::Item for lsp::Command {
     }
 }
 
-pub fn execute_lsp_command(editor: &mut ui_tree, cmd: lsp::Command) {
-    let doc = buffer!(editor);
+pub fn execute_lsp_command(editor: &mut UITree, cmd: lsp::Command) {
+    let doc = current!(editor);
     let language_server = language_server!(editor, doc);
 
     // the command is executed on the server and communicated back
@@ -752,7 +758,7 @@ pub fn apply_document_resource_op(op: &lsp::ResourceOp) -> std::io::Result<()> {
 }
 
 pub fn apply_workspace_edit(
-    editor: &mut ui_tree,
+    editor: &mut UITree,
     offset_encoding: OffsetEncoding,
     workspace_edit: &lsp::WorkspaceEdit,
 ) {
@@ -778,30 +784,15 @@ pub fn apply_workspace_edit(
             }
         };
 
-        let doc = buffer_mut!(editor, &doc_id);
-
-        // Need to determine a view for apply/append_changes_to_history
-        let selections = doc.selections();
-        let view_id = if selections.contains_key(&current_view_id) {
-            // use current if possible
-            current_view_id
-        } else {
-            // Hack: we take the first available view_id
-            selections
-                .keys()
-                .next()
-                .copied()
-                .expect("No view_id available")
-        };
-
+        let buffer_mirror = ui_tree.buffer_mirrors.get_mut(&doc_id).unwrap();
         let transaction = helix_lsp::util::generate_transaction_from_edits(
-            doc.text(),
+            buffer_mirror.text(),
             text_edits,
             offset_encoding,
         );
         let view = buffer_view_mut!(editor, view_id);
-        apply_transaction(&transaction, doc, view);
-        doc.append_changes_to_history(view);
+        apply_transaction(&transaction, buffer_mirror);
+        buffer_mirror.append_changes_to_history(view);
     };
 
     if let Some(ref changes) = workspace_edit.changes {
@@ -871,7 +862,7 @@ pub fn apply_workspace_edit(
 }
 
 fn goto_impl(
-    editor: &mut ui_tree,
+    editor: &mut UITree,
     compositor: &mut Compositor,
     locations: Vec<lsp::Location>,
     offset_encoding: OffsetEncoding,
@@ -890,7 +881,7 @@ fn goto_impl(
                 locations,
                 cwdir,
                 move |cx, location, action| {
-                    jump_to_location(cx.editor, location, offset_encoding, action)
+                    jump_to_location(cx.ui_tree, location, offset_encoding, action)
                 },
                 move |_editor, location| Some(location_to_file_location(location)),
             );
@@ -915,13 +906,13 @@ fn to_locations(definitions: Option<lsp::GotoDefinitionResponse>) -> Vec<lsp::Lo
 }
 
 pub fn goto_definition(cx: &mut Context) {
-    let (view, doc) = current!(cx.ui_tree);
-    let language_server = language_server!(cx.ui_tree, doc);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let language_server = language_server!(cx.ui_tree, buffer_mirror);
     let offset_encoding = language_server.offset_encoding();
 
-    let pos = doc.position(view.id, offset_encoding);
+    let pos = buffer_mirror.position(offset_encoding);
 
-    let future = match language_server.goto_definition(doc.identifier(), pos, None) {
+    let future = match language_server.goto_definition(buffer_mirror.identifier(), pos, None) {
         Some(future) => future,
         None => {
             cx.ui_tree
@@ -940,13 +931,13 @@ pub fn goto_definition(cx: &mut Context) {
 }
 
 pub fn goto_type_definition(cx: &mut Context) {
-    let (view, doc) = current!(cx.ui_tree);
-    let language_server = language_server!(cx.ui_tree, doc);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let language_server = language_server!(cx.ui_tree, buffer_mirror);
     let offset_encoding = language_server.offset_encoding();
 
-    let pos = doc.position(view.id, offset_encoding);
+    let pos = buffer_mirror.position(offset_encoding);
 
-    let future = match language_server.goto_type_definition(doc.identifier(), pos, None) {
+    let future = match language_server.goto_type_definition(buffer_mirror.identifier(), pos, None) {
         Some(future) => future,
         None => {
             cx.ui_tree
@@ -965,13 +956,13 @@ pub fn goto_type_definition(cx: &mut Context) {
 }
 
 pub fn goto_implementation(cx: &mut Context) {
-    let (view, doc) = current!(cx.ui_tree);
-    let language_server = language_server!(cx.ui_tree, doc);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let language_server = language_server!(cx.ui_tree, buffer_mirror);
     let offset_encoding = language_server.offset_encoding();
 
-    let pos = doc.position(view.id, offset_encoding);
+    let pos = buffer_mirror.position(offset_encoding);
 
-    let future = match language_server.goto_implementation(doc.identifier(), pos, None) {
+    let future = match language_server.goto_implementation(buffer_mirror.identifier(), pos, None) {
         Some(future) => future,
         None => {
             cx.ui_tree
@@ -990,13 +981,13 @@ pub fn goto_implementation(cx: &mut Context) {
 }
 
 pub fn goto_reference(cx: &mut Context) {
-    let (view, doc) = current!(cx.ui_tree);
-    let language_server = language_server!(cx.ui_tree, doc);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let language_server = language_server!(cx.ui_tree, buffer_mirror);
     let offset_encoding = language_server.offset_encoding();
 
-    let pos = doc.position(view.id, offset_encoding);
+    let pos = buffer_mirror.position(offset_encoding);
 
-    let future = match language_server.goto_reference(doc.identifier(), pos, None) {
+    let future = match language_server.goto_reference(buffer_mirror.identifier(), pos, None) {
         Some(future) => future,
         None => {
             cx.ui_tree
@@ -1025,10 +1016,10 @@ pub fn signature_help(cx: &mut Context) {
 }
 
 pub fn signature_help_impl(cx: &mut Context, invoked: SignatureHelpInvoked) {
-    let (view, doc) = current!(cx.ui_tree);
+    let buffer_mirror = current_mut!(cx.ui_tree);
     let was_manually_invoked = invoked == SignatureHelpInvoked::Manual;
 
-    let language_server = match doc.language_server() {
+    let language_server = match buffer_mirror.language_server() {
         Some(language_server) => language_server,
         None => {
             // Do not show the message if signature help was invoked
@@ -1042,9 +1033,9 @@ pub fn signature_help_impl(cx: &mut Context, invoked: SignatureHelpInvoked) {
     };
     let offset_encoding = language_server.offset_encoding();
 
-    let pos = doc.position(view.id, offset_encoding);
+    let pos = buffer_mirror.position(offset_encoding);
 
-    let future = match language_server.text_document_signature_help(doc.identifier(), pos, None) {
+    let future = match language_server.text_document_signature_help(buffer_mirror.identifier(), pos, None) {
         Some(f) => f,
         None => {
             if was_manually_invoked {
@@ -1084,7 +1075,7 @@ pub fn signature_help_impl(cx: &mut Context, invoked: SignatureHelpInvoked) {
                     return;
                 }
             };
-            let doc = buffer!(editor);
+            let doc = current!(editor);
             let language = doc.language_name().unwrap_or("");
 
             let signature = match response
@@ -1145,15 +1136,15 @@ pub fn signature_help_impl(cx: &mut Context, invoked: SignatureHelpInvoked) {
 }
 
 pub fn hover(cx: &mut Context) {
-    let (view, doc) = current!(cx.ui_tree);
-    let language_server = language_server!(cx.ui_tree, doc);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let language_server = language_server!(cx.ui_tree, buffer_mirror);
     let offset_encoding = language_server.offset_encoding();
 
     // TODO: factor out a doc.position_identifier() that returns lsp::TextDocumentPositionIdentifier
 
-    let pos = doc.position(view.id, offset_encoding);
+    let pos = buffer_mirror.position(offset_encoding);
 
-    let future = match language_server.text_document_hover(doc.identifier(), pos, None) {
+    let future = match language_server.text_document_hover(buffer_mirror.identifier(), pos, None) {
         Some(future) => future,
         None => {
             cx.ui_tree
@@ -1202,9 +1193,9 @@ pub fn hover(cx: &mut Context) {
 }
 
 pub fn rename_symbol(cx: &mut Context) {
-    let (view, doc) = current_ref!(cx.ui_tree);
-    let text = doc.text().slice(..);
-    let primary_selection = doc.selection(view.id).primary();
+    let buffer_mirror = current!(cx.ui_tree);
+    let text = buffer_mirror.text().slice(..);
+    let primary_selection = buffer_mirror.selection().primary();
     let prefill = if primary_selection.len() > 1 {
         primary_selection
     } else {
@@ -1224,37 +1215,37 @@ pub fn rename_symbol(cx: &mut Context) {
                 return;
             }
 
-            let (view, doc) = current!(cx.editor);
-            let language_server = language_server!(cx.editor, doc);
+            let buffer_mirror = current_mut!(cx.ui_tree);
+            let language_server = language_server!(cx.ui_tree, buffer_mirror);
             let offset_encoding = language_server.offset_encoding();
 
-            let pos = doc.position(view.id, offset_encoding);
+            let pos = buffer_mirror.position(offset_encoding);
 
             let future =
-                match language_server.rename_symbol(doc.identifier(), pos, input.to_string()) {
+                match language_server.rename_symbol(buffer_mirror.identifier(), pos, input.to_string()) {
                     Some(future) => future,
                     None => {
-                        cx.editor
+                        cx.ui_tree
                             .set_error("Language server does not support symbol renaming");
                         return;
                     }
                 };
             match block_on(future) {
-                Ok(edits) => apply_workspace_edit(cx.editor, offset_encoding, &edits),
-                Err(err) => cx.editor.set_error(err.to_string()),
+                Ok(edits) => apply_workspace_edit(cx.ui_tree, offset_encoding, &edits),
+                Err(err) => cx.ui_tree.set_error(err.to_string()),
             }
         },
     );
 }
 
 pub fn select_references_to_symbol_under_cursor(cx: &mut Context) {
-    let (view, doc) = current!(cx.ui_tree);
-    let language_server = language_server!(cx.ui_tree, doc);
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let language_server = language_server!(cx.ui_tree, buffer_mirror);
     let offset_encoding = language_server.offset_encoding();
 
-    let pos = doc.position(view.id, offset_encoding);
+    let pos = buffer_mirror.position(offset_encoding);
 
-    let future = match language_server.text_document_document_highlight(doc.identifier(), pos, None)
+    let future = match language_server.text_document_document_highlight(buffer_mirror.identifier(), pos, None)
     {
         Some(future) => future,
         None => {
@@ -1271,11 +1262,11 @@ pub fn select_references_to_symbol_under_cursor(cx: &mut Context) {
                 Some(highlights) if !highlights.is_empty() => highlights,
                 _ => return,
             };
-            let (view, doc) = current!(editor);
-            let language_server = language_server!(editor, doc);
+            let buffer_mirror = current_mut!(editor);
+            let language_server = language_server!(editor, buffer_mirror);
             let offset_encoding = language_server.offset_encoding();
-            let text = doc.text();
-            let pos = doc.selection(view.id).primary().head;
+            let text = buffer_mirror.text();
+            let pos = buffer_mirror.selection().primary().head;
 
             // We must find the range that contains our primary cursor to prevent our primary cursor to move
             let mut primary_index = 0;
@@ -1291,7 +1282,7 @@ pub fn select_references_to_symbol_under_cursor(cx: &mut Context) {
                 })
                 .collect();
             let selection = Selection::new(ranges, primary_index);
-            doc.set_selection(view.id, selection);
+            buffer_mirror.set_selection(selection);
         },
     );
 }

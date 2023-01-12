@@ -4,7 +4,7 @@ mod command_functions;
 
 pub use command_list::COMMAND_LIST as COMMAND_LIST;
 pub use command_list::COMMAND_MAP as COMMAND_MAP;
-use crate::{lists::List, ui_tree::UITree};
+use crate::{lists::List, UITree::UITree};
 
 #[derive(Clone, Debug)]
 pub struct Command {

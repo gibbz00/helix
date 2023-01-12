@@ -1,11 +1,11 @@
-use crate::{editor::RedrawHandle,
-    apply_transaction,
-    ui_tree,
-    BufferView,
-};
+use crate::{apply_transaction, editor::RedrawHandle, UITree, BufferView};
 
 use helix_server::buffer::BufferID;
 
+use anyhow::{anyhow, bail, Context, Error};
+use futures_util::future::BoxFuture;
+use futures_util::FutureExt;
+use helix_core::{auto_pairs::AutoPairs, Range};
 use helix_core::{
     encoding,
     history::{History, State, UndoKind},
@@ -15,30 +15,30 @@ use helix_core::{
     ChangeSet, Diagnostic, LineEnding, Rope, RopeBuilder, Selection, Syntax, Transaction,
     DEFAULT_LINE_ENDING,
 };
-use anyhow::{anyhow, bail, Context, Error};
-use futures_util::future::BoxFuture;
-use futures_util::FutureExt;
-use helix_core::{auto_pairs::AutoPairs, Range};
 use helix_vcs::{DiffHandle, DiffProviderRegistry};
 
 use serde::de::{self, Deserialize, Deserializer};
 use serde::Serialize;
-use std::{borrow::Cow,
+use std::{
+    borrow::Cow,
     cell::Cell,
     collections::HashMap,
     fmt::Display,
     future::Future,
     path::{Path, PathBuf},
     str::FromStr,
-    sync::Arc
+    sync::Arc,
 };
 
-use helix_server::buffer::{BUF_SIZE,  DEFAULT_INDENT, SCRATCH_BUFFER_NAME, DocumentSavedEvent, DocumentSavedEventFuture, DocumentSavedEventResult};
+use helix_server::buffer::{
+    DocumentSavedEvent, DocumentSavedEventFuture, DocumentSavedEventResult, BUF_SIZE,
+    DEFAULT_INDENT, SCRATCH_BUFFER_NAME,
+};
 
 pub struct BufferMirror {
-    pub(crate) id: BufferID,
+    pub buffer_id: BufferID,
     text: Rope,
-    selections: HashMap<BufferViewID, Selection>,
+    selection: Selection,
     path: Option<PathBuf>,
     encoding: &'static encoding::Encoding,
 
@@ -67,7 +67,7 @@ pub struct BufferMirror {
     pub savepoint: Option<Transaction>,
 
     last_saved_revision: usize,
-    version: i32, // should be usize?
+    version: usize,
     pub(crate) modified_since_accessed: bool,
 
     diagnostics: Vec<Diagnostic>,
@@ -79,10 +79,10 @@ pub struct BufferMirror {
 use std::{fmt, mem};
 impl fmt::Debug for BufferMirror {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Document")
-            .field("id", &self.id)
+        f.debug_struct("BufferMirror")
+            .field("id", &self.buffer_id)
             .field("text", &self.text)
-            .field("selections", &self.selections)
+            .field("selection", &self.selection)
             .field("path", &self.path)
             .field("encoding", &self.encoding)
             .field("restore_cursor", &self.restore_cursor)
@@ -293,13 +293,14 @@ impl BufferMirror {
         let old_state = None;
 
         Self {
-            id: BufferID::default(),
+            buffer_id: BufferID::default(),
             path: None,
             encoding,
             text,
-            selections: HashMap::default(, cursor: false,
-            syntax),
-            restore_: None,
+            selection: Selection::point(0),
+            indent_style: DEFAULT_INDENT,
+            line_ending: DEFAULT_LINE_ENDING,
+            restore_cursor: false,
             language: None,
             changes,
             old_state,
@@ -332,17 +333,17 @@ impl BufferMirror {
             (Rope::from(DEFAULT_LINE_ENDING.as_str()), encoding)
         };
 
-        let mut doc = Self::from(rope, Some(encoding));
+        let mut buffer_mirror = Self::from(rope, Some(encoding));
 
         // set the path and try detecting the language
-        doc.set_path(Some(path))?;
+        buffer_mirror.set_path(Some(path))?;
         if let Some(loader) = config_loader {
-            doc.detect_language(loader);
+            buffer_mirror.detect_language(loader);
         }
 
-        doc.detect_indent_and_line_ending();
+        buffer_mirror.detect_indent_and_line_ending();
 
-        Ok(doc)
+        Ok(buffer_mirror)
     }
 
     /// The same as [`format`], but only returns formatting changes if auto-formatting
@@ -493,7 +494,7 @@ impl BufferMirror {
 
         // mark changes up to now as saved
         let current_rev = self.get_current_revision();
-        let doc_id = self.id();
+        let doc_id = self.buffer_id();
 
         let encoding = self.encoding;
 
@@ -557,8 +558,10 @@ impl BufferMirror {
     pub fn detect_indent_and_line_ending(&mut self) {
         self.indent_style = auto_detect_indent_style(&self.text).unwrap_or_else(|| {
             self.language_config()
-                .and_then(|config| config.indent.as_ref(, line_ending = auto))
-        self._detect_line_ending(&self.text).unwrap_or(DEFAULT_LINE_ENDING);
+                .and_then(|config| config.indent.as_ref())
+                .map_or(DEFAULT_INDENT, |config| IndentStyle::from_str(&config.unit))
+        });
+        self.line_ending = auto_detect_line_ending(&self.text).unwrap_or(DEFAULT_LINE_ENDING);
     }
 
     /// Reload the document from its path.
@@ -582,7 +585,7 @@ impl BufferMirror {
         // This is not considered a modification of the contents of the file regardless
         // of the encoding.
         let transaction = helix_core::diff::compare_ropes(self.text(), &rope);
-        apply_transaction(&transaction, self, view);
+        apply_transaction(&transaction, self);
         self.append_changes_to_history(view);
         self.reset_modified();
 
@@ -667,66 +670,23 @@ impl BufferMirror {
         self.language_server = language_server;
     }
 
-    /// Select text within the [`Document`].
-    pub fn set_selection(&mut self, view_id: BufferViewID, selection: Selection) {
+    /// Select text within the [`BufferView`].
+    pub fn set_selection(&mut self, selection: Selection) {
         // TODO: use a transaction?
-        self.selections
-            .insert(view_id, selection.ensure_invariants(self.text().slice(..)));
+        self.selection = selection.ensure_invariants(self.text().slice(..));
     }
 
-    /// Find the origin selection of the text in a document, i.e. where
-    /// a single cursor would go if it were on the first grapheme. If
-    /// the text is empty, returns (0, 0).
-    pub fn origin(&self) -> Range {
-        if self.text().len_chars() == 0 {
-            return Range::new(0, 0);
-        }
-
-        Range::new(0, 1).grapheme_aligned(self.text().slice(..))
-    }
-
-    /// Reset the view's selection on this document to the
-    /// [origin](Document::origin) cursor.
-    pub fn reset_selection(&mut self, view_id: BufferViewID) {
-        let origin = self.origin();
-        self.set_selection(view_id, Selection::single(origin.anchor, origin.head));
-    }
-
-    /// Initializes a new selection for the given view if it does not
-    /// already have one.
-    pub fn ensure_view_init(&mut self, view_id: BufferViewID) {
-        if self.selections.get(&view_id).is_none() {
-            self.reset_selection(view_id);
-        }
-    }
-
-    /// Remove a view's selection from this document.
-    pub fn remove_view(&mut self, view_id: BufferViewID) {
-        self.selections.remove(&view_id);
-    }
-
-    /// Apply a [`Transaction`] to the [`Document`] to change its text.
-    fn apply_impl(&mut self, transaction: &Transaction, view_id: BufferViewID) -> bool {
+    /// Apply a [`Transaction`] to the [`Buffer`] to change its text.
+    fn apply_impl(&mut self, transaction: &Transaction) -> bool {
         let old_doc = self.text().clone();
 
         let success = transaction.changes().apply(&mut self.text);
 
         if success {
-            for selection in self.selections.values_mut() {
-                *selection = selection
-                    .clone()
-                    // Map through changes
-                    .map(transaction.changes())
-                    // Ensure all selections across all views still adhere to invariants.
-                    .ensure_invariants(self.text.slice(..));
-            }
-
+            self.selection.clone().map(transaction.changes()).ensure_invariants(self.text.slice(..));
             // if specified, the current selection should instead be replaced by transaction.selection
             if let Some(selection) = transaction.selection() {
-                self.selections.insert(
-                    view_id,
-                    selection.clone().ensure_invariants(self.text.slice(..)),
-                );
+                self.selection = selection.clone().ensure_invariants(self.text.slice(..));
             }
 
             self.modified_since_accessed = true;
@@ -787,17 +747,17 @@ impl BufferMirror {
     /// Instead of calling this function directly, use [crate::apply_transaction]
     /// to ensure that the transaction is applied to the appropriate [`View`] as
     /// well.
-    pub fn apply(&mut self, transaction: &Transaction, view_id: BufferViewID) -> bool {
+    pub fn apply(&mut self, transaction: &Transaction) -> bool {
         // store the state just before any changes are made. This allows us to undo to the
         // state just before a transaction was applied.
         if self.changes.is_empty() && !transaction.changes().is_empty() {
             self.old_state = Some(State {
                 doc: self.text.clone(),
-                selection: self.selection(view_id).clone(),
+                selection: self.selection.clone(),
             });
         }
 
-        let success = self.apply_impl(transaction, view_id);
+        let success = self.apply_impl(transaction);
 
         if !transaction.changes().is_empty() {
             // Compose this transaction with the previous one
@@ -812,7 +772,7 @@ impl BufferMirror {
         let mut history = self.history.take();
         let txn = if undo { history.undo() } else { history.redo() };
         let success = if let Some(txn) = txn {
-            self.apply_impl(txn, view.view_id)
+            self.apply_impl(txn)
         } else {
             false
         };
@@ -841,9 +801,9 @@ impl BufferMirror {
         self.savepoint = Some(Transaction::new(self.text()));
     }
 
-    pub fn restore(&mut self, view: &mut BufferView) {
+    pub fn restore(&mut self) {
         if let Some(revert) = self.savepoint.take() {
-            apply_transaction(&revert, self, view);
+            apply_transaction(&revert, self);
         }
     }
 
@@ -855,7 +815,7 @@ impl BufferMirror {
         };
         let mut success = false;
         for txn in txns {
-            if self.apply_impl(&txn, view.view_id) {
+            if self.apply_impl(&txn) {
                 success = true;
             }
         }
@@ -889,7 +849,7 @@ impl BufferMirror {
         // Instead of doing this messy merge we could always commit, and based on transaction
         // annotations either add a new layer or compose into the previous one.
         let transaction =
-            Transaction::from(changes).with_selection(self.selection(view.view_id).clone());
+            Transaction::from(changes).with_selection(self.selection.clone());
 
         // HAXX: we need to reconstruct the state as it was before the changes..
         let old_state = self.old_state.take().expect("no old_state available");
@@ -902,8 +862,8 @@ impl BufferMirror {
         view.apply(&transaction, self);
     }
 
-    pub fn id(&self) -> BufferID {
-        self.id
+    pub fn buffer_id(&self) -> BufferID {
+        self.buffer_id
     }
 
     /// If there are unsaved modifications.
@@ -913,7 +873,7 @@ impl BufferMirror {
         self.history.set(history);
         log::debug!(
             "id {} modified - last saved: {}, current: {}",
-            self.id,
+            self.buffer_id,
             self.last_saved_revision,
             current_revision
         );
@@ -932,7 +892,7 @@ impl BufferMirror {
     pub fn set_last_saved_revision(&mut self, rev: usize) {
         log::debug!(
             "doc {} revision updated {} -> {}",
-            self.id,
+            self.buffer_id,
             self.last_saved_revision,
             rev
         );
@@ -987,7 +947,7 @@ impl BufferMirror {
     }
 
     /// Current document version, incremented at each change.
-    pub fn version(&self) -> i32 {
+    pub fn version(&self) -> usize {
         self.version
     }
 
@@ -1048,12 +1008,8 @@ impl BufferMirror {
     }
 
     #[inline]
-    pub fn selection(&self, view_id: BufferViewID) -> &Selection {
-        &self.selections[&view_id]
-    }
-
-    pub fn selections(&self) -> &HashMap<BufferViewID, Selection> {
-        &self.selections
+    pub fn selection(&self) -> &Selection {
+        &self.selection
     }
 
     pub fn relative_path(&self) -> Option<PathBuf> {
@@ -1083,14 +1039,13 @@ impl BufferMirror {
 
     pub fn position(
         &self,
-        view_id: BufferViewID,
         offset_encoding: helix_lsp::OffsetEncoding,
     ) -> lsp::Position {
         let text = self.text();
 
         helix_lsp::util::pos_to_lsp_pos(
             text,
-            self.selection(view_id).primary().cursor(text.slice(..)),
+            self.selection().primary().cursor(text.slice(..)),
             offset_encoding,
         )
     }
@@ -1110,7 +1065,7 @@ impl BufferMirror {
     /// language config with auto pairs configured, returns that;
     /// otherwise, falls back to the global auto pairs config. If the global
     /// config is false, then ignore language settings.
-    pub fn auto_pairs<'a>(&'a self, editor: &'a ui_tree) -> Option<&'a AutoPairs> {
+    pub fn auto_pairs<'a>(&'a self, editor: &'a UITree) -> Option<&'a AutoPairs> {
         let global_config = (editor.auto_pairs).as_ref();
 
         // NOTE: If the user specifies the global auto pairs config as false, then
@@ -1177,14 +1132,15 @@ mod test {
     fn changeset_to_changes_ignore_line_endings() {
         use helix_lsp::{lsp, Client, OffsetEncoding};
         let text = Rope::from("hello\r\nworld");
+        // TODO: set_selection moved to BufferView
         let mut doc = BufferMirror::from(text, None);
         let view = BufferViewID::default();
-        doc.set_selection(view, Selection::single(0, 0));
+        doc.set_selection(Selection::single(0, 0));
 
         let transaction =
             Transaction::change(doc.text(), vec![(5, 7, Some("\n".into()))].into_iter());
         let old_doc = doc.text().clone();
-        doc.apply(&transaction, view);
+        doc.apply(&transaction);
         let changes = Client::changeset_to_changes(
             &old_doc,
             doc.text(),
@@ -1211,15 +1167,16 @@ mod test {
     fn changeset_to_changes() {
         use helix_lsp::{lsp, Client, OffsetEncoding};
         let text = Rope::from("hello");
+        // TODO: set_selection moved to BufferView
         let mut doc = BufferMirror::from(text, None);
         let view = BufferViewID::default();
-        doc.set_selection(view, Selection::single(5, 5));
+        doc.set_selection(Selection::single(5, 5));
 
         // insert
 
-        let transaction = Transaction::insert(doc.text(), doc.selection(view), " world".into());
+        let transaction = Transaction::insert(doc.text(), doc.selection(), " world".into());
         let old_doc = doc.text().clone();
-        doc.apply(&transaction, view);
+        doc.apply(&transaction);
         let changes = Client::changeset_to_changes(
             &old_doc,
             doc.text(),
@@ -1243,7 +1200,7 @@ mod test {
 
         let transaction = transaction.invert(&old_doc);
         let old_doc = doc.text().clone();
-        doc.apply(&transaction, view);
+        doc.apply(&transaction);
         let changes = Client::changeset_to_changes(
             &old_doc,
             doc.text(),
@@ -1272,15 +1229,15 @@ mod test {
         // replace
 
         // also tests that changes are layered, positions depend on previous changes.
-
-        doc.set_selection(view, Selection::single(0, 5));
+        // TODO: set_selection moved to BufferView
+        doc.set_selection(Selection::single(0, 5));
         let transaction = Transaction::change(
             doc.text(),
             vec![(0, 2, Some("aei".into())), (3, 5, Some("ou".into()))].into_iter(),
         );
         // aeilou
         let old_doc = doc.text().clone();
-        doc.apply(&transaction, view);
+        doc.apply(&transaction);
         let changes = Client::changeset_to_changes(
             &old_doc,
             doc.text(),

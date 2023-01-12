@@ -27,7 +27,7 @@ pub use text::Text;
 
 use helix_core::regex::Regex;
 use helix_core::regex::RegexBuilder;
-use helix_view::ui_tree;
+use helix_view::UITree;
 
 use std::path::PathBuf;
 
@@ -35,7 +35,7 @@ pub fn prompt(
     cx: &mut crate::commands::Context,
     prompt: std::borrow::Cow<'static, str>,
     history_register: Option<char>,
-    completion_fn: impl FnMut(&ui_tree, &str) -> Vec<prompt::Completion> + 'static,
+    completion_fn: impl FnMut(&UITree, &str) -> Vec<prompt::Completion> + 'static,
     callback_fn: impl FnMut(&mut crate::compositor::Context, &str, PromptEvent) + 'static,
 ) {
     let mut prompt = Prompt::new(prompt, history_register, completion_fn, callback_fn);
@@ -49,7 +49,7 @@ pub fn prompt_with_input(
     prompt: std::borrow::Cow<'static, str>,
     input: String,
     history_register: Option<char>,
-    completion_fn: impl FnMut(&ui_tree, &str) -> Vec<prompt::Completion> + 'static,
+    completion_fn: impl FnMut(&UITree, &str) -> Vec<prompt::Completion> + 'static,
     callback_fn: impl FnMut(&mut crate::compositor::Context, &str, PromptEvent) + 'static,
 ) {
     let prompt = Prompt::new(prompt, history_register, completion_fn, callback_fn)
@@ -61,12 +61,12 @@ pub fn regex_prompt(
     cx: &mut crate::commands::Context,
     prompt: std::borrow::Cow<'static, str>,
     history_register: Option<char>,
-    completion_fn: impl FnMut(&ui_tree, &str) -> Vec<prompt::Completion> + 'static,
-    fun: impl Fn(&mut ui_tree, Regex, PromptEvent) + 'static,
+    completion_fn: impl FnMut(&UITree, &str) -> Vec<prompt::Completion> + 'static,
+    fun: impl Fn(&mut UITree, Regex, PromptEvent) + 'static,
 ) {
-    let (view, doc) = current!(cx.ui_tree);
-    let doc_id = view.doc;
-    let snapshot = doc.selection(view.id).clone();
+    let buffer_mirror = current_mut!(cx.ui_tree);
+    let view = buffer_view_mut!(cx.ui_tree);
+    let snapshot = buffer_mirror.selection().clone();
     let offset_snapshot = view.offset;
     let config = cx.ui_tree.config();
 
@@ -77,8 +77,9 @@ pub fn regex_prompt(
         move |cx: &mut crate::compositor::Context, input: &str, event: PromptEvent| {
             match event {
                 PromptEvent::Abort => {
-                    let (view, doc) = current!(cx.editor);
-                    doc.set_selection(view.id, snapshot.clone());
+                    let buffer_mirror = current_mut!(cx.ui_tree);
+                    let view = buffer_view_mut!(cx.ui_tree);
+                    buffer_view.set_selection(snapshot.clone());
                     view.offset = offset_snapshot;
                 }
                 PromptEvent::Update | PromptEvent::Validate => {
@@ -99,30 +100,33 @@ pub fn regex_prompt(
                         .build()
                     {
                         Ok(regex) => {
-                            let (view, doc) = current!(cx.editor);
+                            let buffer_mirror = current_mut!(cx.ui_tree);
+                            let view = buffer_view_mut!(cx.ui_tree);
 
                             // revert state to what it was before the last update
-                            doc.set_selection(view.id, snapshot.clone());
+                            doc.set_selection(snapshot.clone());
 
                             if event == PromptEvent::Validate {
                                 // Equivalent to push_jump to store selection just before jump
-                                view.jumps.push((doc_id, snapshot.clone()));
+                                view.jumps.push((view.view_id, snapshot.clone()));
                             }
 
-                            fun(cx.editor, regex, event);
+                            fun(cx.ui_tree, regex, event);
 
-                            let (view, doc) = current!(cx.editor);
+                            let buffer_mirror = current_mut!(cx.ui_tree);
+                            let view = buffer_view_mut!(cx.ui_tree);
                             view.ensure_cursor_in_view(doc, config.scrolloff);
                         }
                         Err(err) => {
-                            let (view, doc) = current!(cx.editor);
-                            doc.set_selection(view.id, snapshot.clone());
+                            let buffer_mirror = current_mut!(cx.ui_tree);
+                            let view = buffer_view_mut!(cx.ui_tree);
+                            buffer_mirror.set_selection(snapshot.clone());
                             view.offset = offset_snapshot;
 
                             if event == PromptEvent::Validate {
                                 let callback = async move {
                                     let call: job::Callback = Callback::EditorCompositor(Box::new(
-                                        move |_editor: &mut ui_tree, compositor: &mut Compositor| {
+                                        move |_editor: &mut UITree, compositor: &mut Compositor| {
                                             let contents = Text::new(format!("{}", err));
                                             let size = compositor.size();
                                             let mut popup = Popup::new("invalid-regex", contents)
@@ -222,13 +226,13 @@ pub fn file_picker(root: PathBuf, config: &helix_view::editor::Config) -> FilePi
         files,
         root,
         move |cx, path: &PathBuf, action| {
-            if let Err(e) = cx.editor.open(path, action) {
+            if let Err(e) = cx.ui_tree.open(path, action) {
                 let err = if let Some(err) = e.source() {
                     format!("{}", err)
                 } else {
                     format!("unable to open \"{}\"", path.display())
                 };
-                cx.editor.set_error(err);
+                cx.ui_tree.set_error(err);
             }
         },
         |_editor, path| Some((path.clone().into(), None)),
@@ -241,18 +245,18 @@ pub mod completers {
     use fuzzy_matcher::FuzzyMatcher;
     use helix_server::beffer::SCRATCH_BUFFER_NAME   
     use helix_view::theme;;
-    use helix_view::{editor::Config, ui_tree};
+    use helix_view::{editor::Config, UITree};
     use once_cell::sync::Lazy;
     use std::borrow::Cow;
     use std::cmp::Reverse;
 
-    pub type Completer = fn(&ui_tree, &str) -> Vec<Completion>;
+    pub type Completer = fn(&UITree, &str) -> Vec<Completion>;
 
-    pub fn none(_editor: &ui_tree, _input: &str) -> Vec<Completion> {
+    pub fn none(_editor: &UITree, _input: &str) -> Vec<Completion> {
         Vec::new()
     }
 
-    pub fn buffer(editor: &ui_tree, input: &str) -> Vec<Completion> {
+    pub fn buffer(editor: &UITree, input: &str) -> Vec<Completion> {
         let mut names: Vec<_> = editor
             .documents
             .values()
@@ -280,7 +284,7 @@ pub mod completers {
         names
     }
 
-    pub fn theme(_editor: &ui_tree, input: &str) -> Vec<Completion> {
+    pub fn theme(_editor: &UITree, input: &str) -> Vec<Completion> {
         let mut names = theme::Loader::read_names(&helix_loader::runtime_dir().join("themes"));
         names.extend(theme::Loader::read_names(
             &helix_loader::config_dir().join("themes"),
@@ -328,7 +332,7 @@ pub mod completers {
         }
     }
 
-    pub fn setting(_editor: &ui_tree, input: &str) -> Vec<Completion> {
+    pub fn setting(_editor: &UITree, input: &str) -> Vec<Completion> {
         static KEYS: Lazy<Vec<String>> = Lazy::new(|| {
             let mut keys = Vec::new();
             let json = serde_json::json!(Config::default());
@@ -350,7 +354,7 @@ pub mod completers {
             .collect()
     }
 
-    pub fn filename(editor: &ui_tree, input: &str) -> Vec<Completion> {
+    pub fn filename(editor: &UITree, input: &str) -> Vec<Completion> {
         filename_impl(editor, input, |entry| {
             let is_dir = entry.file_type().map_or(false, |entry| entry.is_dir());
 
@@ -362,7 +366,7 @@ pub mod completers {
         })
     }
 
-    pub fn language(editor: &ui_tree, input: &str) -> Vec<Completion> {
+    pub fn language(editor: &UITree, input: &str) -> Vec<Completion> {
         let matcher = Matcher::default();
 
         let text: String = "text".into();
@@ -391,12 +395,12 @@ pub mod completers {
             .collect()
     }
 
-    pub fn lsp_workspace_command(editor: &ui_tree, input: &str) -> Vec<Completion> {
+    pub fn lsp_workspace_command(ui_tree: &UITree, input: &str) -> Vec<Completion> {
         let matcher = Matcher::default();
 
-        let (_, doc) = current_ref!(editor);
+        let buffer_mirror = current!(ui_tree);
 
-        let language_server = match doc.language_server() {
+        let language_server = match buffer_mirror.language_server() {
             Some(language_server) => language_server,
             None => {
                 return vec![];
@@ -430,7 +434,7 @@ pub mod completers {
             .collect()
     }
 
-    pub fn directory(editor: &ui_tree, input: &str) -> Vec<Completion> {
+    pub fn directory(editor: &UITree, input: &str) -> Vec<Completion> {
         filename_impl(editor, input, |entry| {
             let is_dir = entry.file_type().map_or(false, |entry| entry.is_dir());
 
@@ -454,7 +458,7 @@ pub mod completers {
     }
 
     // TODO: we could return an iter/lazy thing so it can fetch as many as it needs.
-    fn filename_impl<F>(_editor: &ui_tree, input: &str, filter_fn: F) -> Vec<Completion>
+    fn filename_impl<F>(_editor: &UITree, input: &str, filter_fn: F) -> Vec<Completion>
     where
         F: Fn(&ignore::DirEntry) -> FileMatch,
     {

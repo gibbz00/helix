@@ -15,12 +15,12 @@ pub enum EventResult {
 }
 
 use crate::job::Jobs;
-use helix_view::ui_tree;
+use helix_view::UITree;
 
 pub use helix_view::input::Event;
 
 pub struct Context<'a> {
-    pub editor: &'a mut ui_tree,
+    pub ui_tree: &'a mut UITree,
     pub scroll: Option<usize>,
     pub jobs: &'a mut Jobs,
 }
@@ -29,8 +29,8 @@ impl<'a> Context<'a> {
     /// Waits on all pending jobs, and then tries to flush all pending write
     /// operations for all documents.
     pub fn block_try_flush_writes(&mut self) -> anyhow::Result<()> {
-        tokio::task::block_in_place(|| helix_lsp::block_on(self.jobs.finish(self.editor, None)))?;
-        tokio::task::block_in_place(|| helix_lsp::block_on(self.editor.flush_writes()))?;
+        tokio::task::block_in_place(|| helix_lsp::block_on(self.jobs.finish(self.ui_tree, None)))?;
+        tokio::task::block_in_place(|| helix_lsp::block_on(self.ui_tree.flush_writes()))?;
         Ok(())
     }
 }
@@ -51,7 +51,7 @@ pub trait Component: Any + AnyComponent {
     fn render(&mut self, area: Rect, frame: &mut Surface, ctx: &mut Context);
 
     /// Get cursor position and cursor kind.
-    fn cursor(&self, _area: Rect, _ctx: &ui_tree) -> (Option<Position>, CursorKind) {
+    fn cursor(&self, _area: Rect, _ctx: &UITree) -> (Option<Position>, CursorKind) {
         (None, CursorKind::Hidden)
     }
 
@@ -128,7 +128,7 @@ impl Compositor {
 
     pub fn handle_event(&mut self, event: &Event, cx: &mut Context) -> bool {
         // If it is a key event and a macro is being recorded, push the key event to the recording.
-        if let (Event::Key(key), Some((_, keys))) = (event, &mut cx.editor.macro_recording) {
+        if let (Event::Key(key), Some((_, keys))) = (event, &mut cx.ui_tree.macro_recording) {
             keys.push(*key);
         }
 
@@ -168,7 +168,7 @@ impl Compositor {
         }
     }
 
-    pub fn cursor(&self, area: Rect, editor: &ui_tree) -> (Option<Position>, CursorKind) {
+    pub fn cursor(&self, area: Rect, editor: &UITree) -> (Option<Position>, CursorKind) {
         for layer in self.layers.iter().rev() {
             if let (Some(pos), kind) = layer.cursor(area, editor) {
                 return (Some(pos), kind);
