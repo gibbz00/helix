@@ -48,8 +48,9 @@ use helix_view::{
     keyboard::KeyCode,
     tree,
     buffer_view::BufferView,
-    BufferMirror, BufferID, ui_tree, BufferViewID,
+    BufferMirror, ui_tree, BufferViewID,
 };
+use helix_server::buffer::BufferID;
 use std::{
     collections::{HashMap, HashSet},
     num::NonZeroUsize,

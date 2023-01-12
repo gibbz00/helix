@@ -8,14 +8,15 @@ use crate::{
     align_view,
     clipboard::{get_clipboard_provider, ClipboardProvider},
     buffer_mirror::{DocumentSavedEventFuture, DocumentSavedEventResult},
-    mode:Mode,
+    mode::Mode,
     graphics::{CursorKind, Rect},
     info::Info,
     input::KeyEvent,
     theme::{self, Theme},
     tree::{self, Tree},
-    Align, BufferMirror, BufferID, BufferView, BufferViewID, config::Config,
+    Align, BufferMirror, BufferView, BufferViewID, config::Config,
 };
+use helix_server::buffer::BufferID;
 use helix_core::{
     Position,
     diagnostic::Severity,

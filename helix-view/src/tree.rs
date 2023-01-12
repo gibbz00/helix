@@ -699,7 +699,7 @@ impl<'a> DoubleEndedIterator for Traverse<'a> {
 mod test {
     use super::*;
     use crate::editor::GutterType;
-    use crate::BufferID;
+    use helix_server::buffer::BufferID;
 
     #[test]
     fn find_split_in_direction() {

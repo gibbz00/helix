@@ -23,8 +23,10 @@ use helix_view::{
     editor::Action,
     graphics::{CursorKind, Margin, Modifier, Rect},
     theme::Style,
-    BufferMirror, BufferID, ui_tree,
+    BufferMirror, ui_tree,
 };
+
+use helix_server::buffer::BufferID;
 
 use super::{menu::Item, overlay::Overlay};
 

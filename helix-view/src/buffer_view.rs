@@ -1,4 +1,5 @@
-use crate::{align_view, gutter::GutterComponents, graphics::Rect, Align, BufferMirror, BufferID, BufferViewID, jump::JumpList};
+use crate::{align_view, gutter::GutterComponents, graphics::Rect, Align, BufferMirror, BufferViewID, jump::JumpList};
+use helix_server::buffer::BufferID;
 use helix_core::{
     pos_at_visual_coords, visual_coords_at_pos, Position, RopeSlice, Selection, Transaction,
 };

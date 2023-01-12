@@ -1,10 +1,11 @@
 use crate::{editor::RedrawHandle,
     apply_transaction,
-    BufferID,
     ui_tree,
     BufferView,
     BufferViewID
 };
+
+use helix_server::buffer::BufferID;
 
 use helix_core::{
     encoding,
@@ -33,25 +34,12 @@ use std::{borrow::Cow,
     sync::Arc
 };
 
-use helix_server::buffer::{BUF_SIZE,  DEFAULT_INDENT, SCRATCH_BUFFER_NAME};
-
-/// A snapshot of the text of a document that we want to write out to disk
-#[derive(Debug, Clone)]
-pub struct DocumentSavedEvent {
-    pub revision: usize,
-    pub buffer_id: BufferID,
-    pub path: PathBuf,
-    pub text: Rope,
-}
-
-pub type DocumentSavedEventResult = Result<DocumentSavedEvent, anyhow::Error>;
-pub type DocumentSavedEventFuture = BoxFuture<'static, DocumentSavedEventResult>;
+use helix_server::buffer::{BUF_SIZE,  DEFAULT_INDENT, SCRATCH_BUFFER_NAME, DocumentSavedEvent, DocumentSavedEventFuture, DocumentSavedEventResult};
 
 pub struct BufferMirror {
     pub(crate) id: BufferID,
     text: Rope,
     selections: HashMap<BufferViewID, Selection>,
-
     path: Option<PathBuf>,
     encoding: &'static encoding::Encoding,
 

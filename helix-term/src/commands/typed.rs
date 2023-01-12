@@ -10,6 +10,8 @@ use helix_view::{
 };
 use ui::completers::{self, Completer};
 
+use helix_server::buffer::BufferID;
+
 fn quit(cx: &mut compositor::Context, args: &[Cow<str>], event: PromptEvent) -> anyhow::Result<()> {
     log::debug!("quitting...");
 
