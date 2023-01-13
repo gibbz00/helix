@@ -249,9 +249,9 @@ impl UITree {
         self.jumps.push((buffer_mirror.buffer_id(), buffer_mirror.selection().clone()));
     }
 
-    pub fn remove_buffer_from_history(&mut self, buffer_id: &BufferID) {
+    pub fn remove_buffer_from_histories(&mut self, buffer_id: &BufferID, buffer_view_id: &BufferViewID) {
         self.jump_list.remove(buffer_id);
-        self.buffer_access_history.retain(|buff_id| buff_id != buffer_id);
+        self.tree.get(buffer_view_id).buffer_access_history.retain(|buff_id| buff_id != buffer_id);
     }
 
     /// Current editing mode for the [`Editor`].
@@ -407,7 +407,7 @@ impl UITree {
     fn _refresh(&mut self) {
         let config = self.config();
         for (view, _) in self.tree.views_mut() {
-            let buffer_mirror = ui_tree.buffer_mirrors.get_mut(&view.buffer_mirror_id).unwrap()
+            let buffer_mirror = self.buffer_mirrors.get_mut(&view.buffer_mirror_id).unwrap()
             view.sync_changes(buffer_mirror);
             view.ensure_cursor_in_view(buffer_mirror, config.scrolloff)
         }
@@ -466,15 +466,12 @@ impl UITree {
                     let id = buffer_mirror.buffer_id;
                     self.buffer_mirrors.remove(&id);
 
-                    // Remove the scratch buffer from any jumplists
                     for (view, _) in self.tree.views_mut() {
-                        // FIX: function moved to ui_tree as remove_buffer_from_history
-                        view.remove_buffer(&id);
+                        self.remove_buffer_from_histories(&id, &view.view_id);
                     }
                 } else {
                     let jump = (buffer_mirror.id(), buffer_mirror.selection().clone());
                     buffer_mirror.jumps.push(jump);
-                    // Set last accessed doc if it is a different document
                     if buffer_mirror.buffer_id != id {
                         view.add_to_access_history(view.buffer_mirror_id);
                         // Set last modified doc if modified and last modified doc is different
@@ -602,7 +599,7 @@ impl UITree {
             .views_mut()
             .filter_map(|(view, _focus)| {
                 // function moved here to ui_tree as remove_buffer_from_history
-                view.remove_buffer(&doc_id);
+                self.remove_buffer_from_histories(&doc_id, &view.view_id);
 
                 if view.buffer_mirror_id == doc_id {
                     // something was previously open in the view, switch to previous doc
@@ -660,7 +657,7 @@ impl UITree {
         // via stream.then() ? then push into main future
 
         let path = path.map(|path| path.into());
-        let buffer_mirror = ui_tree.buffer_mirrors.get_mut(&doc_id).unwrap()
+        let buffer_mirror = self.buffer_mirrors.get_mut(&doc_id).unwrap()
         let future = buffer_mirror.save(path, force)?;
 
         use futures_util::stream;
@@ -693,7 +690,7 @@ impl UITree {
 
             // Update jumplist selections with new document changes.
             for (view, _focused) in self.tree.views_mut() {
-                let buffer_mirror = ui_tree.buffer_mirrors.get_mut(&view.buffer_mirror_id).unwrap()
+                let buffer_mirror = self.buffer_mirrors.get_mut(&view.buffer_mirror_id).unwrap()
                 view.sync_changes(buffer_mirror);
             }
         }
@@ -846,7 +843,7 @@ impl UITree {
                         bail!(err);
                     }
                 };
-                let buffer_mirror = ui_tree.buffer_mirrors.get_mut(&save_event.buffer_id).unwrap()
+                let buffer_mirror = self.buffer_mirrors.get_mut(&save_event.buffer_id).unwrap()
                 buffer_mirror.set_last_saved_revision(save_event.revision);
             }
         }
