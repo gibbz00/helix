@@ -1,4 +1,5 @@
 mod command_multiplier;
+mod jump_list;
 
 use self::command_multiplier::CommandMultiplier;
 
@@ -77,7 +78,7 @@ pub struct Breakpoint {
 use futures_util::stream::{Flatten, Once};
 
 pub struct UITree {
-    pub jumps: JumpList,
+    pub jump_list: JumpList,
     /// Current editing mode.
     pub mode: Mode,
     pub tree: Tree,
@@ -203,7 +204,7 @@ impl UITree {
         Self {
             mode: Mode::Normal,
             tree: Tree::new(area),
-            jumps: JumpList::new((buffer_id, Selection::point(0))), // TODO: use actual sel
+            jump_list: JumpList::new((buffer_id, Selection::point(0))), // TODO: use actual sel
             event_handler: EventHandler::start(&self),
             keymap: config.keys,
             pending_keys: vec![Vec::new()],
@@ -249,7 +250,7 @@ impl UITree {
     }
 
     pub fn remove_buffer_from_history(&mut self, buffer_id: &BufferID) {
-        self.jumps.remove(buffer_id);
+        self.jump_list.remove(buffer_id);
         self.buffer_access_history.retain(|buff_id| buff_id != buffer_id);
     }
 

@@ -24,7 +24,6 @@ pub mod mode;
 mod keymap;
 mod command;
 mod lists;
-mod jump_list;
 
 pub use buffer_mirror::BufferMirror;
 pub use UITree::UITree;

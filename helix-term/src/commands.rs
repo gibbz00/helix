@@ -42,7 +42,7 @@ use helix_view::{
     clipboard::ClipboardType,
     buffer_mirror::{FormatterError, SCRATCH_BUFFER_NAME},
     mode::Mode,
-    UITree::{Action, Motion, UITree},
+    ui_tree::{Action, Motion, UITree},
     info::Info,
     input::KeyEvent,
     keyboard::KeyCode,
@@ -1982,7 +1982,7 @@ fn jumplist_picker(cx: &mut Context) {
             .tree
             .views()
             .flat_map(|(buffer_view, _)| {
-                ui_tree.jumps
+                cx.ui_tree.jump_list
                     .iter()
                     .map(|(buffer_id, selection)| new_meta(*buffer_id, selection.clone()))
             })
@@ -3793,7 +3793,7 @@ fn match_brackets(cx: &mut Context) {
 
 fn jump_forward(cx: &mut Context) {
     let command_multiplier = cx.ui_tree.command_multiplier.unwrap_or_one().get();
-    if let Some((new_buffer_id, selection)) = cx.ui_tree.jumps.forward(command_multiplier) {
+    if let Some((new_buffer_id, selection)) = cx.ui_tree.jump_list.forward(command_multiplier) {
         let view = buffer_view_mut!(cx.ui_tree);
         if buffer_mirror.id() != new_buffer_id {
             view.buffer_id = *new_buffer_id;
@@ -3807,7 +3807,7 @@ fn jump_forward(cx: &mut Context) {
 
 fn jump_backward(cx: &mut Context) {
     let command_multiplier = cx.ui_tree.command_multiplier.unwrap_or_one().get();
-    if let Some((new_buffer_id, selection)) = cx.ui_tree.jumps.backward(command_multiplier) {
+    if let Some((new_buffer_id, selection)) = cx.ui_tree.jump_list.backward(command_multiplier) {
         let view = buffer_view_mut!(cx.ui_tree);
         if buffer_mirror.id() != new_buffer_id {
             view.buffer_mirror_id = *new_buffer_id;
