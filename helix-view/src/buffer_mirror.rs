@@ -36,7 +36,7 @@ use helix_server::buffer::{
 };
 
 pub struct BufferMirror {
-    pub buffer_id: BufferID,
+    buffer_id: BufferID,
     text: Rope,
     selection: Selection,
     path: Option<PathBuf>,
@@ -44,10 +44,7 @@ pub struct BufferMirror {
 
     pub restore_cursor: bool,
 
-    /// Current indent style.
     pub indent_style: IndentStyle,
-
-    /// The document's default line ending.
     pub line_ending: LineEnding,
 
     syntax: Option<Syntax>,
@@ -838,6 +835,7 @@ impl BufferMirror {
         self.earlier_later_impl(view, uk, false)
     }
 
+    /// TODO: movi to change notification handler
     /// Commit pending changes to history
     pub fn append_changes_to_history(&mut self, view: &mut BufferView) {
         if self.changes.is_empty() {
@@ -858,8 +856,9 @@ impl BufferMirror {
         history.commit_revision(&transaction, &old_state);
         self.history.set(history);
 
-        // Update jumplist entries in the view.
-        view.apply(&transaction, self);
+        view.jumps.apply(transaction, self);
+        view.buffer_revisions
+            .insert(self.buffer_id, self.get_current_revision());
     }
 
     pub fn buffer_id(&self) -> BufferID {

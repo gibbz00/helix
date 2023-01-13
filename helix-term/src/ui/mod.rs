@@ -104,18 +104,18 @@ pub fn regex_prompt(
                             let view = buffer_view_mut!(cx.ui_tree);
 
                             // revert state to what it was before the last update
-                            doc.set_selection(snapshot.clone());
+                            buffer_mirror.set_selection(snapshot.clone());
 
                             if event == PromptEvent::Validate {
                                 // Equivalent to push_jump to store selection just before jump
-                                view.jumps.push((view.view_id, snapshot.clone()));
+                                cx.ui_tree.jumps.push((view.view_id, snapshot.clone()));
                             }
 
                             fun(cx.ui_tree, regex, event);
 
                             let buffer_mirror = current_mut!(cx.ui_tree);
                             let view = buffer_view_mut!(cx.ui_tree);
-                            view.ensure_cursor_in_view(doc, config.scrolloff);
+                            view.ensure_cursor_in_view(buffer_mirror, config.scrolloff);
                         }
                         Err(err) => {
                             let buffer_mirror = current_mut!(cx.ui_tree);

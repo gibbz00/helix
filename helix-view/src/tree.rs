@@ -825,7 +825,7 @@ mod test {
 
         fn doc_id(tree: &Tree, view_id: BufferViewID) -> Option<BufferID> {
             if let Content::BufferView(view) = &tree.nodes[view_id].content {
-                Some(view.buffer_id)
+                Some(view.buffer_mirror_id)
             } else {
                 None
             }

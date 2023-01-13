@@ -3,7 +3,7 @@ pub mod macros;
 
 pub mod clipboard;
 pub mod buffer_mirror;
-pub mod UITree;
+pub mod ui_tree;
 pub mod env;
 pub mod graphics;
 pub mod gutter;
@@ -24,7 +24,7 @@ pub mod mode;
 mod keymap;
 mod command;
 mod lists;
-mod jump;
+mod jump_list;
 
 pub use buffer_mirror::BufferMirror;
 pub use UITree::UITree;
@@ -40,10 +40,7 @@ pub enum Align {
 }
 
 pub fn align_view(buffer: &BufferMirror, buffer_view: &mut BufferView, align: Align) {
-    let pos = buffer
-        .selection()
-        .primary()
-        .cursor(buffer.text().slice(..));
+    let pos = buffer.selection().primary().cursor(buffer.text().slice(..));
     let line = buffer.text().char_to_line(pos);
 
     let last_line_height = buffer_view.inner_height().saturating_sub(1);

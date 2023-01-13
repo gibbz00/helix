@@ -14,7 +14,7 @@ use crate::{
     input::KeyEvent,
     theme::{self, Theme},
     tree::{self, Tree},
-    Align, BufferMirror, BufferView, buffer_view::BufferViewID, config::Config,
+    Align, BufferMirror, BufferView, buffer_view::BufferViewID, config::Config, jump_list::JumpList,
 };
 use helix_server::buffer::BufferID;
 use helix_core::{
@@ -77,6 +77,7 @@ pub struct Breakpoint {
 use futures_util::stream::{Flatten, Once};
 
 pub struct UITree {
+    pub jumps: JumpList,
     /// Current editing mode.
     pub mode: Mode,
     pub tree: Tree,
@@ -202,6 +203,7 @@ impl UITree {
         Self {
             mode: Mode::Normal,
             tree: Tree::new(area),
+            jumps: JumpList::new((buffer_id, Selection::point(0))), // TODO: use actual sel
             event_handler: EventHandler::start(&self),
             keymap: config.keys,
             pending_keys: vec![Vec::new()],
@@ -239,6 +241,16 @@ impl UITree {
             redraw_handle: Default::default(),
             needs_redraw: false,
         }
+    }
+
+    /// Store a jump on a buffer_mirror to the jumplist.
+    fn push_jump(buffer_mirror: &BufferMirror) {
+        self.jumps.push((buffer_mirror.buffer_id(), buffer_mirror.selection().clone()));
+    }
+
+    pub fn remove_buffer_from_history(&mut self, buffer_id: &BufferID) {
+        self.jumps.remove(buffer_id);
+        self.buffer_access_history.retain(|buff_id| buff_id != buffer_id);
     }
 
     /// Current editing mode for the [`Editor`].
@@ -394,7 +406,7 @@ impl UITree {
     fn _refresh(&mut self) {
         let config = self.config();
         for (view, _) in self.tree.views_mut() {
-            let buffer_mirror = ui_tree.buffer_mirrors.get_mut(&view.buffer_id).unwrap()
+            let buffer_mirror = ui_tree.buffer_mirrors.get_mut(&view.buffer_mirror_id).unwrap()
             view.sync_changes(buffer_mirror);
             view.ensure_cursor_in_view(buffer_mirror, config.scrolloff)
         }
@@ -402,7 +414,7 @@ impl UITree {
 
     fn replace_document_in_view(&mut self, current_view: BufferViewID, doc_id: BufferID) {
         let view = self.tree.get_mut(current_view);
-        view.buffer_id = doc_id;
+        view.buffer_mirror_id = doc_id;
         view.offset = Position::default();
 
 
@@ -437,7 +449,7 @@ impl UITree {
                     && !self
                         .tree
                         .traverse()
-                        .any(|(_, v)| v.buffer_id == buffer_mirror.buffer_id
+                        .any(|(_, v)| v.buffer_mirror_id == buffer_mirror.buffer_id
                             && v.view_id != self.tree.get(self.tree.focus.view_id));
 
                 let buffer_mirror = current_mut!(self);
@@ -455,19 +467,20 @@ impl UITree {
 
                     // Remove the scratch buffer from any jumplists
                     for (view, _) in self.tree.views_mut() {
+                        // FIX: function moved to ui_tree as remove_buffer_from_history
                         view.remove_buffer(&id);
                     }
                 } else {
-                    let jump = (view.buffer_id, buffer_mirror.selection().clone());
-                    view.jumps.push(jump);
+                    let jump = (buffer_mirror.id(), buffer_mirror.selection().clone());
+                    buffer_mirror.jumps.push(jump);
                     // Set last accessed doc if it is a different document
                     if buffer_mirror.buffer_id != id {
-                        view.add_to_history(view.buffer_id);
+                        view.add_to_access_history(view.buffer_mirror_id);
                         // Set last modified doc if modified and last modified doc is different
                         if std::mem::take(&mut buffer_mirror.modified_since_accessed)
-                            && view.last_modified_buffers[0] != Some(view.buffer_id)
+                            && view.last_modified_buffers[0] != Some(view.buffer_mirror_id)
                         {
-                            view.last_modified_buffers = [Some(view.buffer_id), view.last_modified_buffers[0]];
+                            view.last_modified_buffers = [Some(view.buffer_mirror_id), view.last_modified_buffers[0]];
                         }
                     }
                 }
@@ -485,7 +498,7 @@ impl UITree {
                 let view = self
                     .tree
                     .try_get(self.tree.focus)
-                    .filter(|v| id == v.buffer_id) // Different Document
+                    .filter(|v| id == v.buffer_mirror_id) // Different Document
                     .cloned()
                     .unwrap_or_else(|| BufferView::new(id, self.config().gutters.clone()));
                 let view_id = self.tree.split(
@@ -587,9 +600,10 @@ impl UITree {
             .tree
             .views_mut()
             .filter_map(|(view, _focus)| {
+                // function moved here to ui_tree as remove_buffer_from_history
                 view.remove_buffer(&doc_id);
 
-                if view.buffer_id == doc_id {
+                if view.buffer_mirror_id == doc_id {
                     // something was previously open in the view, switch to previous doc
                     if let Some(prev_doc) = view.buffer_access_history.pop() {
                         Some(Action::ReplaceDoc(view.view_id, prev_doc))
@@ -678,7 +692,7 @@ impl UITree {
 
             // Update jumplist selections with new document changes.
             for (view, _focused) in self.tree.views_mut() {
-                let buffer_mirror = ui_tree.buffer_mirrors.get_mut(&view.buffer_id).unwrap()
+                let buffer_mirror = ui_tree.buffer_mirrors.get_mut(&view.buffer_mirror_id).unwrap()
                 view.sync_changes(buffer_mirror);
             }
         }
@@ -710,7 +724,7 @@ impl UITree {
     pub fn ensure_cursor_in_view(&mut self, id: BufferViewID) {
         let config = self.config();
         let view = self.tree.get_mut(id);
-        let doc = &self.buffer_mirrors[&view.buffer_id];
+        let doc = &self.buffer_mirrors[&view.buffer_mirror_id];
         view.ensure_cursor_in_view(doc, config.scrolloff)
     }
 

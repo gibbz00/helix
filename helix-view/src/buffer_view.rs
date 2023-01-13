@@ -1,4 +1,4 @@
-use crate::{align_view, gutter::GutterComponents, graphics::Rect, Align, BufferMirror, jump::JumpList};
+use crate::{align_view, gutter::GutterComponents, graphics::Rect, Align, BufferMirror};
 use helix_server::buffer::BufferID;
 use helix_core::{
     pos_at_visual_coords, visual_coords_at_pos, Position, RopeSlice, Selection, Transaction,
@@ -16,11 +16,10 @@ slotmap::new_key_type! {
 #[derive(Clone)]
 pub struct BufferView {
     pub view_id: BufferViewID,
-    pub buffer_id: BufferID,
+    pub buffer_mirror_id: BufferID,
     pub offset: Position,
     pub area: Rect,
 
-    pub jumps: JumpList,
     // Buffers accessed from this view from the oldest one to last viewed one
     pub buffer_access_history: Vec<BufferID>,
     /// the last modified files before the current one
@@ -44,7 +43,7 @@ impl fmt::Debug for BufferView {
         f.debug_struct("BufferView")
             .field("view_id", &self.view_id)
             .field("area", &self.area)
-            .field("buffer", &self.buffer_id)
+            .field("buffer", &self.buffer_mirror_id)
             .finish()
     }
 }
@@ -53,10 +52,9 @@ impl BufferView {
     pub fn new(buffer_id: BufferID, gutter_types: Vec<GutterComponents>) -> Self {
         Self {
             view_id: BufferViewID::default(),
-            buffer_id,
+            buffer_mirror_id: buffer_id,
             offset: Position::new(0, 0),
             area: Rect::default(), // will get calculated upon inserting into tree
-            jumps: JumpList::new((buffer_id, Selection::point(0))), // TODO: use actual sel
             buffer_access_history: Vec::new(),
             last_modified_buffers: [None, None],
             object_selections: Vec::new(),
@@ -65,7 +63,7 @@ impl BufferView {
         }
     }
 
-    pub fn add_to_history(&mut self, id: BufferID) {
+    pub fn add_to_access_history(&mut self, id: BufferID) {
         if let Some(pos) = self.buffer_access_history.iter().position(|&buffer_id| buffer_id == id) {
             self.buffer_access_history.remove(pos);
         }
@@ -280,20 +278,8 @@ impl BufferView {
         ))
     }
 
-    pub fn remove_buffer(&mut self, buffer_id: &BufferID) {
-        self.jumps.remove(buffer_id);
-        self.buffer_access_history.retain(|buff_id| buff_id != buffer_id);
-    }
-
-    /// Applies a [`Transaction`] to the bufferview.
-    /// Instead of calling this function directly, use [crate::apply_transaction]
-    /// which applies a transaction to the [`Buffer`] and bufferview together.
-    pub fn apply(&mut self, transaction: &Transaction, buffer: &mut BufferMirror) {
-        self.jumps.apply(transaction, buffer);
-        self.buffer_revisions
-            .insert(buffer.buffer_id(), buffer.get_current_revision());
-    }
-
+    /// TODO: move to change notification handler
+    /// Syncs changes of buffer mirror with buffer view.
     pub fn sync_changes(&mut self, buffer: &mut BufferMirror) {
         let latest_revision = buffer.get_current_revision();
         let current_revision = *self
@@ -313,7 +299,11 @@ impl BufferView {
         );
 
         if let Some(transaction) = buffer.history.get_mut().changes_since(current_revision) {
-            self.apply(&transaction, buffer);
+            // TODO: jumps moved to ui_tree, fix this once proper server "notify changes" 
+            // functionality is added
+            self.jumps.apply(transaction, buffer);
+            self.buffer_revisions
+                .insert(buffer.buffer_id(), buffer.get_current_revision());
         }
     }
 }

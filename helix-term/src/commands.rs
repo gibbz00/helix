@@ -548,27 +548,25 @@ fn goto_file_start(cx: &mut Context) {
         goto_line(cx);
     } else {
         let buffer_mirror = current_mut!(cx.ui_tree);
-        let view = buffer_view_mut!(cx.ui_tree);
         let text = buffer_mirror.text().slice(..);
         let selection = buffer_mirror
             .selection()
             .clone()
             .transform(|range| range.put_cursor(text, 0, cx.ui_tree.mode == Mode::Select));
-        push_jump(view, buffer_mirror);
+        cx.ui_tree.push_jump(buffer_mirror);
         buffer_mirror.set_selection(selection);
     }
 }
 
 fn goto_file_end(cx: &mut Context) {
     let buffer_mirror = current_mut!(cx.ui_tree);
-    let view = buffer_view_mut!(cx.ui_tree);
     let text = buffer_mirror.text().slice(..);
     let pos = buffer_mirror.text().len_chars();
     let selection = buffer_mirror
         .selection()
         .clone()
         .transform(|range| range.put_cursor(text, pos, cx.ui_tree.mode == Mode::Select));
-    push_jump(view, buffer_mirror);
+    cx.ui_tree.push_jump(buffer_mirror);
     buffer_mirror.set_selection(selection);
 }
 
@@ -1960,7 +1958,7 @@ fn jumplist_picker(cx: &mut Context) {
         }
     }
 
-    let new_meta = |buffer_view: &BufferView, buffer: BufferID, selection: Selection| {
+    let new_meta = |buffer: BufferID, selection: Selection| {
         let buffer = &cx.ui_tree.documents.get(&buffer);
         let text = buffer.map_or("".into(), |d| {
             selection
@@ -1975,7 +1973,7 @@ fn jumplist_picker(cx: &mut Context) {
             path: buffer.and_then(|buffer| buffer.path().cloned()),
             selection,
             text,
-            is_current: buffer_view.buffer_id == buffer_id,
+            is_current: buffer_view!().buffer_mirror_id == buffer_id,
         }
     };
 
@@ -1984,9 +1982,9 @@ fn jumplist_picker(cx: &mut Context) {
             .tree
             .views()
             .flat_map(|(buffer_view, _)| {
-                buffer_view.jumps
+                ui_tree.jumps
                     .iter()
-                    .map(|(buffer_id, selection)| new_meta(buffer_view, *buffer_id, selection.clone()))
+                    .map(|(buffer_id, selection)| new_meta(*buffer_id, selection.clone()))
             })
             .collect(),
         (),
@@ -2206,24 +2204,16 @@ fn open(cx: &mut Context, open: Open) {
     apply_transaction(&transaction, buffer_mirror);
 }
 
-// o inserts a new line after each line with a selection
 fn open_below(cx: &mut Context) {
     open(cx, Open::Below)
 }
 
-// O inserts a new line before each line with a selection
 fn open_above(cx: &mut Context) {
     open(cx, Open::Above)
 }
 
 fn normal_mode(cx: &mut Context) {
     cx.ui_tree.enter_normal_mode();
-}
-
-// Store a jump on the jumplist.
-fn push_jump(buffer_view: &mut BufferView, buffer: &BufferMirror) {
-    let jump = (buffer.buffer_id(), buffer.selection().clone());
-    buffer_view.jumps.push(jump);
 }
 
 fn goto_line(cx: &mut Context) {
@@ -2246,9 +2236,7 @@ fn goto_line_impl(ui_tree: &mut UITree, line_number: Option<NonZeroUsize>) {
             .selection()
             .clone()
             .transform(|range| range.put_cursor(text, pos, ui_tree.mode == Mode::Select));
-
-        let view = buffer_view_mut!(cx.ui_tree);
-        push_jump(view, buffer_mirror);
+        ui_tree.push_jump(buffer_mirror);
         buffer_mirror.set_selection(selection);
     }
 }
@@ -2267,9 +2255,7 @@ fn goto_last_line(cx: &mut Context) {
         .selection()
         .clone()
         .transform(|range| range.put_cursor(text, pos, cx.ui_tree.mode == Mode::Select));
-
-    let view = buffer_view_mut!(cx.ui_tree);
-    push_jump(view, buffer_mirror);
+    cx.ui_tree.push_jump(buffer_mirror);
     buffer_mirror.set_selection(selection);
 }
 
@@ -2340,7 +2326,7 @@ fn goto_pos(ui_tree: &mut UITree, pos: usize) {
     let buffer_mirror = current_mut!(cx.ui_tree);
     let view = buffer_view_mut!(cx.ui_tree);
 
-    push_jump(view, doc);
+    ui_tree.push_jump(buffer_mirror);
     buffer_mirror.set_selection(Selection::point(pos));
     align_view(buffer_mirror, view, Align::Center);
 }
@@ -3805,54 +3791,37 @@ fn match_brackets(cx: &mut Context) {
     }
 }
 
-//
-
 fn jump_forward(cx: &mut Context) {
-    let command_multiplier = UITree.command_multiplier.unwrap_or_one().get();
-    let config = cx.ui_tree.config();
-    let buffer_view = buffer_view_mut!(cx.ui_tree);
-    let buffer_id = buffer_view.buffer_id;
-
-    if let Some((id, selection)) = buffer_view.jumps.forward(command_multiplier) {
-        buffer_view.doc = *id;
-        let selection = selection.clone();
-        let buffer_mirror = current_mut!(cx.ui_tree);
+    let command_multiplier = cx.ui_tree.command_multiplier.unwrap_or_one().get();
+    if let Some((new_buffer_id, selection)) = cx.ui_tree.jumps.forward(command_multiplier) {
         let view = buffer_view_mut!(cx.ui_tree);
-
-        if buffer_mirror.id() != buffer_id {
-            view.add_to_history(buffer_id);
+        if buffer_mirror.id() != new_buffer_id {
+            view.buffer_id = *new_buffer_id;
+            view.add_to_access_history(new_buffer_id);
         }
-
-        buffer_mirror.set_selection(selection);
-        view.ensure_cursor_in_view_center(buffer_mirror, config.scrolloff);
+        let buffer_mirror = current_mut!(cx.ui_tree);
+        buffer_mirror.set_selection(selection.clone());
+        view.ensure_cursor_in_view_center(buffer_mirror, cx.ui_tree.config().scrolloff);
     };
 }
 
 fn jump_backward(cx: &mut Context) {
-    let command_multiplier = UITree.command_multiplier.unwrap_or_one().get();
-    let config = cx.ui_tree.config();
-    let buffer_mirror = current_mut!(cx.ui_tree);
-    let view = buffer_view_mut!(cx.ui_tree);
-    let buffer_id = buffer_mirror.id();
-
-    if let Some((id, selection)) = view.jumps.backward(view.view_id, buffer_mirror, command_multiplier) {
-        view.buffer_id = *id;
-        let selection = selection.clone();
-        let buffer_mirror = current_mut!(cx.ui_tree);
+    let command_multiplier = cx.ui_tree.command_multiplier.unwrap_or_one().get();
+    if let Some((new_buffer_id, selection)) = cx.ui_tree.jumps.backward(command_multiplier) {
         let view = buffer_view_mut!(cx.ui_tree);
-
-        if buffer_mirror.id() != buffer_id {
-            view.add_to_history(buffer_id);
+        if buffer_mirror.id() != new_buffer_id {
+            view.buffer_mirror_id = *new_buffer_id;
+            view.add_to_access_history(new_buffer_id);
         }
-
-        buffer_mirror.set_selection(selection);
-        view.ensure_cursor_in_view_center(buffer_mirror, config.scrolloff);
+        let buffer_mirror = current_mut!(cx.ui_tree);
+        buffer_mirror.set_selection(selection.clone());
+        view.ensure_cursor_in_view_center(buffer_mirror, cx.ui_tree.config().scrolloff);
     };
 }
 
 fn save_selection(cx: &mut Context) {
     let buffer_mirror = current_mut!(cx.ui_tree);
-    push_jump(buffer_view, doc);
+    cx.ui_tree.push_jump(buffer_mirror);
     cx.ui_tree.set_status("Selection saved to jumplist");
 }
 

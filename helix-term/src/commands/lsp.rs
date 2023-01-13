@@ -10,7 +10,7 @@ use tui::{
     widgets::Row,
 };
 
-use super::{align_view, push_jump, Align, Context, UITree, Open};
+use super::{align_view, Align, Context, UITree, Open};
 
 use helix_core::{path, Selection};
 use helix_view::{apply_transaction, mode::Mode, editor::Action, theme::Style};
@@ -172,9 +172,7 @@ fn jump_to_location(
     offset_encoding: OffsetEncoding,
     action: Action,
 ) {
-    let buffer_mirror = current_mut!(cx.ui_tree);
-    let view = buffer_view_mut!(cx.ui_tree);
-    push_jump(view, buffer_mirror);
+    ui_tree.push_jump(current_mut!(cx.ui_tree));
 
     let path = match location.uri.to_file_path() {
         Ok(path) => path,
@@ -212,13 +210,11 @@ fn sym_picker(
     offset_encoding: OffsetEncoding,
 ) -> FilePicker<lsp::SymbolInformation> {
     // TODO: drop current_path comparison and instead use workspace: bool flag?
-    FilePicker::new(
+    FilePicker::new
         symbols,
         current_path.clone(),
         move |cx, symbol, action| {
-            let buffer_mirror = current_mut!(cx.ui_tree);
-            let view = buffer_view_mut!(cx.ui_tree);
-            push_jump(view, doc);
+            cx.ui_tree.push_jump(current_mut!(cx.ui_tree));
 
             if current_path.as_ref() != Some(&symbol.location.uri) {
                 let uri = &symbol.location.uri;
@@ -251,7 +247,7 @@ fn sym_picker(
             }
         },
         move |_editor, symbol| Some(location_to_file_location(&symbol.location)),
-    )
+    
     .truncate_start(false)
 }
 
@@ -294,9 +290,7 @@ fn diag_picker(
         (styles, format),
         move |cx, PickerDiagnostic { url, diag }, action| {
             if current_path.as_ref() == Some(url) {
-                let buffer_mirror = current_mut!(cx.ui_tree);
-                let view = buffer_view_mut!(cx.ui_tree);
-                push_jump(view, buffer_mirror);
+                cx.ui_tree.push_jump(current_mut!(cx.ui_tree));
             } else {
                 let path = url.to_file_path().unwrap();
                 cx.ui_tree.open(&path, action).expect("editor.open failed");
