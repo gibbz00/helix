@@ -318,11 +318,7 @@ fn write_impl(
     Ok(())
 }
 
-fn write(
-    cx: &mut CompositorContext,
-    args: &[Cow<str>],
-    event: PromptEvent,
-) -> anyhow::Result<()> {
+fn write(cx: &mut CompositorContext, args: &[Cow<str>], event: PromptEvent) -> anyhow::Result<()> {
     if event != PromptEvent::Validate {
         return Ok(());
     }
@@ -509,11 +505,7 @@ fn earlier(
     Ok(())
 }
 
-fn later(
-    cx: &mut CompositorContext,
-    args: &[Cow<str>],
-    event: PromptEvent,
-) -> anyhow::Result<()> {
+fn later(cx: &mut CompositorContext, args: &[Cow<str>], event: PromptEvent) -> anyhow::Result<()> {
     if event != PromptEvent::Validate {
         return Ok(());
     }
@@ -732,11 +724,7 @@ fn force_quit_all(
     quit_all_impl(cx, true)
 }
 
-fn cquit(
-    cx: &mut CompositorContext,
-    args: &[Cow<str>],
-    event: PromptEvent,
-) -> anyhow::Result<()> {
+fn cquit(cx: &mut CompositorContext, args: &[Cow<str>], event: PromptEvent) -> anyhow::Result<()> {
     if event != PromptEvent::Validate {
         return Ok(());
     }
@@ -768,11 +756,7 @@ fn force_cquit(
     quit_all_impl(cx, true)
 }
 
-fn theme(
-    cx: &mut CompositorContext,
-    args: &[Cow<str>],
-    event: PromptEvent,
-) -> anyhow::Result<()> {
+fn theme(cx: &mut CompositorContext, args: &[Cow<str>], event: PromptEvent) -> anyhow::Result<()> {
     match event {
         PromptEvent::Abort => {
             cx.editor.unset_theme_preview();
@@ -1221,11 +1205,7 @@ fn reload_all(
 }
 
 /// Update the [`Document`] if it has been modified.
-fn update(
-    cx: &mut CompositorContext,
-    args: &[Cow<str>],
-    event: PromptEvent,
-) -> anyhow::Result<()> {
+fn update(cx: &mut CompositorContext, args: &[Cow<str>], event: PromptEvent) -> anyhow::Result<()> {
     if event != PromptEvent::Validate {
         return Ok(());
     }
@@ -1376,11 +1356,7 @@ fn tree_sitter_scopes(
     Ok(())
 }
 
-fn vsplit(
-    cx: &mut CompositorContext,
-    args: &[Cow<str>],
-    event: PromptEvent,
-) -> anyhow::Result<()> {
+fn vsplit(cx: &mut CompositorContext, args: &[Cow<str>], event: PromptEvent) -> anyhow::Result<()> {
     if event != PromptEvent::Validate {
         return Ok(());
     }
@@ -1399,11 +1375,7 @@ fn vsplit(
     Ok(())
 }
 
-fn hsplit(
-    cx: &mut CompositorContext,
-    args: &[Cow<str>],
-    event: PromptEvent,
-) -> anyhow::Result<()> {
+fn hsplit(cx: &mut CompositorContext, args: &[Cow<str>], event: PromptEvent) -> anyhow::Result<()> {
     if event != PromptEvent::Validate {
         return Ok(());
     }
@@ -1514,11 +1486,7 @@ fn debug_remote(
     dap_start_impl(cx, name.as_deref(), address, Some(args))
 }
 
-fn tutor(
-    cx: &mut CompositorContext,
-    _args: &[Cow<str>],
-    event: PromptEvent,
-) -> anyhow::Result<()> {
+fn tutor(cx: &mut CompositorContext, _args: &[Cow<str>], event: PromptEvent) -> anyhow::Result<()> {
     if event != PromptEvent::Validate {
         return Ok(());
     }
@@ -1732,11 +1700,7 @@ fn sort_reverse(
     sort_impl(cx, args, true)
 }
 
-fn sort_impl(
-    cx: &mut CompositorContext,
-    _args: &[Cow<str>],
-    reverse: bool,
-) -> anyhow::Result<()> {
+fn sort_impl(cx: &mut CompositorContext, _args: &[Cow<str>], reverse: bool) -> anyhow::Result<()> {
     let scrolloff = cx.editor.config().scrolloff;
     let (view, doc) = current!(cx.editor);
     let text = doc.text().slice(..);
@@ -1768,11 +1732,7 @@ fn sort_impl(
     Ok(())
 }
 
-fn reflow(
-    cx: &mut CompositorContext,
-    args: &[Cow<str>],
-    event: PromptEvent,
-) -> anyhow::Result<()> {
+fn reflow(cx: &mut CompositorContext, args: &[Cow<str>], event: PromptEvent) -> anyhow::Result<()> {
     if event != PromptEvent::Validate {
         return Ok(());
     }
