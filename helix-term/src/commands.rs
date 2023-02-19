@@ -1066,8 +1066,7 @@ where
             .transform(|range| move_fn(text, range, count, behavior));
         doc.set_selection(view.id, selection);
     };
-    motion(cx.editor);
-    cx.editor.last_motion = Some(Motion(Box::new(motion)));
+    _apply_motion(cx, motion)
 }
 
 fn goto_prev_paragraph(cx: &mut CommandContext) {
@@ -1239,6 +1238,7 @@ where
             _ => return,
         };
 
+        // NOTE: not using _apply_motion as the repitition isn't identical
         find_char_impl(cx.editor, &search_fn, inclusive, extend, ch, count);
         cx.editor.last_motion = Some(Motion(Box::new(move |editor: &mut Editor| {
             find_char_impl(editor, &search_fn, inclusive, true, ch, 1);
@@ -3110,8 +3110,7 @@ fn goto_next_change_impl(cx: &mut CommandContext, direction: Direction) {
 
         doc.set_selection(view.id, selection)
     };
-    motion(cx.editor);
-    cx.editor.last_motion = Some(Motion(Box::new(motion)));
+    _apply_motion(cx, motion);
 }
 
 /// Returns the [Range] for a [Hunk] in the given text.
@@ -4342,8 +4341,7 @@ fn expand_selection(cx: &mut CommandContext) {
             }
         }
     };
-    motion(cx.editor);
-    cx.editor.last_motion = Some(Motion(Box::new(motion)));
+    _apply_motion(cx, motion);
 }
 
 fn shrink_selection(cx: &mut CommandContext) {
@@ -4368,8 +4366,7 @@ fn shrink_selection(cx: &mut CommandContext) {
             doc.set_selection(view.id, selection);
         }
     };
-    motion(cx.editor);
-    cx.editor.last_motion = Some(Motion(Box::new(motion)));
+    _apply_motion(cx, motion);
 }
 
 fn select_sibling_impl<F>(cx: &mut CommandContext, sibling_fn: &'static F)
@@ -4387,8 +4384,7 @@ where
             doc.set_selection(view.id, selection);
         }
     };
-    motion(cx.editor);
-    cx.editor.last_motion = Some(Motion(Box::new(motion)));
+    _apply_motion(cx, motion);
 }
 
 fn select_next_sibling(cx: &mut CommandContext) {
@@ -4668,8 +4664,7 @@ fn goto_ts_object_impl(cx: &mut CommandContext, object: &'static str, direction:
             editor.set_status("Syntax-tree is not available in current buffer");
         }
     };
-    motion(cx.editor);
-    cx.editor.last_motion = Some(Motion(Box::new(motion)));
+    _apply_motion(cx, motion);
 }
 
 fn goto_next_function(cx: &mut CommandContext) {
@@ -4718,6 +4713,12 @@ fn select_textobject_around(cx: &mut CommandContext) {
 
 fn select_textobject_inner(cx: &mut CommandContext) {
     select_textobject(cx, textobject::TextObject::Inside);
+}
+
+//TODO: move
+fn _apply_motion<F: Fn(&mut Editor) + 'static>(cx: &mut CommandContext, motion: F) {
+    motion(cx.editor);
+    cx.editor.last_motion = Some(Motion(Box::new(motion)));
 }
 
 fn select_textobject(cx: &mut CommandContext, objtype: textobject::TextObject) {
@@ -4790,8 +4791,7 @@ fn select_textobject(cx: &mut CommandContext, objtype: textobject::TextObject) {
                 });
                 doc.set_selection(view.id, selection);
             };
-            textobject(cx.editor);
-            cx.editor.last_motion = Some(Motion(Box::new(textobject)));
+            _apply_motion(cx, textobject);
         }
     });
 
