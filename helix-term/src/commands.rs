@@ -47,7 +47,7 @@ use movement::Movement;
 
 use crate::{
     args,
-    compositor::{self, Component, Compositor},
+    compositor::{self, Component, Compositor, CompositorContext},
     filter_picker_entry,
     job::Callback,
     keymap::CommandList,
@@ -180,7 +180,7 @@ impl MappableCommand {
             } => {
                 let args: Vec<Cow<str>> = args.iter().map(Cow::from).collect();
                 if let Some(command) = typed::TYPABLE_COMMAND_MAP.get(name.as_str()) {
-                    let mut cx = compositor::CompositorContext {
+                    let mut cx = CompositorContext {
                         editor: cx.editor,
                         jobs: cx.jobs,
                         scroll: None,
@@ -2629,7 +2629,7 @@ impl ui::menu::Item for MappableCommand {
 
 pub fn command_palette(cx: &mut CommandContext) {
     cx.callback = Some(Box::new(
-        move |compositor: &mut Compositor, cx: &mut compositor::CompositorContext| {
+        move |compositor: &mut Compositor, cx: &mut CompositorContext| {
             let keymap_command_lists = compositor
                 .find::<ui::EditorView>()
                 .unwrap()
@@ -5078,7 +5078,7 @@ async fn shell_impl_async(
     Ok((tendril, output.status.success()))
 }
 
-fn shell(cx: &mut compositor::CompositorContext, cmd: &str, behavior: &ShellBehavior) {
+fn shell(cx: &mut CompositorContext, cmd: &str, behavior: &ShellBehavior) {
     let pipe = match behavior {
         ShellBehavior::Replace | ShellBehavior::Ignore => true,
         ShellBehavior::Insert | ShellBehavior::Append => false,
