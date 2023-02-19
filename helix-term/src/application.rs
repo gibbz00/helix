@@ -217,7 +217,7 @@ impl Application {
     }
 
     async fn render(&mut self) {
-        let mut cx = crate::compositor::Context {
+        let mut cx = crate::compositor::CompositorContext {
             editor: &mut self.editor,
             jobs: &mut self.jobs,
             scroll: None,
@@ -406,7 +406,7 @@ impl Application {
     }
 
     pub async fn handle_idle_timeout(&mut self) {
-        let mut cx = crate::compositor::Context {
+        let mut cx = crate::compositor::CompositorContext {
             editor: &mut self.editor,
             jobs: &mut self.jobs,
             scroll: None,
@@ -524,7 +524,7 @@ impl Application {
         &mut self,
         event: Result<CrosstermEvent, crossterm::ErrorKind>,
     ) {
-        let mut cx = crate::compositor::Context {
+        let mut cx = crate::compositor::CompositorContext {
             editor: &mut self.editor,
             jobs: &mut self.jobs,
             scroll: None,
