@@ -133,7 +133,7 @@ fn buffer_close_by_ids_impl(
 fn buffer_gather_paths_impl(editor: &mut Editor, args: &[Cow<str>]) -> Vec<DocumentId> {
     // No arguments implies current document
     if args.is_empty() {
-        let doc_id = view!(editor).doc;
+        let doc_id = view!(editor).doc_id;
         return vec![doc_id];
     }
 
@@ -1195,7 +1195,7 @@ fn reload_all(
 
         for view_id in view_ids {
             let view = view_mut!(cx.editor, view_id);
-            if view.doc.eq(&doc_id) {
+            if view.doc_id.eq(&doc_id) {
                 view.ensure_cursor_in_view(doc, scrolloff);
             }
         }
@@ -1361,7 +1361,7 @@ fn vsplit(cx: &mut CompositorContext, args: &[Cow<str>], event: PromptEvent) -> 
         return Ok(());
     }
 
-    let id = view!(cx.editor).doc;
+    let id = view!(cx.editor).doc_id;
 
     if args.is_empty() {
         cx.editor.switch(id, Action::VerticalSplit);
@@ -1380,7 +1380,7 @@ fn hsplit(cx: &mut CompositorContext, args: &[Cow<str>], event: PromptEvent) -> 
         return Ok(());
     }
 
-    let id = view!(cx.editor).doc;
+    let id = view!(cx.editor).doc_id;
 
     if args.is_empty() {
         cx.editor.switch(id, Action::HorizontalSplit);
