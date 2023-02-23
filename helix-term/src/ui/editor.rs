@@ -875,25 +875,25 @@ impl EditorView {
         }
     }
 
-    fn command_mode(&mut self, mode: Mode, cxt: &mut CommandContext, event: KeyEvent) {
-        match (event, cxt.editor.count) {
+    fn command_mode(&mut self, mode: Mode, cx: &mut CommandContext, event: KeyEvent) {
+        match (event, cx.editor.count) {
             // count handling
             (key!(i @ '0'), Some(_)) | (key!(i @ '1'..='9'), _) => {
                 let i = i.to_digit(10).unwrap() as usize;
-                cxt.editor.count =
-                    std::num::NonZeroUsize::new(cxt.editor.count.map_or(i, |c| c.get() * 10 + i));
+                cx.editor.count =
+                    std::num::NonZeroUsize::new(cx.editor.count.map_or(i, |c| c.get() * 10 + i));
             }
             // special handling for repeat operator
             (key!('.'), _) if self.keymap.pending().is_empty() => {
-                for _ in 0..cxt.editor.count.map_or(1, NonZeroUsize::into) {
+                for _ in 0..cx.editor.count.map_or(1, NonZeroUsize::into) {
                     // first execute whatever put us into insert mode
-                    self.last_insert.0.execute(cxt);
+                    self.last_insert.0.execute(cx);
                     // then replay the inputs
                     for key in self.last_insert.1.clone() {
                         match key {
-                            InsertEvent::Key(key) => self.insert_mode(cxt, key),
+                            InsertEvent::Key(key) => self.insert_mode(cx, key),
                             InsertEvent::CompletionApply(compl) => {
-                                let (view, doc) = current!(cxt.editor);
+                                let (view, doc) = current!(cx.editor);
 
                                 doc.restore(view);
 
@@ -912,27 +912,21 @@ impl EditorView {
                                 doc.apply(&tx, view.id);
                             }
                             InsertEvent::TriggerCompletion => {
-                                let (_, doc) = current!(cxt.editor);
+                                let (_, doc) = current!(cx.editor);
                                 doc.savepoint();
                             }
                         }
                     }
                 }
-                cxt.editor.count = None;
+                cx.editor.count = None;
             }
             _ => {
-                // set the count
-                cxt.count = cxt.editor.count;
-                // TODO: edge case: 0j -> reset to 1
-                // if this fails, count was Some(0)
-                // debug_assert!(cxt.count != 0);
-
                 // set the register
-                cxt.register = cxt.editor.selected_register.take();
+                cx.register = cx.editor.selected_register.take();
 
-                self.handle_keymap_event(mode, cxt, event);
+                self.handle_keymap_event(mode, cx, event);
                 if self.keymap.pending().is_empty() {
-                    cxt.editor.count = None
+                    cx.editor.count = None
                 }
             }
         }
@@ -1179,7 +1173,6 @@ impl Component for EditorView {
     fn handle_event(&mut self, event: &Event, context: &mut CompositorContext) -> EventResult {
         let mut cx = CommandContext {
             editor: context.editor,
-            count: None,
             register: None,
             callback: None,
             on_next_key_callback: None,
@@ -1188,7 +1181,6 @@ impl Component for EditorView {
 
         match event {
             Event::Paste(contents) => {
-                cx.count = cx.editor.count;
                 commands::paste_bracketed_value(&mut cx, contents.clone());
                 cx.editor.count = None;
 
@@ -1212,14 +1204,16 @@ impl Component for EditorView {
             }
             Event::Key(mut key) => {
                 cx.editor.reset_idle_timer();
-                canonicalize_key(&mut key);
-
                 // clear status
                 cx.editor.status_msg = None;
 
                 let mode = cx.editor.mode();
-                let (view, _) = current!(cx.editor);
+                let view = view!(cx.editor);
                 let focus = view.id;
+                // canonicalize key
+                if let KeyCode::Char(_) = key.code {
+                    key.modifiers.remove(KeyModifiers::SHIFT)
+                }
 
                 if let Some(on_next_key) = self.on_next_key.take() {
                     // if there's a command waiting input, do that first
@@ -1231,19 +1225,19 @@ impl Component for EditorView {
                             let mut consumed = false;
                             if let Some(completion) = &mut self.completion {
                                 // use a fake context here
-                                let mut cx = CompositorContext {
+                                let mut comp_cx = CompositorContext {
                                     editor: cx.editor,
                                     jobs: cx.jobs,
                                     scroll: None,
                                 };
-                                let res = completion.handle_event(event, &mut cx);
+                                let res = completion.handle_event(event, &mut comp_cx);
 
                                 if let EventResult::Consumed(callback) = res {
                                     consumed = true;
 
                                     if callback.is_some() {
                                         // assume close_fn
-                                        self.clear_completion(cx.editor);
+                                        self.clear_completion(comp_cx.editor);
                                     }
                                 }
                             }
@@ -1261,7 +1255,7 @@ impl Component for EditorView {
 
                                 // lastly we recalculate completion
                                 if let Some(completion) = &mut self.completion {
-                                    completion.update(&mut cx);
+                                    completion.update(cx.editor);
                                     if completion.is_empty() {
                                         self.clear_completion(cx.editor);
                                     }
@@ -1428,15 +1422,5 @@ impl Component for EditorView {
             (pos, CursorKind::Block) => (pos, CursorKind::Hidden),
             cursor => cursor,
         }
-    }
-}
-
-fn canonicalize_key(key: &mut KeyEvent) {
-    if let KeyEvent {
-        code: KeyCode::Char(_),
-        modifiers: _,
-    } = key
-    {
-        key.modifiers.remove(KeyModifiers::SHIFT)
     }
 }

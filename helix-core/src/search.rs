@@ -21,15 +21,16 @@ pub fn find_nth_next<M: CharMatcher>(
     text: RopeSlice,
     char_matcher: M,
     mut pos: usize,
-    n: usize,
+    count: usize,
 ) -> Option<usize> {
-    if pos >= text.len_chars() || n == 0 {
+    // NOTE: count is usually passed from Editor.count where it's a NonZeroUsize
+    if pos >= text.len_chars() || count == 0 {
         return None;
     }
 
     let mut chars = text.chars_at(pos);
 
-    for _ in 0..n {
+    for _ in 0..count {
         loop {
             let c = chars.next()?;
 

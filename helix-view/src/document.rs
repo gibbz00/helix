@@ -3,11 +3,11 @@ use arc_swap::access::DynAccess;
 use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
 use helix_core::auto_pairs::AutoPairs;
+use helix_core::diff::{diff_provider::DiffProviderRegistry, DiffHandle};
 use helix_core::doc_formatter::TextFormat;
 use helix_core::syntax::Highlight;
 use helix_core::text_annotations::TextAnnotations;
 use helix_core::Range;
-use helix_vcs::{DiffHandle, DiffProviderRegistry};
 
 use serde::de::{self, Deserialize, Deserializer};
 use serde::Serialize;

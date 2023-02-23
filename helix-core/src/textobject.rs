@@ -1,54 +1,16 @@
-use std::fmt::Display;
+#[cfg(test)]
+mod test;
 
 use ropey::RopeSlice;
-use tree_sitter::{Node, QueryCursor};
+use std::fmt::Display;
 
 use crate::chars::{categorize_char, char_is_whitespace, CharCategory};
-use crate::graphemes::{next_grapheme_boundary, prev_grapheme_boundary};
+use crate::graphemes::next_grapheme_boundary;
 use crate::line_ending::rope_is_line_ending;
 use crate::movement::Direction;
-use crate::surround;
-use crate::syntax::LanguageConfiguration;
-use crate::Range;
-
-fn find_word_boundary(slice: RopeSlice, mut pos: usize, direction: Direction, long: bool) -> usize {
-    use CharCategory::{Eol, Whitespace};
-
-    let iter = match direction {
-        Direction::Forward => slice.chars_at(pos),
-        Direction::Backward => {
-            let mut iter = slice.chars_at(pos);
-            iter.reverse();
-            iter
-        }
-    };
-
-    let mut prev_category = match direction {
-        Direction::Forward if pos == 0 => Whitespace,
-        Direction::Forward => categorize_char(slice.char(pos - 1)),
-        Direction::Backward if pos == slice.len_chars() => Whitespace,
-        Direction::Backward => categorize_char(slice.char(pos)),
-    };
-
-    for ch in iter {
-        match categorize_char(ch) {
-            Eol | Whitespace => return pos,
-            category => {
-                if !long && category != prev_category && pos != 0 && pos != slice.len_chars() {
-                    return pos;
-                } else {
-                    match direction {
-                        Direction::Forward => pos += 1,
-                        Direction::Backward => pos = pos.saturating_sub(1),
-                    }
-                    prev_category = category;
-                }
-            }
-        }
-    }
-
-    pos
-}
+use crate::selection::SelectionRule;
+use crate::{surround, Range};
+use CharCategory::{Eol, Whitespace};
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum TextObject {
@@ -68,156 +30,237 @@ impl Display for TextObject {
     }
 }
 
-// count doesn't do anything yet
-pub fn textobject_word(
-    slice: RopeSlice,
+#[allow(non_upper_case_globals)]
+pub const word: SelectionRule =
+    |range, rule_cx| word_impl(range, rule_cx.text, rule_cx.ts_textobject, false);
+
+#[allow(non_upper_case_globals)]
+pub const word_long: SelectionRule =
+    |range, rule_cx| word_impl(range, rule_cx.text, rule_cx.ts_textobject, true);
+
+pub fn word_impl(
     range: Range,
-    textobject: TextObject,
-    _count: usize,
+    text: RopeSlice,
+    textobject: Option<TextObject>,
     long: bool,
 ) -> Range {
-    let pos = range.cursor(slice);
+    let mut pos = range.cursor(text);
 
-    let word_start = find_word_boundary(slice, pos, Direction::Backward, long);
-    let word_end = match slice.get_char(pos).map(categorize_char) {
-        None | Some(CharCategory::Whitespace | CharCategory::Eol) => pos,
-        _ => find_word_boundary(slice, pos + 1, Direction::Forward, long),
-    };
-
-    // Special case.
-    if word_start == word_end {
-        return Range::new(word_start, word_end);
+    // Edge case: Cursor can still be placed on a non-character (e.g EOF). If so, do not continue.
+    if pos >= text.len_chars() {
+        return range;
     }
 
-    match textobject {
-        TextObject::Inside => Range::new(word_start, word_end),
-        TextObject::Around => {
-            let whitespace_count_right = slice
-                .chars_at(word_end)
-                .take_while(|c| char_is_whitespace(*c))
-                .count();
+    // move pos backward it char is whitespace to find first word
+    // needed for a symmetry in which maw selects:
+    // Both "t[e]st  sentence." and "test[ ] sentence" to
+    // "[test  ]sentence"
+    // +1 because range.cursor gives left side position
+    for char in text.chars_at(pos + 1).reversed() {
+        log::warn!("{char}, {pos}");
+        if char_is_whitespace(char) {
+            pos -= 1;
+        } else {
+            break;
+        }
+    }
 
-            if whitespace_count_right > 0 {
-                Range::new(word_start, word_end + whitespace_count_right)
+    let (start_idx, mut end_idx) = find_word_boundary(text, pos, long);
+
+    // TEMP: unwrap remove once specialized rule contexts are added
+    if TextObject::Around == textobject.unwrap() {
+        // extend next word end until first non-whitespace
+        for char in text.chars_at(end_idx) {
+            if char_is_whitespace(char) {
+                end_idx += 1;
             } else {
-                let whitespace_count_left = {
-                    let mut iter = slice.chars_at(word_start);
-                    iter.reverse();
-                    iter.take_while(|c| char_is_whitespace(*c)).count()
-                };
-                Range::new(word_start - whitespace_count_left, word_end)
+                break;
             }
         }
-        TextObject::Movement => unreachable!(),
     }
+
+    let direction = if range.head >= range.anchor {
+        Direction::Forward
+    } else {
+        Direction::Backward
+    };
+    // If point -> direction forward
+    // If range.head > range.anchor -> direction forward
+    // else -> direction backwards
+    Range::new(start_idx, end_idx).with_direction(direction)
 }
 
-pub fn textobject_paragraph(
-    slice: RopeSlice,
-    range: Range,
-    textobject: TextObject,
-    count: usize,
-) -> Range {
-    let mut line = range.cursor_line(slice);
-    let prev_line_empty = rope_is_line_ending(slice.line(line.saturating_sub(1)));
-    let curr_line_empty = rope_is_line_ending(slice.line(line));
-    let next_line_empty = rope_is_line_ending(slice.line(line.saturating_sub(1)));
-    let last_char =
-        prev_grapheme_boundary(slice, slice.line_to_char(line + 1)) == range.cursor(slice);
-    let prev_empty_to_line = prev_line_empty && !curr_line_empty;
-    let curr_empty_to_line = curr_line_empty && !next_line_empty;
+fn find_word_boundary(text: RopeSlice, curr_pos: usize, long: bool) -> (usize, usize) {
+    let (mut curr_start_idx, mut curr_end_idx) = (curr_pos, curr_pos);
 
-    // skip character before paragraph boundary
-    let mut line_back = line; // line but backwards
-    if prev_empty_to_line || curr_empty_to_line {
-        line_back += 1;
-    }
-    // do not include current paragraph on paragraph end (include next)
-    if !(curr_empty_to_line && last_char) {
-        let mut lines = slice.lines_at(line_back);
-        lines.reverse();
-        let mut lines = lines.map(rope_is_line_ending).peekable();
-        while lines.next_if(|&e| e).is_some() {
-            line_back -= 1;
-        }
-        while lines.next_if(|&e| !e).is_some() {
-            line_back -= 1;
-        }
-    }
-
-    // skip character after paragraph boundary
-    if curr_empty_to_line && last_char {
-        line += 1;
-    }
-    let mut lines = slice.lines_at(line).map(rope_is_line_ending).peekable();
-    let mut count_done = 0; // count how many non-whitespace paragraphs done
-    for _ in 0..count {
-        let mut done = false;
-        while lines.next_if(|&e| !e).is_some() {
-            line += 1;
-            done = true;
-        }
-        while lines.next_if(|&e| e).is_some() {
-            line += 1;
-        }
-        count_done += done as usize;
-    }
-
-    // search one paragraph backwards for last paragraph
-    // makes `map` at the end of the paragraph with trailing newlines useful
-    let last_paragraph = count_done != count && lines.peek().is_none();
-    if last_paragraph {
-        let mut lines = slice.lines_at(line_back);
-        lines.reverse();
-        let mut lines = lines.map(rope_is_line_ending).peekable();
-        while lines.next_if(|&e| e).is_some() {
-            line_back -= 1;
-        }
-        while lines.next_if(|&e| !e).is_some() {
-            line_back -= 1;
-        }
-    }
-
-    // handle last whitespaces part separately depending on textobject
-    match textobject {
-        TextObject::Around => {}
-        TextObject::Inside => {
-            // remove last whitespace paragraph
-            let mut lines = slice.lines_at(line);
-            lines.reverse();
-            let mut lines = lines.map(rope_is_line_ending).peekable();
-            while lines.next_if(|&e| e).is_some() {
-                line -= 1;
+    // Forward
+    let mut prev_category = categorize_char(text.char(curr_end_idx));
+    for ch in text.chars_at(curr_end_idx) {
+        match categorize_char(ch) {
+            Eol | Whitespace => break,
+            curr_category => {
+                if curr_category != prev_category && !long || curr_end_idx == text.len_chars() {
+                    break;
+                } else {
+                    curr_end_idx += 1;
+                    prev_category = curr_category;
+                }
             }
         }
-        TextObject::Movement => unreachable!(),
     }
 
-    let anchor = slice.line_to_char(line_back);
-    let head = slice.line_to_char(line);
+    // Backward
+    let mut prev_category = if curr_pos == text.len_chars() {
+        Whitespace
+    } else {
+        categorize_char(text.char(curr_pos))
+    };
+    for ch in text.chars_at(curr_start_idx).reversed() {
+        match categorize_char(ch) {
+            Eol | Whitespace => break,
+            category => {
+                if !long
+                    && category != prev_category
+                    && curr_start_idx != 0
+                    && curr_start_idx != text.len_chars()
+                {
+                    break;
+                } else {
+                    curr_start_idx = curr_start_idx.saturating_sub(1);
+                    prev_category = category;
+                }
+            }
+        }
+    }
+
+    (curr_start_idx, curr_end_idx)
+}
+
+/* Behavior:
+    * Finding the first paragraph:
+        If on new line: move upwards until first non line ending is found, or when top of document is reached
+
+    * Select to top of paragraph:
+        Increment top_line until a new line is found.
+            (Never select newlines above paragraph.)
+    * Selecting to bottom of paragraph:
+        Increment bottom_line until new line is found
+        If object type is around: Also select all trailing newlines.
+
+    * When count is involved: (passed as pos_arg):
+        if count > 1
+            for _ in (0..count)
+                Continue to next non-newline
+                Repeat selecting to bottom of paragraph.
+
+    * TODO: Add tests for this.
+    * Wierd behaviour #1:
+        If cursor on empty line, put around two paragraphs, then `mip/map` picks the next paragraph.
+        But if there are two empty newlines in between paragraphs, then the `mip/map` picks the previous paragraph.#[allow(non_upper_case_globals)]
+    * My take:
+        Should always select upwards as trailing newlines count when doing `map`.
+        So they belong in a way to the previous paragraph.
+
+    NOTE:
+        `2mip` also selects the newlines inbetween, which a singular `mip` doesn't
+        It doesn't in other words split the selection into multiple smaller ranges.
+*/
+
+#[allow(non_upper_case_globals)]
+pub const paragraph: SelectionRule = |range, rule_cx| {
+    let text = rule_cx.text;
+    let mut curr_line_nr = range.cursor_line(text);
+
+    // Finding the paragraph/starting line:
+    // Move upwards until first non-newline ending is found, or when top of document is reached.
+    if rope_is_line_ending(text.line(curr_line_nr)) {
+        for next_line in text.lines_at(curr_line_nr).reversed() {
+            if rope_is_line_ending(next_line) {
+                break;
+            }
+            curr_line_nr -= 1;
+        }
+    }
+
+    // Select to top of paragraph:
+    // Increment top_line until a new line is found. (Never select newlines above paragraph.)
+    let mut top_line_nr = curr_line_nr;
+    let mut lines_peekable = text.lines_at(curr_line_nr).reversed().peekable();
+    while lines_peekable
+        .next_if(|line| !rope_is_line_ending(*line))
+        .is_some()
+    {
+        top_line_nr -= 1;
+    }
+
+    // Selecting to bottom of paragraph:
+    let mut bottom_line_nr = curr_line_nr;
+    let mut lines_peekable = text.lines_at(bottom_line_nr).peekable();
+    while lines_peekable
+        .next_if(|line| !rope_is_line_ending(*line))
+        .is_some()
+    {
+        bottom_line_nr += 1;
+    }
+
+    // If object type is around: Also select all trailing newlines.
+    // TEMP: unwrap will be removed once RuleContext becomes a trait.
+    if rule_cx.ts_textobject.unwrap() == TextObject::Around {
+        let mut lines_peekable = text.lines_at(bottom_line_nr).peekable();
+        while lines_peekable
+            .next_if(|line| rope_is_line_ending(*line))
+            .is_some()
+        {
+            bottom_line_nr += 1;
+        }
+    }
+
+    let anchor = text.line_to_char(top_line_nr);
+    let head = text.line_to_char(bottom_line_nr);
     Range::new(anchor, head)
-}
+};
 
-pub fn textobject_pair_surround(
-    slice: RopeSlice,
-    range: Range,
-    textobject: TextObject,
-    ch: char,
-    count: usize,
-) -> Range {
-    textobject_pair_surround_impl(slice, range, textobject, Some(ch), count)
-}
+#[allow(non_upper_case_globals)]
+pub const vcs_change: SelectionRule = |range, rule_cx| {
+    // TODO: (gibbz) add to run_condition, and remove unwrap once different RuleContexts are added
+    // editor.set_status("Diff is not available in current buffer");
+    let text = rule_cx.text;
+    let hunks = rule_cx.diff_handle.unwrap().hunks();
+    if let Some(hunk_idx) = hunks.hunk_at(range.cursor_line(text) as u32, false) {
+        let hunk = hunks.nth_hunk(hunk_idx).after;
+        let start = text.line_to_char(hunk.start as usize);
+        let end = text.line_to_char(hunk.end as usize);
+        Range::new(start, end).with_direction(range.direction())
+    } else {
+        range
+    }
+};
 
-pub fn textobject_pair_surround_closest(
-    slice: RopeSlice,
-    range: Range,
-    textobject: TextObject,
-    count: usize,
-) -> Range {
-    textobject_pair_surround_impl(slice, range, textobject, None, count)
-}
+// TEMP: unwrap until refined rulecontext
+// HACK: until achieves same behaviour with repeat, count is passed in as pos_arg
+#[allow(non_upper_case_globals)]
+pub const pair_surround: SelectionRule = |range, rule_cx| {
+    pair_surround_impl(
+        rule_cx.text,
+        range,
+        rule_cx.ts_textobject.unwrap(),
+        rule_cx.find_char,
+        rule_cx.pos_arg,
+    )
+};
 
-fn textobject_pair_surround_impl(
+#[allow(non_upper_case_globals)]
+pub const pair_surround_closest: SelectionRule = |range, rule_cx| {
+    pair_surround_impl(
+        rule_cx.text,
+        range,
+        rule_cx.ts_textobject.unwrap(),
+        None,
+        rule_cx.pos_arg,
+    )
+};
+
+fn pair_surround_impl(
     slice: RopeSlice,
     range: Range,
     textobject: TextObject,
@@ -250,339 +293,90 @@ fn textobject_pair_surround_impl(
         .unwrap_or(range)
 }
 
-/// Transform the given range to select text objects based on tree-sitter.
-/// `object_name` is a query capture base name like "function", "class", etc.
-/// `slice_tree` is the tree-sitter node corresponding to given text slice.
-pub fn textobject_treesitter(
-    slice: RopeSlice,
-    range: Range,
-    textobject: TextObject,
-    object_name: &str,
-    slice_tree: Node,
-    lang_config: &LanguageConfiguration,
-    _count: usize,
-) -> Range {
-    let get_range = move || -> Option<Range> {
-        let byte_pos = slice.char_to_byte(range.cursor(slice));
+/// `ts_node_name` is a query capture base name like "function", "class", etc.
+/// Finds the range of the next or previous textobject in the node if `rule_cx.direction` is `Some(Direction)`.
+/// Grab texobject which the cursor is placed on the field is `None`.
+/// Returns the range in the forwards direction.
+#[allow(non_upper_case_globals)]
+pub const treesitter: SelectionRule = |range, rule_cx| {
+    let syntax_root_node = rule_cx
+        .syntax
+        .expect("run_condition shuld check for an active tree-sitter syntax tree")
+        .tree()
+        .root_node();
 
-        let capture_name = format!("{}.{}", object_name, textobject); // eg. function.inner
-        let mut cursor = QueryCursor::new();
-        let node = lang_config
-            .textobject_query()?
-            .capture_nodes(&capture_name, slice_tree, slice, &mut cursor)?
-            .filter(|node| node.byte_range().contains(&byte_pos))
-            .min_by_key(|node| node.byte_range().len())?;
+    let ts_object_query = rule_cx
+        .lang_confing
+        .and_then(|lang_config| lang_config.textobject_query())
+        .expect("run_condition should check for document lang_config textobject support");
 
-        let len = slice.len_bytes();
-        let start_byte = node.start_byte();
-        let end_byte = node.end_byte();
-        if start_byte >= len || end_byte >= len {
-            return None;
-        }
+    let ts_node = rule_cx
+        .ts_node
+        .expect("ts_node name should be set when calling goto_tree_sitter_object");
 
-        let start_char = slice.byte_to_char(start_byte);
-        let end_char = slice.byte_to_char(end_byte);
-
-        Some(Range::new(start_char, end_char))
+    let capture_name = |text_object: TextObject| format!("{}.{}", ts_node, text_object);
+    let capture_names = match rule_cx.ts_textobject {
+        Some(text_object) => vec![capture_name(text_object)],
+        None => vec![
+            capture_name(TextObject::Movement),
+            capture_name(TextObject::Around),
+            capture_name(TextObject::Inside),
+        ],
     };
-    get_range().unwrap_or(range)
-}
+    let capture_names: &[&str] = &capture_names
+        .iter()
+        .map(|capture_name| capture_name.as_str())
+        .collect::<Vec<&str>>()[..];
 
-#[cfg(test)]
-mod test {
-    use super::TextObject::*;
-    use super::*;
+    let text = rule_cx.text;
+    let byte_pos = text.char_to_byte(range.cursor(text));
+    let found_node = ts_object_query
+        .capture_nodes_any(capture_names, syntax_root_node, text)
+        .and_then(|nodes| match rule_cx.direction {
+            Some(direction) => match direction {
+                Direction::Forward => nodes
+                    .filter(|node| node.start_byte() > byte_pos)
+                    .min_by_key(|node| node.start_byte()),
+                Direction::Backward => nodes
+                    .filter(|node| node.end_byte() < byte_pos)
+                    .max_by_key(|node| node.end_byte()),
+            },
+            None => nodes
+                .filter(|node| node.byte_range().contains(&byte_pos))
+                .min_by_key(|node| node.byte_range().len()),
+        });
 
-    use crate::Range;
-    use ropey::Rope;
+    // (Returning the input range in a SelectionRule is equivalent to letting
+    // the caller know that the count repeat should be cancelled.)
+    let Some(node) = found_node else {
+        return range;
+    };
 
-    #[test]
-    fn test_textobject_word() {
-        // (text, [(char position, textobject, final range), ...])
-        let tests = &[
-            (
-                "cursor at beginning of doc",
-                vec![(0, Inside, (0, 6)), (0, Around, (0, 7))],
-            ),
-            (
-                "cursor at middle of word",
-                vec![
-                    (13, Inside, (10, 16)),
-                    (10, Inside, (10, 16)),
-                    (15, Inside, (10, 16)),
-                    (13, Around, (10, 17)),
-                    (10, Around, (10, 17)),
-                    (15, Around, (10, 17)),
-                ],
-            ),
-            (
-                "cursor between word whitespace",
-                vec![(6, Inside, (6, 6)), (6, Around, (6, 6))],
-            ),
-            (
-                "cursor on word before newline\n",
-                vec![
-                    (22, Inside, (22, 29)),
-                    (28, Inside, (22, 29)),
-                    (25, Inside, (22, 29)),
-                    (22, Around, (21, 29)),
-                    (28, Around, (21, 29)),
-                    (25, Around, (21, 29)),
-                ],
-            ),
-            (
-                "cursor on newline\nnext line",
-                vec![(17, Inside, (17, 17)), (17, Around, (17, 17))],
-            ),
-            (
-                "cursor on word after newline\nnext line",
-                vec![
-                    (29, Inside, (29, 33)),
-                    (30, Inside, (29, 33)),
-                    (32, Inside, (29, 33)),
-                    (29, Around, (29, 34)),
-                    (30, Around, (29, 34)),
-                    (32, Around, (29, 34)),
-                ],
-            ),
-            (
-                "cursor on #$%:;* punctuation",
-                vec![
-                    (13, Inside, (10, 16)),
-                    (10, Inside, (10, 16)),
-                    (15, Inside, (10, 16)),
-                    (13, Around, (10, 17)),
-                    (10, Around, (10, 17)),
-                    (15, Around, (10, 17)),
-                ],
-            ),
-            (
-                "cursor on punc%^#$:;.tuation",
-                vec![
-                    (14, Inside, (14, 21)),
-                    (20, Inside, (14, 21)),
-                    (17, Inside, (14, 21)),
-                    (14, Around, (14, 21)),
-                    (20, Around, (14, 21)),
-                    (17, Around, (14, 21)),
-                ],
-            ),
-            (
-                "cursor in   extra whitespace",
-                vec![
-                    (9, Inside, (9, 9)),
-                    (10, Inside, (10, 10)),
-                    (11, Inside, (11, 11)),
-                    (9, Around, (9, 9)),
-                    (10, Around, (10, 10)),
-                    (11, Around, (11, 11)),
-                ],
-            ),
-            (
-                "cursor on word   with extra whitespace",
-                vec![(11, Inside, (10, 14)), (11, Around, (10, 17))],
-            ),
-            (
-                "cursor at end with extra   whitespace",
-                vec![(28, Inside, (27, 37)), (28, Around, (24, 37))],
-            ),
-            (
-                "cursor at end of doc",
-                vec![(19, Inside, (17, 20)), (19, Around, (16, 20))],
-            ),
-        ];
+    let len = text.len_bytes();
+    let start_byte = node.start_byte();
+    let end_byte = node.end_byte();
+    // No new treesitter object range is found.
+    if start_byte >= len || end_byte >= len {
+        return range;
+    }
 
-        for (sample, scenario) in tests {
-            let doc = Rope::from(*sample);
-            let slice = doc.slice(..);
-            for &case in scenario {
-                let (pos, objtype, expected_range) = case;
-                // cursor is a single width selection
-                let range = Range::new(pos, pos + 1);
-                let result = textobject_word(slice, range, objtype, 1, false);
-                assert_eq!(
-                    result,
-                    expected_range.into(),
-                    "\nCase failed: {:?} - {:?}",
-                    sample,
-                    case
-                );
+    let start_char = text.byte_to_char(start_byte);
+    let end_char = text.byte_to_char(end_byte);
+    let new_range: Range = Range::new(start_char, end_char);
+    match rule_cx.direction {
+        Some(direction) => {
+            if rule_cx.extend {
+                let head = if new_range.head < range.anchor {
+                    new_range.anchor
+                } else {
+                    new_range.head
+                };
+
+                Range::new(range.anchor, head)
+            } else {
+                new_range.with_direction(direction)
             }
         }
+        None => new_range,
     }
-
-    #[test]
-    fn test_textobject_paragraph_inside_single() {
-        let tests = [
-            ("#[|]#", "#[|]#"),
-            ("firs#[t|]#\n\nparagraph\n\n", "#[first\n|]#\nparagraph\n\n"),
-            (
-                "second\n\npa#[r|]#agraph\n\n",
-                "second\n\n#[paragraph\n|]#\n",
-            ),
-            ("#[f|]#irst char\n\n", "#[first char\n|]#\n"),
-            ("last char\n#[\n|]#", "#[last char\n|]#\n"),
-            (
-                "empty to line\n#[\n|]#paragraph boundary\n\n",
-                "empty to line\n\n#[paragraph boundary\n|]#\n",
-            ),
-            (
-                "line to empty\n\n#[p|]#aragraph boundary\n\n",
-                "line to empty\n\n#[paragraph boundary\n|]#\n",
-            ),
-        ];
-
-        for (before, expected) in tests {
-            let (s, selection) = crate::test::print(before);
-            let text = Rope::from(s.as_str());
-            let selection = selection
-                .transform(|r| textobject_paragraph(text.slice(..), r, TextObject::Inside, 1));
-            let actual = crate::test::plain(&s, selection);
-            assert_eq!(actual, expected, "\nbefore: `{:?}`", before);
-        }
-    }
-
-    #[test]
-    fn test_textobject_paragraph_inside_double() {
-        let tests = [
-            (
-                "last two\n\n#[p|]#aragraph\n\nwithout whitespaces\n\n",
-                "last two\n\n#[paragraph\n\nwithout whitespaces\n|]#\n",
-            ),
-            (
-                "last two\n#[\n|]#paragraph\n\nwithout whitespaces\n\n",
-                "last two\n\n#[paragraph\n\nwithout whitespaces\n|]#\n",
-            ),
-        ];
-
-        for (before, expected) in tests {
-            let (s, selection) = crate::test::print(before);
-            let text = Rope::from(s.as_str());
-            let selection = selection
-                .transform(|r| textobject_paragraph(text.slice(..), r, TextObject::Inside, 2));
-            let actual = crate::test::plain(&s, selection);
-            assert_eq!(actual, expected, "\nbefore: `{:?}`", before);
-        }
-    }
-
-    #[test]
-    fn test_textobject_paragraph_around_single() {
-        let tests = [
-            ("#[|]#", "#[|]#"),
-            ("firs#[t|]#\n\nparagraph\n\n", "#[first\n\n|]#paragraph\n\n"),
-            (
-                "second\n\npa#[r|]#agraph\n\n",
-                "second\n\n#[paragraph\n\n|]#",
-            ),
-            ("#[f|]#irst char\n\n", "#[first char\n\n|]#"),
-            ("last char\n#[\n|]#", "#[last char\n\n|]#"),
-            (
-                "empty to line\n#[\n|]#paragraph boundary\n\n",
-                "empty to line\n\n#[paragraph boundary\n\n|]#",
-            ),
-            (
-                "line to empty\n\n#[p|]#aragraph boundary\n\n",
-                "line to empty\n\n#[paragraph boundary\n\n|]#",
-            ),
-        ];
-
-        for (before, expected) in tests {
-            let (s, selection) = crate::test::print(before);
-            let text = Rope::from(s.as_str());
-            let selection = selection
-                .transform(|r| textobject_paragraph(text.slice(..), r, TextObject::Around, 1));
-            let actual = crate::test::plain(&s, selection);
-            assert_eq!(actual, expected, "\nbefore: `{:?}`", before);
-        }
-    }
-
-    #[test]
-    fn test_textobject_surround() {
-        // (text, [(cursor position, textobject, final range, surround char, count), ...])
-        let tests = &[
-            (
-                "simple (single) surround pairs",
-                vec![
-                    (3, Inside, (3, 3), '(', 1),
-                    (7, Inside, (8, 14), ')', 1),
-                    (10, Inside, (8, 14), '(', 1),
-                    (14, Inside, (8, 14), ')', 1),
-                    (3, Around, (3, 3), '(', 1),
-                    (7, Around, (7, 15), ')', 1),
-                    (10, Around, (7, 15), '(', 1),
-                    (14, Around, (7, 15), ')', 1),
-                ],
-            ),
-            (
-                "samexx 'single' surround pairs",
-                vec![
-                    (3, Inside, (3, 3), '\'', 1),
-                    (7, Inside, (7, 7), '\'', 1),
-                    (10, Inside, (8, 14), '\'', 1),
-                    (14, Inside, (14, 14), '\'', 1),
-                    (3, Around, (3, 3), '\'', 1),
-                    (7, Around, (7, 7), '\'', 1),
-                    (10, Around, (7, 15), '\'', 1),
-                    (14, Around, (14, 14), '\'', 1),
-                ],
-            ),
-            (
-                "(nested (surround (pairs)) 3 levels)",
-                vec![
-                    (0, Inside, (1, 35), '(', 1),
-                    (6, Inside, (1, 35), ')', 1),
-                    (8, Inside, (9, 25), '(', 1),
-                    (8, Inside, (9, 35), ')', 2),
-                    (20, Inside, (9, 25), '(', 2),
-                    (20, Inside, (1, 35), ')', 3),
-                    (0, Around, (0, 36), '(', 1),
-                    (6, Around, (0, 36), ')', 1),
-                    (8, Around, (8, 26), '(', 1),
-                    (8, Around, (8, 36), ')', 2),
-                    (20, Around, (8, 26), '(', 2),
-                    (20, Around, (0, 36), ')', 3),
-                ],
-            ),
-            (
-                "(mixed {surround [pair] same} line)",
-                vec![
-                    (2, Inside, (1, 34), '(', 1),
-                    (9, Inside, (8, 28), '{', 1),
-                    (18, Inside, (18, 22), '[', 1),
-                    (2, Around, (0, 35), '(', 1),
-                    (9, Around, (7, 29), '{', 1),
-                    (18, Around, (17, 23), '[', 1),
-                ],
-            ),
-            (
-                "(stepped (surround) pairs (should) skip)",
-                vec![(22, Inside, (1, 39), '(', 1), (22, Around, (0, 40), '(', 1)],
-            ),
-            (
-                "[surround pairs{\non different]\nlines}",
-                vec![
-                    (7, Inside, (1, 29), '[', 1),
-                    (15, Inside, (16, 36), '{', 1),
-                    (7, Around, (0, 30), '[', 1),
-                    (15, Around, (15, 37), '{', 1),
-                ],
-            ),
-        ];
-
-        for (sample, scenario) in tests {
-            let doc = Rope::from(*sample);
-            let slice = doc.slice(..);
-            for &case in scenario {
-                let (pos, objtype, expected_range, ch, count) = case;
-                let result = textobject_pair_surround(slice, Range::point(pos), objtype, ch, count);
-                assert_eq!(
-                    result,
-                    expected_range.into(),
-                    "\nCase failed: {:?} - {:?}",
-                    sample,
-                    case
-                );
-            }
-        }
-    }
-}
+};

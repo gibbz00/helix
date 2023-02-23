@@ -415,9 +415,8 @@ impl TextObjectQuery {
         capture_name: &str,
         node: Node<'a>,
         slice: RopeSlice<'a>,
-        cursor: &'a mut QueryCursor,
     ) -> Option<impl Iterator<Item = CapturedNode<'a>>> {
-        self.capture_nodes_any(&[capture_name], node, slice, cursor)
+        self.capture_nodes_any(&[capture_name], node, slice)
     }
 
     /// Find the first capture that exists out of all given `capture_names`
@@ -427,15 +426,19 @@ impl TextObjectQuery {
         capture_names: &[&str],
         node: Node<'a>,
         slice: RopeSlice<'a>,
-        cursor: &'a mut QueryCursor,
     ) -> Option<impl Iterator<Item = CapturedNode<'a>>> {
         let capture_idx = capture_names
             .iter()
             .find_map(|cap| self.query.capture_index_for_name(cap))?;
 
-        cursor.set_match_limit(TREE_SITTER_MATCH_LIMIT);
+        let mut cursor = QueryCursor::new();
+        // The `captures` iterator borrows the `Tree` and the `QueryCursor`, which
+        // prevents them from being moved. But both of these values are really just
+        // pointers, so it's actually ok to move them.
+        let cursor_ref = unsafe { mem::transmute::<_, &'static mut QueryCursor>(&mut cursor) };
+        cursor_ref.set_match_limit(TREE_SITTER_MATCH_LIMIT);
 
-        let nodes = cursor
+        let nodes = cursor_ref
             .captures(&self.query, node, RopeProvider(slice))
             .filter_map(move |(mat, _)| {
                 let nodes: Vec<_> = mat
@@ -2291,15 +2294,13 @@ mod test {
 
         let query = Query::new(language, query_str).unwrap();
         let textobject = TextObjectQuery { query };
-        let mut cursor = QueryCursor::new();
-
         let config = HighlightConfiguration::new(language, "", "", "").unwrap();
         let syntax = Syntax::new(&source, Arc::new(config), Arc::new(loader));
 
         let root = syntax.tree().root_node();
-        let mut test = |capture, range| {
+        let test = |capture, range| {
             let matches: Vec<_> = textobject
-                .capture_nodes(capture, root, source.slice(..), &mut cursor)
+                .capture_nodes(capture, root, source.slice(..))
                 .unwrap()
                 .collect();
 

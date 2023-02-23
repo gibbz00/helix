@@ -1122,11 +1122,13 @@ dependencies = [
  "chrono",
  "encoding_rs",
  "etcetera",
+ "git-repository",
  "hashbrown 0.13.2",
  "helix-loader",
  "imara-diff",
  "log",
  "once_cell",
+ "parking_lot 0.12.1",
  "quickcheck",
  "regex",
  "ropey",
@@ -1135,7 +1137,9 @@ dependencies = [
  "slotmap",
  "smallvec",
  "smartstring",
+ "tempfile",
  "textwrap",
+ "tokio",
  "toml",
  "tree-sitter",
  "unicode-general-category",
@@ -1212,7 +1216,6 @@ dependencies = [
  "helix-loader",
  "helix-lsp",
  "helix-tui",
- "helix-vcs",
  "helix-view",
  "ignore",
  "indoc",
@@ -1246,19 +1249,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "helix-vcs"
-version = "0.6.0"
-dependencies = [
- "git-repository",
- "helix-core",
- "imara-diff",
- "log",
- "parking_lot 0.12.1",
- "tempfile",
- "tokio",
-]
-
-[[package]]
 name = "helix-view"
 version = "0.6.0"
 dependencies = [
@@ -1274,7 +1264,6 @@ dependencies = [
  "helix-loader",
  "helix-lsp",
  "helix-tui",
- "helix-vcs",
  "libc",
  "log",
  "once_cell",

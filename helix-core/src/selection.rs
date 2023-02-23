@@ -3,15 +3,19 @@
 //!
 //! All positioning is done via `char` offsets into the buffer.
 use crate::{
+    diff::DiffHandle,
     graphemes::{
         ensure_grapheme_boundary_next, ensure_grapheme_boundary_prev, next_grapheme_boundary,
         prev_grapheme_boundary,
     },
     movement::Direction,
-    Assoc, ChangeSet, RopeGraphemes, RopeSlice,
+    syntax::LanguageConfiguration,
+    textobject::TextObject,
+    Assoc, ChangeSet, RopeGraphemes, RopeSlice, Syntax,
 };
 use smallvec::{smallvec, SmallVec};
-use std::borrow::Cow;
+use std::{borrow::Cow, num::NonZeroUsize};
+use tree_sitter::Node;
 
 /// A single selection range.
 ///
@@ -567,6 +571,61 @@ impl Selection {
         selection
     }
 
+    pub fn transform_pure(
+        self,
+        rule: SelectionRule,
+        rule_cx: RuleContext,
+        count: NonZeroUsize,
+    ) -> Self {
+        let mut current_selection = self;
+        for _ in 0..count.get() {
+            let new_selection = current_selection.clone()._transform_pure(rule, &rule_cx);
+            if new_selection == current_selection {
+                break;
+            } else {
+                current_selection = new_selection;
+            }
+        }
+        current_selection
+    }
+
+    fn _transform_pure(self, rule: SelectionRule, rule_cx: &RuleContext) -> Self {
+        let mut new_selection = Self {
+            ranges: SmallVec::with_capacity(self.ranges.len()),
+            primary_index: self.primary_index,
+        };
+        for range in self.ranges {
+            new_selection.ranges.push(rule(range, rule_cx))
+        }
+
+        Self::normalize_pure(new_selection)
+    }
+
+    fn normalize_pure(mut selection: Self) -> Self {
+        let mut primary = selection.ranges[selection.primary_index];
+        selection.ranges.sort_unstable_by_key(Range::from);
+        selection.ranges.dedup_by(|curr_range, prev_range| {
+            if prev_range.overlaps(curr_range) {
+                let new_range = curr_range.merge(*prev_range);
+                if prev_range == &primary || curr_range == &primary {
+                    primary = new_range;
+                }
+                *prev_range = new_range;
+                true
+            } else {
+                false
+            }
+        });
+
+        selection.primary_index = selection
+            .ranges
+            .iter()
+            .position(|&range| range == primary)
+            .unwrap();
+
+        selection
+    }
+
     /// Takes a closure and maps each `Range` over the closure.
     pub fn transform<F>(mut self, mut f: F) -> Self
     where
@@ -577,7 +636,6 @@ impl Selection {
         }
         self.normalize()
     }
-
     // Ensures the selection adheres to the following invariants:
     // 1. All ranges are grapheme aligned.
     // 2. All ranges are at least 1 character wide, unless at the
@@ -615,11 +673,6 @@ impl Selection {
 
     // returns true if self ⊇ other
     pub fn contains(&self, other: &Selection) -> bool {
-        // can't contain other if it is larger
-        if other.len() > self.len() {
-            return false;
-        }
-
         let (mut iter_self, mut iter_other) = (self.iter(), other.iter());
         let (mut ele_self, mut ele_other) = (iter_self.next(), iter_other.next());
 
@@ -635,7 +688,20 @@ impl Selection {
                     };
                 }
                 (None, Some(_)) => {
-                    // exhausted `self`, we can't match the reminder of `other`
+                    // Other might still contain all of its ranges in a single range of self,
+                    let mut still_subset: bool;
+                    for self_range in self {
+                        still_subset = true;
+                        for other_range in other {
+                            if !self_range.contains_range(other_range) {
+                                still_subset = false;
+                                break;
+                            }
+                        }
+                        if still_subset {
+                            return true;
+                        }
+                    }
                     return false;
                 }
                 (_, None) => {
@@ -754,6 +820,24 @@ pub fn split_on_matches(
     // TODO: figure out a new primary index
     Selection::new(result, 0)
 }
+
+pub struct RuleContext<'a> {
+    pub text: RopeSlice<'a>,
+    pub extend: bool,
+    pub direction: Option<Direction>,
+    pub pos_arg: usize,
+    pub syntax: Option<&'a Syntax>,
+    pub syntax_find_node_fn: Option<FindSyntaxNode>,
+    pub ts_node: Option<&'a str>,
+    pub ts_textobject: Option<TextObject>,
+    pub diff_handle: Option<&'a DiffHandle>,
+    pub lang_confing: Option<&'a LanguageConfiguration>,
+    pub find_char: Option<char>,
+    pub find_inclusive: Option<bool>,
+}
+
+pub type FindSyntaxNode = fn(Node, usize, usize) -> Option<Node>;
+pub type SelectionRule = fn(Range, &RuleContext) -> Range;
 
 #[cfg(test)]
 mod test {
@@ -1230,5 +1314,8 @@ mod test {
             vec!((3, 4), (7, 9))
         ));
         assert!(!contains(vec!((1, 1), (5, 6)), vec!((1, 6))));
+
+        // multiple ranges of other are all contained in one range of self,
+        assert!(contains(vec!((7, 13)), vec!((7, 9), (11, 12))));
     }
 }

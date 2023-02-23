@@ -315,8 +315,8 @@ impl Completion {
         }
     }
 
-    pub fn update(&mut self, cx: &mut CommandContext) {
-        self.recompute_filter(cx.editor)
+    pub fn update(&mut self, editor: &mut Editor) {
+        self.recompute_filter(editor)
     }
 
     pub fn is_empty(&self) -> bool {

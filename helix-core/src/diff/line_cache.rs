@@ -10,10 +10,9 @@
 //! To avoid reallocation for every diff, the vector is reused.
 //! However the RopeSlice references the original rope and therefore forms a self-referential data structure.
 //! A transmute is used to change the lifetime of the slice to static to circumvent that project.
-use std::mem::transmute;
-
-use helix_core::{Rope, RopeSlice};
 use imara_diff::intern::{InternedInput, Interner};
+use ropey::{Rope, RopeSlice};
+use std::mem::transmute;
 
 use super::{MAX_DIFF_BYTES, MAX_DIFF_LINES};
 

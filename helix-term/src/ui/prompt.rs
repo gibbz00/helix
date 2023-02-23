@@ -529,11 +529,10 @@ impl Component for Prompt {
                 let text = doc.text().slice(..);
 
                 use helix_core::textobject;
-                let range = textobject::textobject_word(
-                    text,
+                let range = textobject::word_impl(
                     doc.selection(view.id).primary(),
-                    textobject::TextObject::Inside,
-                    1,
+                    text,
+                    Some(textobject::TextObject::Inside),
                     false,
                 );
                 let line = text.slice(range.from()..range.to()).to_string();

@@ -10,7 +10,6 @@ use crate::{
     view::ViewPosition,
     Align, Document, DocumentId, View, ViewId,
 };
-use helix_vcs::DiffProviderRegistry;
 
 use futures_util::stream::select_all::SelectAll;
 use futures_util::{future, StreamExt};
@@ -19,9 +18,10 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use std::{
     borrow::Cow,
-    cell::Cell,
+    cell::{Cell, RefCell},
     collections::{BTreeMap, HashMap},
     io::stdin,
+    marker::PhantomData,
     num::NonZeroUsize,
     path::{Path, PathBuf},
     pin::Pin,
@@ -40,12 +40,16 @@ use anyhow::{anyhow, bail, Error};
 
 pub use helix_core::diagnostic::Severity;
 pub use helix_core::register::Registers;
-use helix_core::Position;
 use helix_core::{
     auto_pairs::AutoPairs,
+    diff::diff_provider::DiffProviderRegistry,
+    movement::Direction,
+    selection::{FindSyntaxNode, RuleContext, SelectionRule},
     syntax::{self, AutoPairConfig},
+    textobject::TextObject,
     Change,
 };
+use helix_core::{Position, Selection};
 use helix_dap as dap;
 use helix_lsp::lsp;
 
@@ -834,8 +838,7 @@ pub struct Editor {
     pub auto_pairs: Option<AutoPairs>,
 
     pub idle_timer: Pin<Box<Sleep>>,
-    #[allow(clippy::complexity)]
-    last_motion: Option<Arc<Box<dyn Fn(&mut Editor)>>>,
+    last_motion: Option<ParsedPipeline>,
     pub last_completion: Option<CompleteAction>,
 
     pub exit_code: i32,
@@ -907,6 +910,143 @@ pub enum CloseError {
     SaveError(anyhow::Error),
 }
 
+// TODO: move
+pub type PushJump = PhantomData<bool>;
+#[macro_export]
+macro_rules! config {
+    ($rule:expr) => {{
+        PipelineInput {
+            variants: Default::default(),
+            invariants: PipelineInvariants {
+                rule: $rule,
+                defaults: Default::default(),
+            },
+        }
+    }};
+    ($rule:expr, $extend:expr) => {{
+        PipelineInput {
+            variants: Default::default(),
+            invariants: PipelineInvariants {
+                rule: $rule,
+                defaults: PipelineInvariantDefaults {
+                    extend: $extend,
+                    ..Default::default()
+                },
+            },
+        }
+    }};
+    ($rule:expr, $extend:expr, PushJump) => {{
+        PipelineInput {
+            variants: Default::default(),
+            invariants: PipelineInvariants {
+                rule: $rule,
+                defaults: PipelineInvariantDefaults {
+                    extend: $extend,
+                    to_jumplist: true,
+                    ..Default::default()
+                },
+            },
+        }
+    }};
+}
+
+// TODO: move to a more appropriate location
+pub struct PipelineInput {
+    pub variants: PipelineVariants,
+    pub invariants: PipelineInvariants,
+}
+
+#[derive(Default)]
+pub struct PipelineVariants {
+    pub to_repeat: bool,
+    pub use_count: bool,
+}
+
+pub struct PipelineInvariants {
+    pub rule: SelectionRule,
+    pub defaults: PipelineInvariantDefaults,
+}
+
+#[derive(Default)]
+pub struct PipelineInvariantDefaults {
+    pub direction: Option<Direction>,
+    pub extend: bool,
+    pub pos_arg: usize,
+    pub post_hook: Option<PostSelectHook>,
+    pub run_conditions: Option<&'static [RunCondition]>,
+    pub to_jumplist: bool,
+    pub find_syntax_node_fn: Option<FindSyntaxNode>,
+    pub ts_node: Option<&'static str>,
+    pub ts_textobject: Option<TextObject>,
+    pub find_char: Option<char>,
+    pub find_inclusive: Option<bool>,
+}
+
+/// Arguments to apply_motion that are not expected to change between first use and when used from `repeat_last_motion`
+struct ParsedPipeline {
+    count: NonZeroUsize,
+    invariants: PipelineInvariants,
+}
+
+pub type PostSelectHook = fn(&Selection, &Selection, &Document, &mut View);
+
+#[allow(non_upper_case_globals)]
+pub const post_hook_append_object_selection: PostSelectHook =
+    |old_selection, new_selection, doc, view| {
+        if new_selection != old_selection {
+            if let Some(object_selections) = view.object_selections.get_mut(&doc.id()) {
+                object_selections.borrow_mut().push(new_selection.clone());
+            } else {
+                view.object_selections
+                    .insert(doc.id(), RefCell::new(vec![new_selection.clone()]));
+            }
+        }
+    };
+
+/// Optional closure that determines at runtime whether the selection movement attemped
+pub type RunCondition = fn(&mut Document, &mut View) -> std::result::Result<(), &'static str>;
+
+#[allow(non_upper_case_globals)]
+pub const run_condtion_has_diff: RunCondition = |doc, _view| match doc.diff_handle() {
+    Some(_) => Ok(()),
+    None => Err("Diff is not available in current buffer"),
+};
+
+#[allow(non_upper_case_globals)]
+pub const run_condtion_has_syntax: RunCondition = |doc, _view| match doc.syntax() {
+    Some(_) => Ok(()),
+    None => Err("Syntax tree not available for current document."),
+};
+
+#[allow(non_upper_case_globals)]
+pub const run_condtion_has_textobject_queries: RunCondition = |doc, _view| match doc
+    .language_config()
+    .and_then(|lang_config| lang_config.textobject_query())
+{
+    Some(_) => Ok(()),
+    None => Err("Document not configured with a language config supporting textobject queries."),
+};
+
+#[allow(non_upper_case_globals)]
+pub const run_condtion_check_from_selections_history: RunCondition = |doc, view| {
+    let current_selection = doc.selection(view.id);
+    if let Some(prev_selection) = view
+        .object_selections
+        .get(&doc.id())
+        .and_then(|selections| selections.borrow_mut().pop())
+    {
+        if current_selection.contains(&prev_selection) {
+            doc.set_selection(view.id, prev_selection);
+            return Err("");
+        } else {
+            // clear existing selection as they can't be shrunk to anyway,
+            // before opting to instead finding the first_child.
+            view.object_selections.clear();
+        }
+    }
+    Ok(())
+};
+
 impl Editor {
     pub fn new(
         mut area: Rect,
@@ -961,19 +1101,92 @@ impl Editor {
         editor_temp
     }
 
-    pub fn apply_motion<F: Fn(&mut Self) + 'static>(&mut self, motion: F) {
-        motion(self);
-        self.last_motion = Some(Arc::new(Box::new(motion)));
-    }
-
-    pub fn repeat_last_motion(&mut self, count: usize) {
-        if let Some(motion) = &self.last_motion {
-            let motion = motion.clone();
-            for _ in 0..count {
-                motion(self);
+    pub fn through_pipeline(&mut self, input: PipelineInput) {
+        let mut count = unsafe { NonZeroUsize::new_unchecked(1) };
+        if input.variants.use_count {
+            if let Some(stored_count) = self.count {
+                count = stored_count;
             }
         }
+
+        let parsed_pipeline = ParsedPipeline {
+            count,
+            invariants: input.invariants,
+        };
+        self.last_motion = Some(parsed_pipeline);
+        self.apply_motion();
+        if !input.variants.to_repeat {
+            self.last_motion = None
+        }
     }
+
+    fn apply_motion(&mut self) {
+        let parsed_pipeline = self.last_motion.as_mut().unwrap();
+        let defaulted = &parsed_pipeline.invariants.defaults;
+
+        if let Some(run_conditions) = &defaulted.run_conditions {
+            let curr_view = self.tree.get_mut(self.tree.focus);
+            let curr_doc = self.documents.get_mut(&curr_view.doc_id).unwrap();
+
+            for run_condition in *run_conditions {
+                if let Err(msg) = (run_condition)(curr_doc, curr_view) {
+                    self.set_error(msg);
+                    return;
+                }
+            }
+        }
+
+        let curr_view = self.tree.get_mut(self.tree.focus);
+        let curr_doc = self
+            .documents
+            .get_mut(&curr_view.doc_id)
+            .expect("view has a doc_id for a document in editor.documents.");
+        let rule_cx = RuleContext {
+            diff_handle: curr_doc.diff_handle(),
+            extend: defaulted.extend,
+            direction: defaulted.direction,
+            lang_confing: curr_doc.language_config(),
+            pos_arg: defaulted.pos_arg,
+            syntax: curr_doc.syntax(),
+            syntax_find_node_fn: defaulted.find_syntax_node_fn,
+            text: curr_doc.text().slice(..),
+            ts_node: defaulted.ts_node,
+            ts_textobject: defaulted.ts_textobject,
+            find_char: defaulted.find_char,
+            find_inclusive: defaulted.find_inclusive,
+        };
+        let curr_selection = curr_doc.selection(curr_view.id);
+        let new_selection = curr_selection.clone().transform_pure(
+            parsed_pipeline.invariants.rule,
+            rule_cx,
+            parsed_pipeline.count,
+        );
+        if let Some(post_hook_fn) = &defaulted.post_hook {
+            (post_hook_fn)(curr_selection, &new_selection, curr_doc, curr_view)
+        }
+        curr_doc.set_selection(curr_view.id, new_selection);
+
+        if defaulted.to_jumplist {
+            self.push_jump();
+        }
+    }
+
+    pub fn repeat_last_motion(&mut self) {
+        self.apply_motion()
+    }
+
+    /// `MoveSelectionOptions.to_jumplist` should be used with `Editor.move_selection()` if the intent is be used *after* moving a selection.
+    /// pub because of its use before lsp jump commands.
+    pub fn push_jump(&mut self) {
+        let view = self.tree.get_mut(self.tree.focus);
+        let document = self
+            .documents
+            .get_mut(&view.doc_id)
+            .expect("view has a doc_id for a document in editor.documents.");
+        let jump = (document.id(), document.selection(view.id).clone());
+        view.jumps.push(jump);
+    }
+
     /// Current editing mode for the [`Editor`].
     pub fn mode(&self) -> Mode {
         self.mode
@@ -981,6 +1194,15 @@ impl Editor {
 
     pub fn config(&self) -> DynGuard<EditorConfig> {
         self.config.load()
+    }
+    /// Returns 1 if Editor.count is None
+    #[inline]
+    pub fn some_count(&self) -> usize {
+        self.count.map_or(1, |v| v.get())
+    }
+    /// Returns the count still wrapped in its Option
+    pub fn count(&self) -> Option<NonZeroUsize> {
+        self.count
     }
 
     /// Call if the config has changed to let the editor update all

@@ -1,16 +1,12 @@
+#[cfg(feature = "git")]
+mod git;
 use std::path::Path;
 
 #[cfg(feature = "git")]
 pub use git::Git;
+
 #[cfg(not(feature = "git"))]
 pub use Dummy as Git;
-
-#[cfg(feature = "git")]
-mod git;
-
-mod diff;
-
-pub use diff::{DiffHandle, Hunk};
 
 pub trait DiffProvider {
     /// Returns the data that a diff should be computed against

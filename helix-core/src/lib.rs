@@ -35,6 +35,7 @@ pub mod unicode {
     pub use unicode_width as width;
 }
 
+// TODO: move?
 pub fn find_first_non_whitespace_char(line: RopeSlice) -> Option<usize> {
     line.chars().position(|ch| !ch.is_whitespace())
 }

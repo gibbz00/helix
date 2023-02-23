@@ -13,9 +13,9 @@ use tui::{
     widgets::Row,
 };
 
-use super::{align_view, push_jump, Align, CommandContext, Editor, Open};
+use super::{align_view, Align, CommandContext, Editor, Open};
 
-use helix_core::{path, Selection};
+use helix_core::{path, textobject, Selection};
 use helix_view::{document::Mode, editor::Action, theme::Style};
 
 use crate::{
@@ -176,8 +176,7 @@ fn jump_to_location(
     offset_encoding: OffsetEncoding,
     action: Action,
 ) {
-    let (view, doc) = current!(editor);
-    push_jump(view, doc);
+    editor.push_jump();
 
     let path = match location.uri.to_file_path() {
         Ok(path) => path,
@@ -218,9 +217,7 @@ fn sym_picker(
         symbols,
         current_path.clone(),
         move |cx, symbol, action| {
-            let (view, doc) = current!(cx.editor);
-            push_jump(view, doc);
-
+            cx.editor.push_jump();
             if current_path.as_ref() != Some(&symbol.location.uri) {
                 let uri = &symbol.location.uri;
                 let path = match uri.to_file_path() {
@@ -294,8 +291,7 @@ fn diag_picker(
         (styles, format),
         move |cx, PickerDiagnostic { url, diag }, action| {
             if current_path.as_ref() == Some(url) {
-                let (view, doc) = current!(cx.editor);
-                push_jump(view, doc);
+                cx.editor.push_jump();
             } else {
                 let path = url.to_file_path().unwrap();
                 cx.editor.open(&path, action).expect("editor.open failed");
@@ -1238,8 +1234,12 @@ pub fn rename_symbol(cx: &mut CommandContext) {
     let prefill = if primary_selection.len() > 1 {
         primary_selection
     } else {
-        use helix_core::textobject::{textobject_word, TextObject};
-        textobject_word(text, primary_selection, TextObject::Inside, 1, false)
+        textobject::word_impl(
+            primary_selection,
+            text,
+            Some(textobject::TextObject::Inside),
+            false,
+        )
     }
     .fragment(text)
     .into();

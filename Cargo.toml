@@ -7,7 +7,6 @@ members = [
   "helix-lsp",
   "helix-dap",
   "helix-loader",
-  "helix-vcs",
   "xtask",
 ]
 

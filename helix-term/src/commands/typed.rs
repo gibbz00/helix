@@ -1506,7 +1506,10 @@ pub(super) fn goto_line_number(
     match event {
         PromptEvent::Abort => {
             if let Some(line_number) = cx.editor.last_line_number {
-                goto_line_impl(cx.editor, NonZeroUsize::new(line_number));
+                goto_line_impl(
+                    cx.editor,
+                    NonZeroUsize::new(line_number).expect("line number must be non-zero usize"),
+                );
                 let (view, doc) = current!(cx.editor);
                 view.ensure_cursor_in_view(doc, line_number);
                 cx.editor.last_line_number = None;
@@ -1522,7 +1525,10 @@ pub(super) fn goto_line_number(
                 if let Some(line_number) = cx.editor.last_line_number {
                     // When a user hits backspace and there are no numbers left,
                     // we can bring them back to their original line
-                    goto_line_impl(cx.editor, NonZeroUsize::new(line_number));
+                    goto_line_impl(
+                        cx.editor,
+                        NonZeroUsize::new(line_number).expect("line number must be non-zero usize"),
+                    );
                     let (view, doc) = current!(cx.editor);
                     view.ensure_cursor_in_view(doc, line_number);
                     cx.editor.last_line_number = None;
@@ -1536,7 +1542,10 @@ pub(super) fn goto_line_number(
         }
     }
     let line = args[0].parse::<usize>()?;
-    goto_line_impl(cx.editor, NonZeroUsize::new(line));
+    goto_line_impl(
+        cx.editor,
+        NonZeroUsize::new(line).expect("line number must be non-zero usize"),
+    );
     let (view, doc) = current!(cx.editor);
     view.ensure_cursor_in_view(doc, line);
     Ok(())
