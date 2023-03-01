@@ -21,6 +21,7 @@ pub mod view;
 
 use std::num::NonZeroUsize;
 
+// TODO: move to Document
 // uses NonZeroUsize so Option<DocumentId> use a byte rather than two
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct DocumentId(NonZeroUsize);

@@ -18,7 +18,7 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use std::{
     borrow::Cow,
-    cell::{Cell, RefCell},
+    cell::Cell,
     collections::{BTreeMap, HashMap},
     io::stdin,
     marker::PhantomData,
@@ -40,16 +40,16 @@ use anyhow::{anyhow, bail, Error};
 
 pub use helix_core::diagnostic::Severity;
 pub use helix_core::register::Registers;
+use helix_core::Position;
 use helix_core::{
     auto_pairs::AutoPairs,
     diff::diff_provider::DiffProviderRegistry,
     movement::Direction,
-    selection::{FindSyntaxNode, RuleContext, SelectionRule},
+    selection::{FindSyntaxNode, RuleContext, SelectionHook, SelectionRule},
     syntax::{self, AutoPairConfig},
     textobject::TextObject,
     Change,
 };
-use helix_core::{Position, Selection};
 use helix_dap as dap;
 use helix_lsp::lsp;
 
@@ -972,7 +972,7 @@ pub struct PipelineInvariantDefaults {
     pub direction: Option<Direction>,
     pub extend: bool,
     pub pos_arg: usize,
-    pub post_hook: Option<PostSelectHook>,
+    pub pre_hook: Option<SelectionHook>,
     pub run_conditions: Option<&'static [RunCondition]>,
     pub to_jumplist: bool,
     pub find_syntax_node_fn: Option<FindSyntaxNode>,
@@ -987,21 +987,6 @@ struct ParsedPipeline {
     count: NonZeroUsize,
     invariants: PipelineInvariants,
 }
-
-pub type PostSelectHook = fn(&Selection, &Selection, &Document, &mut View);
-
-#[allow(non_upper_case_globals)]
-pub const post_hook_append_object_selection: PostSelectHook =
-    |old_selection, new_selection, doc, view| {
-        if new_selection != old_selection {
-            if let Some(object_selections) = view.object_selections.get_mut(&doc.id()) {
-                object_selections.borrow_mut().push(new_selection.clone());
-            } else {
-                view.object_selections
-                    .insert(doc.id(), RefCell::new(vec![new_selection.clone()]));
-            }
-        }
-    };
 
 /// Optional closure that determines at runtime whether the selection movement attemped
 pub type RunCondition = fn(&mut Document, &mut View) -> std::result::Result<(), &'static str>;
@@ -1025,26 +1010,6 @@ pub const run_condtion_has_textobject_queries: RunCondition = |doc, _view| match
 {
     Some(_) => Ok(()),
     None => Err("Document not configured with a language config supporting textobject queries."),
-};
-
-#[allow(non_upper_case_globals)]
-pub const run_condtion_check_from_selections_history: RunCondition = |doc, view| {
-    let current_selection = doc.selection(view.id);
-    if let Some(prev_selection) = view
-        .object_selections
-        .get(&doc.id())
-        .and_then(|selections| selections.borrow_mut().pop())
-    {
-        if current_selection.contains(&prev_selection) {
-            doc.set_selection(view.id, prev_selection);
-            return Err("");
-        } else {
-            // clear existing selection as they can't be shrunk to anyway,
-            // before opting to instead finding the first_child.
-            view.object_selections.clear();
-        }
-    }
-    Ok(())
 };
 
 impl Editor {
@@ -1155,15 +1120,13 @@ impl Editor {
             find_char: defaulted.find_char,
             find_inclusive: defaulted.find_inclusive,
         };
-        let curr_selection = curr_doc.selection(curr_view.id);
-        let new_selection = curr_selection.clone().transform_pure(
+        let new_selection = curr_doc.selection(curr_view.id).clone().transform_pure(
             parsed_pipeline.invariants.rule,
             rule_cx,
             parsed_pipeline.count,
+            defaulted.pre_hook,
+            curr_doc.ts_selection_history(curr_view.id),
         );
-        if let Some(post_hook_fn) = &defaulted.post_hook {
-            (post_hook_fn)(curr_selection, &new_selection, curr_doc, curr_view)
-        }
         curr_doc.set_selection(curr_view.id, new_selection);
 
         if defaulted.to_jumplist {

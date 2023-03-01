@@ -174,8 +174,8 @@ pub const paragraph: SelectionRule = |range, rule_cx| {
     // Finding the paragraph/starting line:
     // Move upwards until first non-newline ending is found, or when top of document is reached.
     if rope_is_line_ending(text.line(curr_line_nr)) {
-        for next_line in text.lines_at(curr_line_nr).reversed() {
-            if rope_is_line_ending(next_line) {
+        for prev_line in text.lines_at(curr_line_nr).reversed() {
+            if !rope_is_line_ending(prev_line) {
                 break;
             }
             curr_line_nr -= 1;
@@ -225,11 +225,13 @@ pub const vcs_change: SelectionRule = |range, rule_cx| {
     // TODO: (gibbz) add to run_condition, and remove unwrap once different RuleContexts are added
     // editor.set_status("Diff is not available in current buffer");
     let text = rule_cx.text;
-    let hunks = rule_cx.diff_handle.unwrap().hunks();
-    if let Some(hunk_idx) = hunks.hunk_at(range.cursor_line(text) as u32, false) {
-        let hunk = hunks.nth_hunk(hunk_idx).after;
-        let start = text.line_to_char(hunk.start as usize);
-        let end = text.line_to_char(hunk.end as usize);
+    let diff_handle = rule_cx.diff_handle.unwrap();
+    if let Some(new_hunk) = diff_handle
+        .hunk_at(range.cursor_line(text) as u32)
+        .map(|hunk| hunk.after)
+    {
+        let start = text.line_to_char(new_hunk.start as usize);
+        let end = text.line_to_char(new_hunk.end as usize);
         Range::new(start, end).with_direction(range.direction())
     } else {
         range
@@ -238,6 +240,7 @@ pub const vcs_change: SelectionRule = |range, rule_cx| {
 
 // TEMP: unwrap until refined rulecontext
 // HACK: until achieves same behaviour with repeat, count is passed in as pos_arg
+// Solved by checking whether the current selection is around a pair.
 #[allow(non_upper_case_globals)]
 pub const pair_surround: SelectionRule = |range, rule_cx| {
     pair_surround_impl(
@@ -299,16 +302,16 @@ fn pair_surround_impl(
 /// Returns the range in the forwards direction.
 #[allow(non_upper_case_globals)]
 pub const treesitter: SelectionRule = |range, rule_cx| {
+    let ts_object_query = rule_cx
+        .lang_confing
+        .and_then(|lang_config| lang_config.textobject_query())
+        .expect("run_condition should check for document lang_config textobject support");
+
     let syntax_root_node = rule_cx
         .syntax
         .expect("run_condition shuld check for an active tree-sitter syntax tree")
         .tree()
         .root_node();
-
-    let ts_object_query = rule_cx
-        .lang_confing
-        .and_then(|lang_config| lang_config.textobject_query())
-        .expect("run_condition should check for document lang_config textobject support");
 
     let ts_node = rule_cx
         .ts_node
@@ -320,7 +323,6 @@ pub const treesitter: SelectionRule = |range, rule_cx| {
         None => vec![
             capture_name(TextObject::Movement),
             capture_name(TextObject::Around),
-            capture_name(TextObject::Inside),
         ],
     };
     let capture_names: &[&str] = &capture_names
@@ -329,39 +331,47 @@ pub const treesitter: SelectionRule = |range, rule_cx| {
         .collect::<Vec<&str>>()[..];
 
     let text = rule_cx.text;
-    let byte_pos = text.char_to_byte(range.cursor(text));
-    let found_node = ts_object_query
-        .capture_nodes_any(capture_names, syntax_root_node, text)
-        .and_then(|nodes| match rule_cx.direction {
-            Some(direction) => match direction {
-                Direction::Forward => nodes
-                    .filter(|node| node.start_byte() > byte_pos)
-                    .min_by_key(|node| node.start_byte()),
-                Direction::Backward => nodes
-                    .filter(|node| node.end_byte() < byte_pos)
-                    .max_by_key(|node| node.end_byte()),
-            },
-            None => nodes
-                .filter(|node| node.byte_range().contains(&byte_pos))
-                .min_by_key(|node| node.byte_range().len()),
-        });
-
+    let curr_line_nr = range.cursor_line(text);
+    let found_byte_range = match rule_cx.direction {
+        Some(direction) => match direction {
+            Direction::Forward => {
+                if curr_line_nr < text.len_lines() {
+                    let next_line_byte_pos = text.line_to_byte(curr_line_nr + 1);
+                    Some(next_line_byte_pos..text.len_bytes())
+                } else {
+                    return range;
+                }
+            }
+            Direction::Backward => {
+                if curr_line_nr > 1 {
+                    Some(0..text.line_to_byte(curr_line_nr - 1))
+                } else {
+                    return range;
+                }
+            }
+        },
+        None => None,
+    };
+    let found_nodes =
+        ts_object_query.capture_nodes_any(capture_names, &syntax_root_node, text, found_byte_range);
+    let found_node: Option<&tree_sitter::Node> = match rule_cx.direction {
+        Some(direction) => match direction {
+            Direction::Forward => found_nodes.first(),
+            Direction::Backward => found_nodes.last(),
+        },
+        None => {
+            // TODO: find nearest for m{i,a}, probably similar to how expand/shrink was done with binary sort
+            todo!()
+        }
+    };
     // (Returning the input range in a SelectionRule is equivalent to letting
     // the caller know that the count repeat should be cancelled.)
     let Some(node) = found_node else {
         return range;
     };
 
-    let len = text.len_bytes();
-    let start_byte = node.start_byte();
-    let end_byte = node.end_byte();
-    // No new treesitter object range is found.
-    if start_byte >= len || end_byte >= len {
-        return range;
-    }
-
-    let start_char = text.byte_to_char(start_byte);
-    let end_char = text.byte_to_char(end_byte);
+    let start_char = text.byte_to_char(node.start_byte());
+    let end_char = text.byte_to_char(node.end_byte());
     let new_range: Range = Range::new(start_char, end_char);
     match rule_cx.direction {
         Some(direction) => {

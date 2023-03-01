@@ -14,7 +14,7 @@ use crate::{
     Assoc, ChangeSet, RopeGraphemes, RopeSlice, Syntax,
 };
 use smallvec::{smallvec, SmallVec};
-use std::{borrow::Cow, num::NonZeroUsize};
+use std::{borrow::Cow, cell::RefCell, num::NonZeroUsize};
 use tree_sitter::Node;
 
 /// A single selection range.
@@ -576,10 +576,26 @@ impl Selection {
         rule: SelectionRule,
         rule_cx: RuleContext,
         count: NonZeroUsize,
+        found_pre_hook: Option<SelectionHook>,
+        ts_selection_history: &TSSelectionHistory,
     ) -> Self {
         let mut current_selection = self;
         for _ in 0..count.get() {
-            let new_selection = current_selection.clone()._transform_pure(rule, &rule_cx);
+            // selectoin history hooks added here
+            let new_selection: Selection;
+            // pre_hook is created for a countable run-condition that can cancel the transform, returning Some implies a cancellation
+            if let Some(pre_hook) = found_pre_hook {
+                if let Some(pre_hook_selection) =
+                    (pre_hook)(ts_selection_history, &current_selection)
+                {
+                    new_selection = pre_hook_selection;
+                } else {
+                    new_selection = current_selection.clone()._transform_pure(rule, &rule_cx);
+                }
+            } else {
+                new_selection = current_selection.clone()._transform_pure(rule, &rule_cx);
+            }
+
             if new_selection == current_selection {
                 break;
             } else {
@@ -598,32 +614,7 @@ impl Selection {
             new_selection.ranges.push(rule(range, rule_cx))
         }
 
-        Self::normalize_pure(new_selection)
-    }
-
-    fn normalize_pure(mut selection: Self) -> Self {
-        let mut primary = selection.ranges[selection.primary_index];
-        selection.ranges.sort_unstable_by_key(Range::from);
-        selection.ranges.dedup_by(|curr_range, prev_range| {
-            if prev_range.overlaps(curr_range) {
-                let new_range = curr_range.merge(*prev_range);
-                if prev_range == &primary || curr_range == &primary {
-                    primary = new_range;
-                }
-                *prev_range = new_range;
-                true
-            } else {
-                false
-            }
-        });
-
-        selection.primary_index = selection
-            .ranges
-            .iter()
-            .position(|&range| range == primary)
-            .unwrap();
-
-        selection
+        new_selection
     }
 
     /// Takes a closure and maps each `Range` over the closure.
@@ -821,6 +812,7 @@ pub fn split_on_matches(
     Selection::new(result, 0)
 }
 
+// TODO: (gibbz) move
 pub struct RuleContext<'a> {
     pub text: RopeSlice<'a>,
     pub extend: bool,
@@ -836,6 +828,8 @@ pub struct RuleContext<'a> {
     pub find_inclusive: Option<bool>,
 }
 
+pub type TSSelectionHistory = RefCell<Vec<Selection>>;
+pub type SelectionHook = fn(&TSSelectionHistory, &Selection) -> Option<Selection>;
 pub type FindSyntaxNode = fn(Node, usize, usize) -> Option<Node>;
 pub type SelectionRule = fn(Range, &RuleContext) -> Range;
 

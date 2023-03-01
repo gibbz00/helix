@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use ropey::Rope;
 
 use crate::{coords_at_pos, pos_at_coords, selection::RuleContext};
@@ -1094,6 +1096,8 @@ fn test_move_paragraph(
             ts_textobject: None,
         },
         std::num::NonZeroUsize::new(count).expect("count should be non-zero usize"),
+        None,
+        &RefCell::new(Vec::new()),
     );
     let actual = crate::test::plain(&s, selection);
     assert_eq!(actual, expected, "\nbefore: `{:?}`", before);

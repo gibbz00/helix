@@ -31,7 +31,6 @@ use helix_view::{
     clipboard::ClipboardType,
     document::{FormatterError, Mode, SCRATCH_BUFFER_NAME},
     editor::{
-        post_hook_append_object_selection, run_condtion_check_from_selections_history,
         run_condtion_has_diff, run_condtion_has_syntax, run_condtion_has_textobject_queries,
         Action, PipelineInput, PipelineInvariantDefaults, PipelineInvariants, PipelineVariants,
     },
@@ -2990,31 +2989,56 @@ fn goto_prev_diag(cx: &mut CommandContext) {
 }
 
 fn goto_first_change(cx: &mut CommandContext) {
-    goto_first_change_impl(cx, false);
+    goto_change_bounds_impl(cx, Direction::Backward);
 }
 
 fn goto_last_change(cx: &mut CommandContext) {
-    goto_first_change_impl(cx, true);
+    goto_change_bounds_impl(cx, Direction::Forward);
 }
 
-fn goto_first_change_impl(cx: &mut CommandContext, reverse: bool) {
-    let editor = &mut cx.editor;
-    let (view, doc) = current!(editor);
-    if let Some(handle) = doc.diff_handle() {
-        let hunk = {
-            let hunks = handle.hunks();
-            let idx = if reverse {
-                hunks.len().saturating_sub(1)
-            } else {
-                0
-            };
-            hunks.nth_hunk(idx)
+fn goto_change_bounds_impl(cx: &mut CommandContext, direction: Direction) {
+    let rule: SelectionRule = |range, rule_cx| {
+        // TEMP: (gibbz) unwrap
+        let hunks = rule_cx.diff_handle.unwrap().hunks();
+        // TEMP: (gibbz) unwrap
+        let direction = rule_cx.direction.unwrap();
+        let found_hunk = match direction {
+            Direction::Forward => hunks.last(),
+            Direction::Backward => hunks.first(),
         };
-        if hunk != Hunk::NONE {
-            let range = hunk_range(hunk, doc.text().slice(..));
-            doc.set_selection(view.id, Selection::single(range.anchor, range.head));
+        if let Some(hunk) = found_hunk {
+            let new_range = hunk_range(hunk, rule_cx.text);
+            if rule_cx.extend {
+                let head = if new_range.head < range.anchor {
+                    new_range.anchor
+                } else {
+                    new_range.head
+                };
+                Range::new(range.anchor, head)
+            } else {
+                new_range.with_direction(direction)
+            }
+        } else {
+            range
         }
-    }
+    };
+    let input = PipelineInput {
+        variants: PipelineVariants {
+            to_repeat: true,
+            use_count: false,
+        },
+        invariants: PipelineInvariants {
+            rule,
+            defaults: PipelineInvariantDefaults {
+                direction: Some(direction),
+                extend: cx.editor.mode == Mode::Select,
+                run_conditions: Some(&[run_condtion_has_diff]),
+                to_jumplist: true,
+                ..Default::default()
+            },
+        },
+    };
+    cx.editor.through_pipeline(input)
 }
 
 fn goto_next_change(cx: &mut CommandContext) {
@@ -3027,21 +3051,20 @@ fn goto_prev_change(cx: &mut CommandContext) {
 
 fn goto_next_change_impl(cx: &mut CommandContext, direction: Direction) {
     let rule: SelectionRule = |range, rule_cx| {
-        let hunks = rule_cx
+        let diff_handle = rule_cx
             .diff_handle
-            .expect("Diff handle existence should be a run_condition.")
-            .hunks();
+            .expect("Diff handle existence should be a run_condition.");
         let direction = rule_cx.direction.expect("direction to pipeline input");
 
         let cursor_line = range.cursor_line(rule_cx.text) as u32;
         let found_hunk = match direction {
-            Direction::Forward => hunks.next_hunk(cursor_line),
-            Direction::Backward => hunks.prev_hunk(cursor_line),
+            Direction::Forward => diff_handle.next_hunk(cursor_line),
+            Direction::Backward => diff_handle.prev_hunk(cursor_line),
         };
         let Some(hunk) = found_hunk else {
                 return range;
             };
-        let new_range = hunk_range(hunk, rule_cx.text);
+        let new_range = hunk_range(&hunk, rule_cx.text);
 
         if rule_cx.extend {
             let head = if new_range.head < range.anchor {
@@ -3075,7 +3098,7 @@ fn goto_next_change_impl(cx: &mut CommandContext, direction: Direction) {
 /// Returns the [Range] for a [Hunk] in the given text.
 /// Additions and modifications cover the added and modified ranges.
 /// Deletions are represented as the point at the start of the deletion hunk.
-fn hunk_range(hunk: Hunk, text: RopeSlice) -> Range {
+fn hunk_range(hunk: &Hunk, text: RopeSlice) -> Range {
     let anchor = text.line_to_char(hunk.after.start as usize);
     let head = if hunk.after.is_empty() {
         anchor + 1
@@ -4279,7 +4302,6 @@ fn rotate_selection_contents_backward(cx: &mut CommandContext) {
     rotate_selection_contents(cx, Direction::Backward)
 }
 
-/// tree sitter node selection
 fn expand_selection(cx: &mut CommandContext) {
     let input = PipelineInput {
         variants: PipelineVariants {
@@ -4292,7 +4314,7 @@ fn expand_selection(cx: &mut CommandContext) {
                 find_syntax_node_fn: Some(object::parent_node),
                 run_conditions: Some(&[run_condtion_has_syntax]),
                 // save current selection so it can be restored using shrink_selection
-                post_hook: Some(post_hook_append_object_selection),
+                pre_hook: Some(object::pre_hook_append_selections_history),
                 ..Default::default()
             },
         },
@@ -4306,10 +4328,8 @@ fn shrink_selection(cx: &mut CommandContext) {
             rule: object::select_from_node,
             defaults: PipelineInvariantDefaults {
                 find_syntax_node_fn: Some(object::first_child),
-                run_conditions: Some(&[
-                    run_condtion_has_syntax,
-                    run_condtion_check_from_selections_history,
-                ]),
+                pre_hook: Some(object::pre_hook_check_selections_history),
+                run_conditions: Some(&[run_condtion_has_syntax]),
                 ..Default::default()
             },
         },
@@ -4676,16 +4696,13 @@ fn select_textobject(cx: &mut CommandContext, objtype: textobject::TextObject) {
     cx.on_next_key(move |cx, event| {
         cx.editor.autoinfo = None;
         if let Some(ch) = event.char() {
-            /*
-                TODO:  treesitter_word/Word should be speapate selection rules such that the long: bool parameter is removed
-            */
             let treesitter_object = |object_name: &'static str| -> PipelineInput {
                 let mut input = config!(textobject::treesitter);
                 input.invariants.defaults.ts_node = Some(object_name);
                 input
             };
 
-            // HACK: until textobject::* is written in a way such that count works
+            // HACK: (gibbz) until textobject::* is written in a way such that count works
             // (selection chages when repeatedly applying selection.transform_pure)
             let with_count = |rule: SelectionRule| -> PipelineInput {
                 let mut input = config!(rule);
@@ -4693,12 +4710,11 @@ fn select_textobject(cx: &mut CommandContext, objtype: textobject::TextObject) {
                 input
             };
 
-            // TODO: chose input and rule based on match, typeset tuple
+            // TODO: (gibbz) add error handling, simimilar to that of next_object with run_condition
             let mut input: PipelineInput = match ch {
                 'w' => config!(textobject::word),
                 'W' => config!(textobject::word_long),
-                // TODO: add error handling, simimilar to that of next_object
-                't' => treesitter_object("function"),
+                't' => treesitter_object("class"),
                 'f' => treesitter_object("function"),
                 'a' => treesitter_object("parameter"),
                 'c' => treesitter_object("comment"),

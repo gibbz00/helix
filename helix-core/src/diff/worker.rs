@@ -1,16 +1,15 @@
 use imara_diff::intern::InternedInput;
+use imara_diff::Algorithm;
 use parking_lot::Mutex;
 use ropey::{Rope, RopeSlice};
 use std::mem::swap;
 use std::ops::Range;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedReceiver;
-use tokio::sync::Notify;
+use tokio::sync::{Notify, OwnedRwLockReadGuard};
 use tokio::time::{timeout, timeout_at, Duration};
 
-use crate::diff::{
-    Event, RenderLock, ALGORITHM, DIFF_DEBOUNCE_TIME_ASYNC, DIFF_DEBOUNCE_TIME_SYNC,
-};
+use crate::diff::{DIFF_DEBOUNCE_TIME_ASYNC, DIFF_DEBOUNCE_TIME_SYNC};
 
 use super::line_cache::InternedRopeLines;
 use super::Hunk;
@@ -80,10 +79,42 @@ impl DiffWorker {
     }
 
     fn perform_diff(&mut self, input: &InternedInput<RopeSlice>) {
-        imara_diff::diff(ALGORITHM, input, |before: Range<u32>, after: Range<u32>| {
-            self.new_hunks.push(Hunk { before, after })
-        })
+        imara_diff::diff(
+            Algorithm::Histogram,
+            input,
+            |before: Range<u32>, after: Range<u32>| self.new_hunks.push(Hunk { before, after }),
+        )
     }
+}
+
+#[derive(Debug)]
+pub struct Event {
+    text: Rope,
+    destination: Destination,
+    render_lock: Option<RenderLock>,
+}
+
+impl Event {
+    pub fn new(text: Rope, destination: Destination, render_lock: Option<RenderLock>) -> Self {
+        Self {
+            text,
+            destination,
+            render_lock,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Destination {
+    DiffBase,
+    Document,
+}
+
+/// A rendering lock passed to the differ that prevents redraws from occurring
+#[derive(Debug)]
+pub struct RenderLock {
+    pub lock: OwnedRwLockReadGuard<()>,
+    pub timeout: Option<tokio::time::Instant>,
 }
 
 struct EventAccumulator {
@@ -102,12 +133,10 @@ impl<'a> EventAccumulator {
     }
 
     async fn handle_event(&mut self, event: Event) {
-        let dst = if event.is_base {
-            &mut self.diff_base
-        } else {
-            &mut self.doc
+        let dst = match event.destination {
+            Destination::DiffBase => &mut self.diff_base,
+            Destination::Document => &mut self.doc,
         };
-
         *dst = Some(event.text);
 
         // always prefer the most synchronous requested render mode
@@ -316,7 +345,9 @@ mod test {
     #[tokio::test]
     async fn update_document() {
         let (differ, handle) = DiffHandle::new_test("foo\nbar\ntest\nfoo", "foo\nbar\ntest\nfoo");
-        differ.update_document(Rope::from_str("foo\ntest\nfoo bar"), false);
+        differ
+            .update_document(Rope::from_str("foo\ntest\nfoo bar"), false)
+            .unwrap();
         let line_diffs = differ.into_diff(handle).await;
         assert_eq!(
             &line_diffs,
@@ -336,7 +367,9 @@ mod test {
     #[tokio::test]
     async fn update_base() {
         let (differ, handle) = DiffHandle::new_test("foo\ntest\nfoo bar", "foo\ntest\nfoo bar");
-        differ.update_diff_base(Rope::from_str("foo\nbar\ntest\nfoo"));
+        differ
+            .update_diff_base(Rope::from_str("foo\nbar\ntest\nfoo"))
+            .unwrap();
         let line_diffs = differ.into_diff(handle).await;
         assert_eq!(
             &line_diffs,

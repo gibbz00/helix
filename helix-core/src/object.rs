@@ -1,5 +1,5 @@
 use crate::{
-    selection::{FindSyntaxNode, SelectionRule},
+    selection::{FindSyntaxNode, SelectionHook, SelectionRule},
     Range, RopeSlice, Selection, Syntax,
 };
 use tree_sitter::Node;
@@ -115,3 +115,33 @@ pub const select_from_node: SelectionRule = |range, rule_cx| {
         Range::new(from, to)
     }
 };
+
+#[allow(non_upper_case_globals)]
+pub const pre_hook_check_selections_history: SelectionHook =
+    |ts_selection_history, current_ts_selection| {
+        let mut ts_selection_history = ts_selection_history.borrow_mut();
+        if let Some(prev_ts_selection) = ts_selection_history.pop() {
+            if current_ts_selection.contains(&prev_ts_selection) {
+                return Some(prev_ts_selection);
+            } else {
+                // clear existing selection as they can't be shrunk to anyway,
+                // before opting to instead finding the first_child.
+                ts_selection_history.clear();
+            }
+        }
+        None
+    };
+
+#[allow(non_upper_case_globals)]
+// Returning None as in "don't do anything different to new selection"
+pub const pre_hook_append_selections_history: SelectionHook =
+    |ts_selection_history, new_ts_selection| {
+        let mut ts_selection_history = ts_selection_history.borrow_mut();
+        if let Some(prev_ts_selection) = ts_selection_history.last() {
+            if new_ts_selection == prev_ts_selection {
+                return None;
+            }
+        }
+        ts_selection_history.push(new_ts_selection.clone());
+        None
+    };

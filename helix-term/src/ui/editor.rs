@@ -574,7 +574,7 @@ impl EditorView {
         doc: &'d Document,
         view: &View,
         viewport: Rect,
-        theme: &Theme,
+        theme: &'d Theme,
         is_focused: bool,
         line_decorations: &mut Vec<Box<(dyn LineDecoration + 'd)>>,
     ) {

@@ -5,6 +5,7 @@ use futures_util::FutureExt;
 use helix_core::auto_pairs::AutoPairs;
 use helix_core::diff::{diff_provider::DiffProviderRegistry, DiffHandle};
 use helix_core::doc_formatter::TextFormat;
+use helix_core::selection::TSSelectionHistory;
 use helix_core::syntax::Highlight;
 use helix_core::text_annotations::TextAnnotations;
 use helix_core::Range;
@@ -12,7 +13,7 @@ use helix_core::Range;
 use serde::de::{self, Deserialize, Deserializer};
 use serde::Serialize;
 use std::borrow::Cow;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::future::Future;
@@ -109,6 +110,8 @@ pub struct Document {
     pub(crate) id: DocumentId,
     text: Rope,
     selections: HashMap<ViewId, Selection>,
+    /// used to store previous selections of tree-sitter objects
+    ts_selection_history: HashMap<ViewId, TSSelectionHistory>,
 
     path: Option<PathBuf>,
     encoding: &'static encoding::Encoding,
@@ -379,6 +382,7 @@ impl Document {
             encoding,
             text,
             selections: HashMap::default(),
+            ts_selection_history: HashMap::new(),
             indent_style: DEFAULT_INDENT,
             line_ending: DEFAULT_LINE_ENDING,
             restore_cursor: false,
@@ -780,6 +784,15 @@ impl Document {
             .insert(view_id, selection.ensure_invariants(self.text().slice(..)));
     }
 
+    pub fn set_selection_temp(
+        &mut self,
+        view_id: ViewId,
+        selection: Selection,
+    ) -> Option<Selection> {
+        self.selections
+            .insert(view_id, selection.ensure_invariants(self.text().slice(..)))
+    }
+
     /// Find the origin selection of the text in a document, i.e. where
     /// a single cursor would go if it were on the first grapheme. If
     /// the text is empty, returns (0, 0).
@@ -804,11 +817,17 @@ impl Document {
         if self.selections.get(&view_id).is_none() {
             self.reset_selection(view_id);
         }
+
+        if self.ts_selection_history.get(&view_id).is_none() {
+            self.ts_selection_history
+                .insert(view_id, RefCell::new(Vec::new()));
+        }
     }
 
     /// Remove a view's selection from this document.
     pub fn remove_view(&mut self, view_id: ViewId) {
         self.selections.remove(&view_id);
+        self.ts_selection_history.remove(&view_id);
     }
 
     /// Apply a [`Transaction`] to the [`Document`] to change its text.
@@ -842,7 +861,9 @@ impl Document {
             self.version += 1;
             // start computing the diff in parallel
             if let Some(diff_handle) = &self.diff_handle {
-                diff_handle.update_document(self.text.clone(), false);
+                diff_handle
+                    .update_document(self.text.clone(), false)
+                    .unwrap();
             }
 
             // generate revert to savepoint
@@ -1109,7 +1130,7 @@ impl Document {
     pub fn set_diff_base(&mut self, diff_base: Vec<u8>, redraw_handle: RedrawHandle) {
         if let Ok((diff_base, _)) = from_reader(&mut diff_base.as_slice(), Some(self.encoding)) {
             if let Some(differ) = &self.diff_handle {
-                differ.update_diff_base(diff_base);
+                differ.update_diff_base(diff_base).unwrap();
                 return;
             }
             self.diff_handle = Some(DiffHandle::new(diff_base, self.text.clone(), redraw_handle))
@@ -1159,6 +1180,10 @@ impl Document {
     #[inline]
     pub fn selection(&self, view_id: ViewId) -> &Selection {
         &self.selections[&view_id]
+    }
+
+    pub fn ts_selection_history(&self, view_id: ViewId) -> &TSSelectionHistory {
+        &self.ts_selection_history[&view_id]
     }
 
     pub fn selections(&self) -> &HashMap<ViewId, Selection> {

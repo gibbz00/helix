@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::num::NonZeroUsize;
 
 use super::TextObject::*;
@@ -123,7 +124,7 @@ fn word() {
 }
 
 #[test]
-fn paragraph_inside_single() {
+fn paragraph_inside() {
     let tests = [
         ("#[|]#", "#[|]#"),
         ("firs#[t|]#\n\nparagraph\n\n", "#[first\n|]#\nparagraph\n\n"),
@@ -141,6 +142,10 @@ fn paragraph_inside_single() {
             "line to empty\n\n#[p|]#aragraph boundary\n\n",
             "line to empty\n\n#[paragraph boundary\n|]#\n",
         ),
+        (
+            "selects backwards\n\nwith multiple newlines\n\n#[\n|]#",
+            "selects backwards\n\n#[with multiple newlines\n|]#\n\n",
+        ),
     ];
 
     for (before, expected) in tests {
@@ -149,7 +154,7 @@ fn paragraph_inside_single() {
 }
 
 #[test]
-fn paragraph_around_single() {
+fn paragraph_around() {
     let tests = [
         ("#[|]#", "#[|]#"),
         ("firs#[t|]#\n\nparagraph\n\n", "#[first\n\n|]#paragraph\n\n"),
@@ -166,6 +171,10 @@ fn paragraph_around_single() {
         (
             "line to empty\n\n#[p|]#aragraph boundary\n\n",
             "line to empty\n\n#[paragraph boundary\n\n|]#",
+        ),
+        (
+            "selects backwards\n\nwith multiple newlines\n\n#[\n|]#",
+            "selects backwards\n\n#[with multiple newlines\n\n\n|]#",
         ),
     ];
 
@@ -286,6 +295,8 @@ fn test_textobj_paragraph(before: &str, expected: &str, textobject: TextObject, 
             syntax_find_node_fn: None,
         },
         unsafe { NonZeroUsize::new_unchecked(1) },
+        None,
+        &RefCell::new(Vec::new()),
     );
     let actual = crate::test::plain(&s, selection);
     assert_eq!(actual, expected, "\nbefore: `{:?}`", before);
