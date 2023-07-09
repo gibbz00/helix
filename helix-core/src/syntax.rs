@@ -26,7 +26,7 @@ use std::{
 };
 
 use once_cell::sync::{Lazy, OnceCell};
-use serde::{ser::SerializeSeq, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 use helix_loader::grammar::{get_language, load_runtime_file};
 
@@ -39,7 +39,9 @@ where
         .transpose()
 }
 
-fn deserialize_lsp_config<'de, D>(deserializer: D) -> Result<Option<serde_json::Value>, D::Error>
+fn deserialize_toml_to_json_value<'de, D>(
+    deserializer: D,
+) -> Result<Option<serde_json::Value>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -74,7 +76,7 @@ fn default_timeout() -> u64 {
     20
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct Configuration {
     pub language: Vec<LanguageConfiguration>,
@@ -89,7 +91,7 @@ impl Default for Configuration {
 }
 
 // largely based on tree-sitter/cli/src/loader.rs
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct LanguageConfiguration {
     #[serde(rename = "name")]
@@ -109,7 +111,6 @@ pub struct LanguageConfiguration {
     #[serde(default)]
     pub auto_format: bool,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub formatter: Option<FormatterConfiguration>,
 
     #[serde(default)]
@@ -118,35 +119,28 @@ pub struct LanguageConfiguration {
     pub grammar: Option<String>, // tree-sitter grammar name, defaults to language_id
 
     // content_regex
-    #[serde(default, skip_serializing, deserialize_with = "deserialize_regex")]
+    #[serde(default, deserialize_with = "deserialize_regex")]
     pub injection_regex: Option<Regex>,
     // first_line_regex
     //
     #[serde(skip)]
     pub(crate) highlight_config: OnceCell<Option<Arc<HighlightConfiguration>>>,
     // tags_config OnceCell<> https://github.com/tree-sitter/tree-sitter/pull/583
-    #[serde(
-        default,
-        skip_serializing_if = "Vec::is_empty",
-        serialize_with = "serialize_lang_features",
-        deserialize_with = "deserialize_lang_features"
-    )]
+    #[serde(default, deserialize_with = "deserialize_lang_features")]
     pub language_servers: Vec<LanguageServerFeatures>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub indent: Option<IndentationConfiguration>,
 
     #[serde(skip)]
     pub(crate) indent_query: OnceCell<Option<Query>>,
     #[serde(skip)]
     pub(crate) textobject_query: OnceCell<Option<TextObjectQuery>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub debugger: Option<DebugAdapterConfig>,
 
     /// Automatic insertion of pairs to parentheses, brackets,
     /// etc. Defaults to true. Optionally, this can be a list of 2-tuples
     /// to specify a list of characters to pair. This overrides the
     /// global setting.
-    #[serde(default, skip_serializing, deserialize_with = "deserialize_auto_pairs")]
+    #[serde(default, deserialize_with = "deserialize_auto_pairs")]
     pub auto_pairs: Option<AutoPairs>,
 
     pub rulers: Option<Vec<u16>>, // if set, override editor's rulers
@@ -164,24 +158,6 @@ pub enum FileType {
     /// The suffix of a file. This is compared to a given file's absolute
     /// path, so it can be used to detect files based on their directories.
     Suffix(String),
-}
-
-impl Serialize for FileType {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::SerializeMap;
-
-        match self {
-            FileType::Extension(extension) => serializer.serialize_str(extension),
-            FileType::Suffix(suffix) => {
-                let mut map = serializer.serialize_map(Some(1))?;
-                map.serialize_entry("suffix", &suffix.replace(std::path::MAIN_SEPARATOR, "/"))?;
-                map.end()
-            }
-        }
-    }
 }
 
 impl<'de> Deserialize<'de> for FileType {
@@ -231,7 +207,7 @@ impl<'de> Deserialize<'de> for FileType {
     }
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "kebab-case")]
 pub enum LanguageServerFeature {
     Format,
@@ -281,14 +257,12 @@ impl Display for LanguageServerFeature {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(untagged, rename_all = "kebab-case", deny_unknown_fields)]
 enum LanguageServerFeatureConfiguration {
     #[serde(rename_all = "kebab-case")]
     Features {
-        #[serde(default, skip_serializing_if = "HashSet::is_empty")]
         only_features: HashSet<LanguageServerFeature>,
-        #[serde(default, skip_serializing_if = "HashSet::is_empty")]
         except_features: HashSet<LanguageServerFeature>,
         name: String,
     },
@@ -335,54 +309,30 @@ where
         .collect();
     Ok(res)
 }
-fn serialize_lang_features<S>(
-    map: &Vec<LanguageServerFeatures>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    let mut serializer = serializer.serialize_seq(Some(map.len()))?;
-    for features in map {
-        let features = if features.only.is_empty() && features.excluded.is_empty() {
-            LanguageServerFeatureConfiguration::Simple(features.name.to_owned())
-        } else {
-            LanguageServerFeatureConfiguration::Features {
-                only_features: features.only.clone(),
-                except_features: features.excluded.clone(),
-                name: features.name.to_owned(),
-            }
-        };
-        serializer.serialize_element(&features)?;
-    }
-    serializer.end()
-}
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct LanguageServerConfiguration {
     pub command: String,
     #[serde(default)]
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub args: Vec<String>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    #[serde(default)]
     pub environment: HashMap<String, String>,
-    #[serde(default, skip_serializing, deserialize_with = "deserialize_lsp_config")]
+    #[serde(default, deserialize_with = "deserialize_toml_to_json_value")]
     pub config: Option<serde_json::Value>,
     #[serde(default = "default_timeout")]
     pub timeout: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct FormatterConfiguration {
     pub command: String,
     #[serde(default)]
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub args: Vec<String>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct AdvancedCompletion {
     pub name: Option<String>,
@@ -390,14 +340,14 @@ pub struct AdvancedCompletion {
     pub default: Option<String>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize)]
 #[serde(rename_all = "kebab-case", untagged)]
 pub enum DebugConfigCompletion {
     Named(String),
     Advanced(AdvancedCompletion),
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum DebugArgumentValue {
     String(String),
@@ -405,7 +355,7 @@ pub enum DebugArgumentValue {
     Boolean(bool),
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct DebugTemplate {
     pub name: String,
@@ -414,7 +364,7 @@ pub struct DebugTemplate {
     pub args: HashMap<String, DebugArgumentValue>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct DebugAdapterConfig {
     pub name: String,
@@ -430,13 +380,13 @@ pub struct DebugAdapterConfig {
 }
 
 // Different workarounds for adapters' differences
-#[derive(Debug, Default, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, PartialEq, Eq, Clone, Deserialize)]
 pub struct DebuggerQuirks {
     #[serde(default)]
     pub absolute_paths: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct IndentationConfiguration {
     #[serde(deserialize_with = "deserialize_tab_width")]
@@ -706,6 +656,7 @@ impl LanguageConfiguration {
             .ok()
     }
 }
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 pub struct SoftWrap {
