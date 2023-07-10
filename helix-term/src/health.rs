@@ -2,7 +2,10 @@ use crossterm::{
     style::{Color, Print, Stylize},
     tty::IsTty,
 };
-use helix_core::config::{default_syntax_loader, user_syntax_loader};
+use helix_core::{
+    config::{default_syntax_loader, user_syntax_loader},
+    syntax::{Configuration, LanguageConfiguration},
+};
 use helix_loader::grammar::load_runtime_file;
 use helix_view::clipboard::get_clipboard_provider;
 use std::io::Write;
@@ -202,8 +205,8 @@ pub fn languages_all() -> std::io::Result<()> {
         });
         check_binary(lsp);
 
-        let dap = lang.debugger.as_ref().map(|dap| dap.command.to_string());
-        check_binary(dap);
+        // TEMP: figure out how more than one debug adapter should be displayed
+        check_binary(get_debug_adapter_command(lang, &syn_loader_conf));
 
         for ts_feat in TsFeature::all() {
             match load_runtime_file(&lang.language_id, ts_feat.runtime_filename()).is_ok() {
@@ -281,7 +284,7 @@ pub fn language(lang_str: String) -> std::io::Result<()> {
 
     probe_protocol(
         "debug adapter",
-        lang.debugger.as_ref().map(|dap| dap.command.to_string()),
+        get_debug_adapter_command(lang, &syn_loader_conf),
     )?;
 
     for ts_feat in TsFeature::all() {
@@ -341,4 +344,15 @@ pub fn print_health(health_arg: Option<String>) -> std::io::Result<()> {
         Some(lang) => language(lang.to_string())?,
     }
     Ok(())
+}
+
+fn get_debug_adapter_command(
+    language_configuration: &LanguageConfiguration,
+    configuration: &Configuration,
+) -> Option<String> {
+    language_configuration
+        .debug_adapter_names
+        .first()
+        .and_then(|debug_adapter_name| configuration.debug_adapters.get(debug_adapter_name))
+        .map(|debug_adapter_config| debug_adapter_config.command.clone())
 }

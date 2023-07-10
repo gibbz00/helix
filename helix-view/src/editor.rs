@@ -1,3 +1,5 @@
+pub mod debug_config;
+
 use crate::{
     align_view,
     clipboard::{get_clipboard_provider, ClipboardProvider},

@@ -5,6 +5,7 @@ use crate::job::Job;
 
 use super::*;
 
+use helix_core::syntax::debug::DebugTemplateName;
 use helix_core::{encoding, shellwords::Shellwords};
 use helix_view::document::DEFAULT_LANGUAGE_NAME;
 use helix_view::editor::{Action, CloseError, ConfigEvent};
@@ -1626,11 +1627,7 @@ fn debug_start(
     }
 
     let mut args = args.to_owned();
-    let name = match args.len() {
-        0 => None,
-        _ => Some(args.remove(0)),
-    };
-    dap_start_impl(cx, name.as_deref(), None, Some(args))
+    dap_start_impl(cx, &_template_name(&mut args)?, None, Some(args))
 }
 
 fn debug_remote(
@@ -1647,11 +1644,16 @@ fn debug_remote(
         0 => None,
         _ => Some(args.remove(0).parse()?),
     };
-    let name = match args.len() {
-        0 => None,
-        _ => Some(args.remove(0)),
-    };
-    dap_start_impl(cx, name.as_deref(), address, Some(args))
+
+    dap_start_impl(cx, &_template_name(&mut args)?, address, Some(args))
+}
+
+fn _template_name(args: &mut Vec<Cow<str>>) -> anyhow::Result<DebugTemplateName> {
+    if args.is_empty() {
+        bail!("Missing debug template name argument")
+    }
+
+    Ok(args.remove(0).to_string().into())
 }
 
 fn tutor(

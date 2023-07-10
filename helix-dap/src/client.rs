@@ -4,7 +4,7 @@ use crate::{
     types::*,
     Error, Result, ThreadId,
 };
-use helix_core::syntax::debug::DebuggerQuirks;
+use helix_core::syntax::debug::{DebugAdapterName, DebuggerQuirks};
 
 use serde_json::Value;
 
@@ -327,11 +327,11 @@ impl Client {
         self.caps.as_ref().expect("debugger not yet initialized!")
     }
 
-    pub async fn initialize(&mut self, adapter_id: String) -> Result<()> {
+    pub async fn initialize(&mut self, adapter_name: DebugAdapterName) -> Result<()> {
         let args = requests::InitializeArguments {
             client_id: Some("hx".to_owned()),
             client_name: Some("helix".to_owned()),
-            adapter_id,
+            adapter_id: adapter_name.into(),
             locale: Some("en-us".to_owned()),
             lines_start_at_one: Some(true),
             columns_start_at_one: Some(true),

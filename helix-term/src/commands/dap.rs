@@ -5,10 +5,13 @@ use crate::{
     ui::{self, overlay::overlaid, Picker, Popup, Prompt, PromptEvent, Text},
 };
 use dap::{StackFrame, Thread, ThreadStates};
-use helix_core::syntax::debug::{DebugArgumentValue, DebugConfigCompletion, DebugTemplate};
+use helix_core::syntax::debug::{
+    DebugAdapterConfig, DebugArgumentValue, DebugConfigCompletion, DebugTemplateConfig,
+    DebugTemplateName,
+};
 use helix_dap::{self as dap, Client};
 use helix_lsp::block_on;
-use helix_view::editor::Breakpoint;
+use helix_view::editor::{debug_config::EditorDebugConfig, Breakpoint};
 
 use serde_json::{to_value, Value};
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -18,7 +21,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::path::PathBuf;
 
-use anyhow::{anyhow, bail};
+use anyhow::bail;
 
 use helix_view::handlers::dap::{breakpoints_changed, jump_to_stack_frame, select_thread_id};
 
@@ -30,11 +33,11 @@ impl ui::menu::Item for StackFrame {
     }
 }
 
-impl ui::menu::Item for DebugTemplate {
+impl ui::menu::Item for (DebugTemplateName, DebugTemplateConfig) {
     type Data = ();
 
     fn format(&self, _data: &Self::Data) -> Row {
-        self.name.as_str().into()
+        self.0.as_str().into()
     }
 }
 
@@ -129,24 +132,28 @@ fn dap_callback<T, F>(
 
 pub fn dap_start_impl(
     cx: &mut compositor::Context,
-    name: Option<&str>,
+    template_name: &DebugTemplateName,
     socket: Option<std::net::SocketAddr>,
     params: Option<Vec<std::borrow::Cow<str>>>,
-) -> Result<(), anyhow::Error> {
-    let doc = doc!(cx.editor);
+) -> anyhow::Result<()> {
+    let (debug_adapter_name, debug_adapter_config) =
+        cx.editor.select_debug_adapter(doc!(cx.editor))?;
 
-    let config = doc
-        .language_config()
-        .and_then(|config| config.debugger.as_ref())
-        .ok_or_else(|| anyhow!("No debug adapter available for language"))?;
+    let DebugAdapterConfig {
+        transport,
+        command,
+        args,
+        port_arg,
+        quirks,
+    } = debug_adapter_config;
 
     let result = match socket {
         Some(socket) => block_on(Client::tcp(socket, 0)),
         None => block_on(Client::process(
-            &config.transport,
-            &config.command,
-            config.args.iter().map(|arg| arg.as_str()).collect(),
-            config.port_arg.as_deref(),
+            transport,
+            command,
+            args.iter().map(|arg| arg.as_str()).collect(),
+            port_arg.as_deref(),
             0,
         )),
     };
@@ -156,28 +163,32 @@ pub fn dap_start_impl(
         Err(e) => bail!("Failed to start debug session: {}", e),
     };
 
-    let request = debugger.initialize(config.name.clone());
+    let request = debugger.initialize(debug_adapter_name.clone());
     if let Err(e) = block_on(request) {
         bail!("Failed to initialize debug adapter: {}", e);
     }
 
-    debugger.quirks = config.quirks.clone();
+    debugger.quirks = quirks.clone();
 
-    // TODO: avoid refetching all of this... pass a config in
-    let template = match name {
-        Some(name) => config.templates.iter().find(|t| t.name == name),
-        None => config.templates.get(0),
-    }
-    .ok_or_else(|| anyhow!("No debug config with given name"))?;
+    let Some(debug_templates) = doc!(cx.editor)
+        .language_config()
+        .map(|language_config| &language_config.debug_templates) else {
+        bail!("Missing language config.")
+    };
+
+    let Some(debug_template) = debug_templates.get(template_name) else {
+        bail!("No debug template config found for: {}", template_name.as_str());
+    };
 
     let mut args: HashMap<&str, Value> = HashMap::new();
 
     if let Some(params) = params {
-        for (k, t) in &template.args {
+        for (k, t) in &debug_template.args {
             let mut value = t.clone();
             for (i, x) in params.iter().enumerate() {
                 let mut param = x.to_string();
-                if let Some(DebugConfigCompletion::Advanced(cfg)) = template.completion.get(i) {
+                if let Some(DebugConfigCompletion::Advanced(cfg)) = debug_template.completion.get(i)
+                {
                     if matches!(cfg.completion.as_deref(), Some("filename" | "directory")) {
                         param = std::fs::canonicalize(x.as_ref())
                             .ok()
@@ -227,7 +238,7 @@ pub fn dap_start_impl(
         // }
     };
 
-    match &template.request[..] {
+    match &debug_template.request[..] {
         "launch" => {
             let call = debugger.launch(args);
             dap_callback(cx.jobs, call, callback);
@@ -246,38 +257,45 @@ pub fn dap_start_impl(
     Ok(())
 }
 
-pub fn dap_launch(cx: &mut Context) {
+fn prepare_debug_templates(
+    cx: &Context,
+) -> anyhow::Result<Vec<(DebugTemplateName, DebugTemplateConfig)>> {
     if cx.editor.debugger.is_some() {
-        cx.editor.set_error("Debugger is already running");
-        return;
+        bail!("Debugger is already running");
     }
 
-    let doc = doc!(cx.editor);
+    let (debug_adapter_name, _) = cx.editor.select_debug_adapter(doc!(cx.editor))?;
 
-    let config = match doc
-        .language_config()
-        .and_then(|config| config.debugger.as_ref())
-    {
-        Some(c) => c,
-        None => {
-            cx.editor
-                .set_error("No debug adapter available for language");
+    cx.editor
+        .get_debug_templates(debug_adapter_name)
+        .map(|templates| {
+            templates
+                .into_iter()
+                .map(|(name, config)| (name.clone(), config.clone()))
+                .collect()
+        })
+}
+
+pub fn dap_launch(cx: &mut Context) {
+    let debug_templates = match prepare_debug_templates(cx) {
+        Ok(debug_templates) => debug_templates,
+        Err(err) => {
+            cx.editor.set_error(err.to_string());
             return;
         }
     };
 
-    let templates = config.templates.clone();
-
     cx.push_layer(Box::new(overlaid(Picker::new(
-        templates,
+        debug_templates,
         (),
-        |cx, template, _action| {
-            let completions = template.completion.clone();
-            let name = template.name.clone();
+        |cx, (debug_template_name, debug_template_config), _action| {
+            let completions = debug_template_config.completion.clone();
+            let debug_template_name = debug_template_name.clone();
             let callback = Box::pin(async move {
                 let call: Callback =
                     Callback::EditorCompositor(Box::new(move |_editor, compositor| {
-                        let prompt = debug_parameter_prompt(completions, name, Vec::new());
+                        let prompt =
+                            debug_parameter_prompt(completions, debug_template_name, Vec::new());
                         compositor.push(Box::new(prompt));
                     }));
                 Ok(call)
@@ -319,7 +337,7 @@ pub fn dap_restart(cx: &mut Context) {
 
 fn debug_parameter_prompt(
     completions: Vec<DebugConfigCompletion>,
-    config_name: String,
+    debug_template_name: DebugTemplateName,
     mut params: Vec<String>,
 ) -> Prompt {
     let completion = completions.get(params.len()).unwrap();
@@ -361,12 +379,13 @@ fn debug_parameter_prompt(
 
             if params.len() < completions.len() {
                 let completions = completions.clone();
-                let config_name = config_name.clone();
                 let params = params.clone();
+                let debug_template_name = debug_template_name.clone();
                 let callback = Box::pin(async move {
                     let call: Callback =
                         Callback::EditorCompositor(Box::new(move |_editor, compositor| {
-                            let prompt = debug_parameter_prompt(completions, config_name, params);
+                            let prompt =
+                                debug_parameter_prompt(completions, debug_template_name, params);
                             compositor.push(Box::new(prompt));
                         }));
                     Ok(call)
@@ -374,7 +393,7 @@ fn debug_parameter_prompt(
                 cx.jobs.callback(callback);
             } else if let Err(err) = dap_start_impl(
                 cx,
-                Some(&config_name),
+                &debug_template_name,
                 None,
                 Some(params.iter().map(|x| x.into()).collect()),
             ) {

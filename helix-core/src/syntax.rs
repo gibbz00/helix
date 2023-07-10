@@ -42,6 +42,8 @@ pub struct Configuration {
     pub language: Vec<LanguageConfiguration>,
     #[serde(default)]
     pub language_server: HashMap<String, LanguageServerConfiguration>,
+    #[serde(default)]
+    pub debug_adapters: HashMap<DebugAdapterName, DebugAdapterConfig>,
 }
 
 impl Default for Configuration {
@@ -94,7 +96,10 @@ pub struct LanguageConfiguration {
     pub(crate) indent_query: OnceCell<Option<Query>>,
     #[serde(skip)]
     pub(crate) textobject_query: OnceCell<Option<TextObjectQuery>>,
-    pub debugger: Option<DebugAdapterConfig>,
+    #[serde(default, rename = "debug-adapters")]
+    pub debug_adapter_names: Vec<DebugAdapterName>,
+    #[serde(default)]
+    pub debug_templates: HashMap<DebugTemplateName, DebugTemplateConfig>,
 
     /// Automatic insertion of pairs to parentheses, brackets,
     /// etc. Defaults to true. Optionally, this can be a list of 2-tuples
@@ -604,6 +609,7 @@ pub struct Loader {
     language_config_ids_by_shebang: HashMap<String, usize>,
 
     language_server_configs: HashMap<String, LanguageServerConfiguration>,
+    pub debug_adapter_configs: HashMap<DebugAdapterName, DebugAdapterConfig>,
 
     scopes: ArcSwap<Vec<String>>,
 }
@@ -613,6 +619,7 @@ impl Loader {
         let mut loader = Self {
             language_configs: Vec::new(),
             language_server_configs: config.language_server,
+            debug_adapter_configs: config.debug_adapters,
             language_config_ids_by_extension: HashMap::new(),
             language_config_ids_by_suffix: HashMap::new(),
             language_config_ids_by_shebang: HashMap::new(),
@@ -2372,6 +2379,16 @@ mod test {
     use super::*;
     use crate::{Rope, Transaction};
 
+    impl Loader {
+        pub fn mock() -> Self {
+            Loader::new(Configuration {
+                language: vec![],
+                language_server: HashMap::new(),
+                debug_adapters: HashMap::new(),
+            })
+        }
+    }
+
     #[test]
     fn test_textobject_queries() {
         let query_str = r#"
@@ -2386,18 +2403,13 @@ mod test {
         "#,
         );
 
-        let loader = Loader::new(Configuration {
-            language: vec![],
-            language_server: HashMap::new(),
-        });
         let language = get_language("rust").unwrap();
-
         let query = Query::new(language, query_str).unwrap();
         let textobject = TextObjectQuery { query };
         let mut cursor = QueryCursor::new();
 
         let config = HighlightConfiguration::new(language, "", "", "").unwrap();
-        let syntax = Syntax::new(&source, Arc::new(config), Arc::new(loader)).unwrap();
+        let syntax = Syntax::new(&source, Arc::new(config), Arc::new(Loader::mock())).unwrap();
 
         let root = syntax.tree().root_node();
         let mut test = |capture, range| {
@@ -2448,11 +2460,6 @@ mod test {
         .map(String::from)
         .collect();
 
-        let loader = Loader::new(Configuration {
-            language: vec![],
-            language_server: HashMap::new(),
-        });
-
         let language = get_language("rust").unwrap();
         let config = HighlightConfiguration::new(
             language,
@@ -2471,7 +2478,7 @@ mod test {
             fn main() {}
         ",
         );
-        let syntax = Syntax::new(&source, Arc::new(config), Arc::new(loader)).unwrap();
+        let syntax = Syntax::new(&source, Arc::new(config), Arc::new(Loader::mock())).unwrap();
         let tree = syntax.tree();
         let root = tree.root_node();
         assert_eq!(root.kind(), "source_file");
@@ -2553,15 +2560,9 @@ mod test {
         end: usize,
     ) {
         let source = Rope::from_str(source);
-
-        let loader = Loader::new(Configuration {
-            language: vec![],
-            language_server: HashMap::new(),
-        });
         let language = get_language(language_name).unwrap();
-
         let config = HighlightConfiguration::new(language, "", "", "").unwrap();
-        let syntax = Syntax::new(&source, Arc::new(config), Arc::new(loader)).unwrap();
+        let syntax = Syntax::new(&source, Arc::new(config), Arc::new(Loader::mock())).unwrap();
 
         let root = syntax
             .tree()
